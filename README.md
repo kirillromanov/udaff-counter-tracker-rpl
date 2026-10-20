@@ -47,12 +47,22 @@ Match bonuses apply only to rewarded categories (`exact`, `neighbor`, `diff`, `o
 npm test
 ```
 
-Vitest covers score categories, bonuses, the Match of the Round multiplier, round totals, and season movement. The tests do not need the database.
+Vitest covers score categories, bonuses, the Match of the Round multiplier, round totals, season movement, forum comment extraction, and prediction parsing. The tests do not need the database.
 
-## App
+## Import and review
+
+Seed round 11 with the fixtures for the sample thread, then start the app:
 
 ```bash
 npm run dev
 ```
 
-Open `/` and `/admin`. Both pages are placeholders for later phases.
+Open `/admin`, choose **11. 11th tour**, and paste:
+
+`https://canadaru.net/udaff_afterlife/sport/football/rpl/2633/`
+
+**Fetch comments** downloads the WordPress page and stores each comment's author, timestamp, raw HTML, and plain text. **Parse predictions** turns score lines into prediction sets for the round's fixtures.
+
+The scraper expects Atahualpa comment markup: `li#comment-{id}`, `span.authorname`, a permalink timestamp like `16/10/2026 at 10:10`, and the body in the following paragraphs. A PHP warning inside the comment container class is ignored. Only the HTML of the given URL is read.
+
+The parser accepts Cyrillic names, dashes (`-`, `—`, `–`), scores (`2-1`, `2:1`, `2 — 1`), a leading date and kickoff, and an optional `(МТ)` or `(MT)` on a line. `Динамо Мх` is treated as Dynamo Makhachkala. Extra prose is skipped. A line that looks like a prediction but cannot be read is kept as a warning. When someone posts twice, the latest comment that contains at least one scored prediction is selected. Use **Use this set** to override that. Renaming, merging participants, editing scores, reassigning a fixture, and marking a line ignored are on the same page. A manual set can be added when a comment failed to import. Edits are kept if the thread is parsed again. A line marked `(МТ)` is stored on the prediction and does not change the official Match of the Round flag.

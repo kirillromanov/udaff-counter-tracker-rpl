@@ -235,6 +235,28 @@ async function main() {
       },
     },
   });
+
+  await prisma.round.create({
+    data: {
+      seasonId: season.id,
+      number: 11,
+      name: "11th tour",
+      status: "open",
+      forumUrl: "https://canadaru.net/udaff_afterlife/sport/football/rpl/2633/",
+      matches: {
+        create: [
+          { sortOrder: 1, homeTeam: "Крылья Советов", awayTeam: "Факел", kickoffAt: new Date("2026-10-17T14:00:00.000Z") },
+          { sortOrder: 2, homeTeam: "Динамо Махачкала", awayTeam: "Акрон", kickoffAt: new Date("2026-10-17T16:30:00.000Z") },
+          { sortOrder: 3, homeTeam: "Локомотив", awayTeam: "Краснодар", kickoffAt: new Date("2026-10-17T19:30:00.000Z") },
+          { sortOrder: 4, homeTeam: "Зенит", awayTeam: "Ахмат", kickoffAt: new Date("2026-10-18T14:00:00.000Z") },
+          { sortOrder: 5, homeTeam: "Динамо", awayTeam: "ЦСКА", isMatchOfTheRound: true, kickoffAt: new Date("2026-10-18T16:15:00.000Z") },
+          { sortOrder: 6, homeTeam: "Спартак", awayTeam: "Рубин", kickoffAt: new Date("2026-10-18T18:30:00.000Z") },
+          { sortOrder: 7, homeTeam: "Балтика", awayTeam: "Ростов", kickoffAt: new Date("2026-10-18T20:45:00.000Z") },
+          { sortOrder: 8, homeTeam: "Родина", awayTeam: "Оренбург", kickoffAt: new Date("2026-10-19T19:30:00.000Z") },
+        ],
+      },
+    },
+  });
 }
 
 main()
