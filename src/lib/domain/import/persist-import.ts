@@ -2,10 +2,11 @@ import { prisma } from "@/lib/db/prisma";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import type { FixtureRef } from "@/lib/domain/parser/types";
+import { participantKey } from "./participant-key";
 import { resolveSelections, type SelectableSet } from "./select-sets";
 
 function nickKey(value: string): string {
-  return value.trim().toLocaleLowerCase("ru");
+  return participantKey(value);
 }
 
 async function ensureParticipant(authorName: string, seasonId: string) {

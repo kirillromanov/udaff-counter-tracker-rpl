@@ -69,17 +69,27 @@ function looksLikeTeamPair(home: string, away: string): boolean {
 }
 
 function splitTeams(value: string): { home: string; away: string } | null {
-  const parts = value
+  const spaced = value
     .split(/\s+-\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length < 2) {
-    return null;
+  if (spaced.length >= 2) {
+    return {
+      home: spaced[0] ?? "",
+      away: spaced.slice(1).join(" - "),
+    };
   }
-  return {
-    home: parts[0] ?? "",
-    away: parts.slice(1).join(" - "),
-  };
+
+  // "Зенит-Ахмат" has no spaces around the dash. Only accept that when both
+  // sides still look like club names, so "где-то" and "900-1000" stay prose.
+  const tight = value
+    .split(/\s*-\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (tight.length === 2 && looksLikeTeamPair(tight[0] ?? "", tight[1] ?? "")) {
+    return { home: tight[0] ?? "", away: tight[1] ?? "" };
+  }
+  return null;
 }
 
 function plausibleScore(left: string, separator: string, right: string): boolean {
