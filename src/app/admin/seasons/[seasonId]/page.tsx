@@ -2,9 +2,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { formatMovement, medalSymbols } from "@/lib/domain/standings/format-movement";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { createRoundAction } from "../../actions";
+import { SubmitButton } from "../../submit-button";
+import {
+  Badge,
+  CrumbLink,
+  EmptyState,
+  Field,
+  KpiGrid,
+  Notice,
+  PageBody,
+  PageHeader,
+  Section,
+  StandingsTable,
+  StatusBadge,
+  buttonClass,
+  fieldClass,
+} from "../../ui";
 
 export const instant = false;
 
@@ -20,117 +35,127 @@ export default async function SeasonPage({
   const query = await searchParams;
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
-    include: { rounds: { orderBy: { number: "asc" }, include: { _count: { select: { roundScores: true } } } } },
+    include: {
+      _count: { select: { participants: true } },
+      rounds: { orderBy: { number: "asc" }, include: { _count: { select: { roundScores: true, matches: true } } } },
+    },
   });
   if (!season) {
     notFound();
   }
   const snapshot = await latestSeasonSnapshot(season.id);
   const nextNumber = (season.rounds.at(-1)?.number ?? 0) + 1;
+  const scoredRounds = season.rounds.filter((round) => round._count.roundScores > 0).length;
+  const leader = snapshot?.standingSnapshots[0];
 
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <p className="text-sm">
-        <Link className="underline" href="/admin">
-          Seasons
-        </Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">{season.name}</h1>
-      <p className="mt-2 text-neutral-600">Rounds, the latest cumulative table, and a new round.</p>
-      {query.error ? <p className="mt-4 border border-red-300 bg-red-50 p-3">{query.error}</p> : null}
-
-      <section className="mt-6">
-        <h2 className="font-semibold">Rounds</h2>
-        {season.rounds.length === 0 ? (
-          <p className="mt-2 text-neutral-600">No rounds yet.</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {season.rounds.map((round) => (
-              <li key={round.id}>
-                <Link className="underline" href={`/admin/rounds/${round.id}`}>
-                  {round.number}. {round.name ?? "Round"}
-                </Link>
-                <span className="ml-2 text-sm text-neutral-500">
-                  {round.status}
-                  {round._count.roundScores > 0 ? `, ${round._count.roundScores} scored` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="mt-6 border p-4">
-        <h2 className="font-semibold">Create a round</h2>
-        <form action={createRoundAction} className="mt-3 flex flex-wrap items-center gap-2">
-          <input name="seasonId" type="hidden" value={season.id} />
-          <input className="w-24 border px-2 py-1" defaultValue={nextNumber} name="number" type="number" />
-          <input className="border px-2 py-1" name="name" placeholder="Name (optional)" />
-          <button className="border px-3 py-1" type="submit">
-            Create
-          </button>
-        </form>
-      </section>
-
-      <section className="mt-6">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 className="font-semibold">Cumulative standings</h2>
-          <Link className="underline" href={`/admin/seasons/${season.id}/standings`}>
-            Full table
-          </Link>
-        </div>
-        {!snapshot ? (
-          <p className="mt-2 text-neutral-600">Calculate a round to build the table.</p>
-        ) : (
+    <>
+      <PageHeader
+        crumbs={
           <>
-            <p className="mt-2 text-sm text-neutral-600">
-              After {snapshot.name ?? `round ${snapshot.number}`}.
-            </p>
-            <StandingsTable rows={snapshot.standingSnapshots} />
+            <CrumbLink href="/admin">Seasons</CrumbLink>
+            <span>/</span>
+            <span>{season.name}</span>
           </>
-        )}
-      </section>
-    </main>
-  );
-}
+        }
+        description="Rounds, who is in the contest, and the latest cumulative table."
+        title={season.name}
+      />
+      <PageBody>
+        {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        <KpiGrid
+          items={[
+            { label: "Rounds", value: season.rounds.length },
+            { label: "Scored", value: scoredRounds, hint: "Rounds with a calculation" },
+            { label: "Participants", value: season._count.participants },
+            {
+              label: "Leader",
+              value: leader ? leader.totalPoints : "—",
+              hint: leader ? leader.participant.name : "Calculate a round",
+            },
+          ]}
+        />
 
-function StandingsTable({
-  rows,
-}: {
-  rows: {
-    id: string;
-    rank: number;
-    previousRank: number | null;
-    movement: string;
-    totalPoints: number;
-    roundWins: number;
-    participant: { name: string };
-  }[];
-}) {
-  return (
-    <table className="mt-3 w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b text-left">
-          <th className="py-1 pr-3">Rank</th>
-          <th className="py-1 pr-3">Move</th>
-          <th className="py-1 pr-3">Participant</th>
-          <th className="py-1 pr-3">Medals</th>
-          <th className="py-1">Points</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr className="border-b" key={row.id}>
-            <td className="py-1 pr-3">{row.rank}</td>
-            <td className="py-1 pr-3">{formatMovement(row.movement, row.rank, row.previousRank)}</td>
-            <td className="py-1 pr-3">{row.participant.name}</td>
-            <td className="py-1 pr-3">
-              {row.roundWins} {medalSymbols(row.roundWins)}
-            </td>
-            <td className="py-1">{row.totalPoints}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+        <Section
+          action={
+            <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/standings`}>
+              Full table
+            </Link>
+          }
+          description={
+            snapshot
+              ? `After ${snapshot.name ?? `round ${snapshot.number}`}. Changed places are tinted.`
+              : "The table appears after the first calculation."
+          }
+          id="standings"
+          title="Season standings"
+        >
+          {snapshot ? (
+            <StandingsTable rows={snapshot.standingSnapshots} />
+          ) : (
+            <EmptyState detail="Enter results on a round and calculate it." title="No cumulative table yet" />
+          )}
+        </Section>
+
+        <Section
+          action={
+            <form action={createRoundAction} className="flex flex-wrap items-end gap-2">
+              <input name="seasonId" type="hidden" value={season.id} />
+              <Field label="Number">
+                <input className={`${fieldClass} w-24`} defaultValue={nextNumber} name="number" type="number" />
+              </Field>
+              <Field label="Name">
+                <input className={`${fieldClass} w-44`} name="name" placeholder="Optional" />
+              </Field>
+              <SubmitButton pendingLabel="Creating…" variant="primary">
+                Create round
+              </SubmitButton>
+            </form>
+          }
+          description="Open a round for fixtures, import, and results."
+          id="rounds"
+          title="Rounds"
+        >
+          {season.rounds.length === 0 ? (
+            <EmptyState detail="Create the first round with the form above." title="No rounds yet" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
+                    <th className="py-2 pr-3 font-medium">Round</th>
+                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 pr-3 font-medium">Fixtures</th>
+                    <th className="py-2 font-medium">Scored</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {season.rounds.map((round) => (
+                    <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
+                      <td className="py-2.5 pr-3">
+                        <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
+                          {round.number}. {round.name ?? "Round"}
+                        </Link>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <StatusBadge status={round.status} />
+                      </td>
+                      <td className="py-2.5 pr-3 tabular-nums text-zinc-600">{round._count.matches}</td>
+                      <td className="py-2.5 text-zinc-600">
+                        {round._count.roundScores > 0 ? (
+                          <Badge tone="success">{round._count.roundScores} participants</Badge>
+                        ) : (
+                          <span className="text-zinc-400">Not calculated</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      </PageBody>
+    </>
   );
 }
