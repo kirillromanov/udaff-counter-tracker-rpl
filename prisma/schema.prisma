@@ -34,6 +34,7 @@ model Round {
 
   season            Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   matches           Match[]
+  forumComments     ForumComment[]
   predictionSets    PredictionSet[]
   roundScores       RoundScore[]
   standingSnapshots StandingSnapshot[]
@@ -86,21 +87,50 @@ model SeasonParticipant {
   @@unique([seasonId, participantId])
 }
 
+model ForumComment {
+  id         String    @id @default(cuid())
+  roundId    String
+  sourceUrl  String
+  externalId String?
+  authorName String
+  postedAt   DateTime?
+  rawHtml    String
+  rawText    String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  round          Round           @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  predictionSets PredictionSet[]
+
+  @@unique([roundId, externalId])
+  @@index([roundId, postedAt])
+}
+
 model PredictionSet {
-  id            String   @id @default(cuid())
-  roundId       String
-  participantId String
-  source        String   @default("manual")
-  rawComment    String?
-  status        String   @default("draft")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  roundId         String
+  participantId   String
+  forumCommentId  String?
+  source          String   @default("manual")
+  rawComment      String?
+  status          String   @default("draft")
+  selected        Boolean  @default(false)
+  /// auto: latest valid comment wins. manual: an admin chose this set.
+  selection       String   @default("auto")
+  confidence      Float?
+  warningsJson    String   @default("[]")
+  parsedJson      String   @default("[]")
+  manuallyEdited  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  participant Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  predictions Prediction[]
+  round        Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant  Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  forumComment ForumComment? @relation(fields: [forumCommentId], references: [id], onDelete: SetNull)
+  predictions  Prediction[]
 
-  @@unique([roundId, participantId])
+  @@index([roundId, participantId])
+  @@index([forumCommentId])
 }
 
 model Prediction {
@@ -109,6 +139,12 @@ model Prediction {
   matchId         String
   homeGoals       Int?
   awayGoals       Int?
+  ignored         Boolean  @default(false)
+  /// The comment explicitly marked this line with (МТ). Distinct from Match.isMatchOfTheRound.
+  markedAsMt      Boolean  @default(false)
+  rawLine         String?
+  confidence      Float?
+  warning         String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
