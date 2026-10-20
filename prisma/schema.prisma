@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Season {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  rounds            Round[]
+  participants      SeasonParticipant[]
+  scoringConfig     ScoringConfig?
+  standingSnapshots StandingSnapshot[]
+}
+
+model Round {
+  id        String   @id @default(cuid())
+  seasonId  String
+  number    Int
+  name      String?
+  forumUrl  String?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season            Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  matches           Match[]
+  predictionSets    PredictionSet[]
+  roundScores       RoundScore[]
+  standingSnapshots StandingSnapshot[]
+
+  @@unique([seasonId, number])
+}
+
+model Match {
+  id                String    @id @default(cuid())
+  roundId           String
+  kickoffAt         DateTime?
+  homeTeam          String
+  awayTeam          String
+  sortOrder         Int       @default(0)
+  /// At most one match in a round should be the Match of the Round. Enforced in application code.
+  isMatchOfTheRound Boolean   @default(false)
+  actualHomeGoals   Int?
+  actualAwayGoals   Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+
+  @@index([roundId])
+}
+
+model Participant {
+  id        String   @id @default(cuid())
+  name      String
+  forumNick String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seasons        SeasonParticipant[]
+  predictionSets PredictionSet[]
+  roundScores    RoundScore[]
+  standings      StandingSnapshot[]
+}
+
+model SeasonParticipant {
+  id            String   @id @default(cuid())
+  seasonId      String
+  participantId String
+  joinedAt      DateTime @default(now())
+
+  season      Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, participantId])
+}
+
+model PredictionSet {
+  id            String   @id @default(cuid())
+  roundId       String
+  participantId String
+  source        String   @default("manual")
+  rawComment    String?
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+
+  @@unique([roundId, participantId])
+}
+
+model Prediction {
+  id              String   @id @default(cuid())
+  predictionSetId String
+  matchId         String
+  homeGoals       Int?
+  awayGoals       Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  predictionSet PredictionSet @relation(fields: [predictionSetId], references: [id], onDelete: Cascade)
+  match         Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([predictionSetId, matchId])
+}
+
+model RoundScore {
+  id               String   @id @default(cuid())
+  roundId          String
+  participantId    String
+  totalPoints      Int
+  matchPoints      Int
+  roundBonusPoints Int
+  exactCount       Int
+  neighborCount    Int
+  diffCount        Int
+  outcomeCount     Int
+  missCount        Int
+  isRoundWinner    Boolean  @default(false)
+  breakdownJson    String
+  calculatedAt     DateTime @default(now())
+
+  round       Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, participantId])
+}
+
+model StandingSnapshot {
+  id            String   @id @default(cuid())
+  seasonId      String
+  roundId       String
+  participantId String
+  rank          Int
+  previousRank  Int?
+  movement      String
+  totalPoints   Int
+  roundWins     Int
+  calculatedAt  DateTime @default(now())
+
+  season      Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round       Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, roundId, participantId])
+  @@index([seasonId, roundId, rank])
+}
+
+model ScoringConfig {
+  id                         String   @id @default(cuid())
+  seasonId                   String   @unique
+  exactPoints                Int      @default(10)
+  neighborPoints             Int      @default(6)
+  diffPoints                 Int      @default(4)
+  outcomePoints              Int      @default(3)
+  missPoints                 Int      @default(-1)
+  zeroTotalBonus             Int      @default(1)
+  nilNilBonus                Int      @default(2)
+  bigDiffBonus               Int      @default(3)
+  bigDiffMin                 Int      @default(3)
+  highTotalBonus             Int      @default(4)
+  highTotalMin               Int      @default(5)
+  roundTotalGoalsBonus       Int      @default(3)
+  mtMultiplier               Int      @default(2)
+  mtAppliesToNegative        Boolean  @default(true)
+  bonusesRequireRewardedBase Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+}
