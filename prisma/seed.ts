@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import { prisma as scoringDb } from "../src/lib/db/prisma";
+import { recalculateRound } from "../src/lib/domain/standings/recalculate-round";
 
 const prisma = new PrismaClient();
 
@@ -196,9 +198,9 @@ async function main() {
       status: "confirmed",
       predictions: {
         create: [
-          { matchId: r2m1.id, homeGoals: 1, awayGoals: 0 },
-          { matchId: r2m2.id, homeGoals: 4, awayGoals: 1 },
-          { matchId: r2m3.id, homeGoals: 1, awayGoals: 1 },
+          { matchId: r2m1.id, homeGoals: 0, awayGoals: 5 },
+          { matchId: r2m2.id, homeGoals: 0, awayGoals: 5 },
+          { matchId: r2m3.id, homeGoals: 0, awayGoals: 5 },
         ],
       },
     },
@@ -212,9 +214,9 @@ async function main() {
       status: "confirmed",
       predictions: {
         create: [
-          { matchId: r2m1.id, homeGoals: 2, awayGoals: 1 },
-          { matchId: r2m2.id, homeGoals: 5, awayGoals: 2 },
-          { matchId: r2m3.id, homeGoals: 0, awayGoals: 0 },
+          { matchId: r2m1.id, homeGoals: 1, awayGoals: 0 },
+          { matchId: r2m2.id, homeGoals: 4, awayGoals: 1 },
+          { matchId: r2m3.id, homeGoals: 1, awayGoals: 1 },
         ],
       },
     },
@@ -257,6 +259,14 @@ async function main() {
       },
     },
   });
+
+  await prisma.predictionSet.updateMany({
+    where: { roundId: { in: [round1.id, round2.id] } },
+    data: { selected: true, selection: "manual" },
+  });
+  await recalculateRound(round1.id);
+  await recalculateRound(round2.id);
+  await scoringDb.$disconnect();
 }
 
 main()
