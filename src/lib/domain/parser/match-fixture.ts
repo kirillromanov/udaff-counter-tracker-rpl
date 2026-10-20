@@ -2,11 +2,13 @@ import type { FixtureRef } from "./types";
 import { normalizeTeamName } from "./normalize";
 
 /**
- * Forum nicknames that should compare equal to the full club name.
- * "Динамо Мх" is the page's short form of Dynamo Makhachkala.
+ * Forum nicknames that should compare equal to the full club token.
+ * "Динамо Мх" is Dynamo Makhachkala. "Кр Советов" is Krylia Sovetov.
+ * Two-letter cuts are aliases, not a general prefix rule.
  */
 const TOKEN_ALIASES: Record<string, string> = {
   мх: "махачкала",
+  кр: "крылья",
 };
 
 export interface FixtureMatch {
@@ -29,7 +31,7 @@ function tokenPairScore(left: string, right: string): number {
     return 1;
   }
   const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
-  if (shorter.length >= 2 && longer.startsWith(shorter)) {
+  if (shorter.length >= 3 && longer.startsWith(shorter)) {
     return 0.86;
   }
   return 0;

@@ -10,14 +10,60 @@ export interface RawPredictionLine {
   warnings: string[];
 }
 
-const DATETIME_PREFIX = /^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?(?:\s+\d{1,2}:\d{2})?\s*/;
-const MT_MARKER = /\(\s*(?:мт|mt)\s*\)/i;
-const SCORE = /(\d{1,2})\s*[-:]\s*(\d{1,2})/g;
+const DATETIME_PREFIX =
+  /^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?(?:\s+(?:at|в))?(?:\s+\d{1,2}:\d{2})?\s*/i;
+const MT_MARKER = /\(\s*(?:мт|mt)\s*\)|\*\s*2(?!\d)/i;
+const SCORE = /(?<!\d)(\d{1,2})(?!\d)\s*([-:])\s*(?<!\d)(\d{1,2})(?!\d)(?![.,]\d)/g;
+const UNRECOGNIZED_SCORE = /^(.*?)\s+-\d+\s*\*+\s*$/;
+const MAX_GOALS = 12;
+
+const PROSE_WORDS = new Set([
+  "это",
+  "как",
+  "так",
+  "то",
+  "что",
+  "не",
+  "на",
+  "по",
+  "мне",
+  "для",
+  "или",
+  "про",
+  "все",
+  "всё",
+  "вот",
+  "там",
+  "его",
+  "она",
+  "они",
+  "уже",
+  "ещё",
+  "еще",
+  "если",
+  "когда",
+  "просто",
+  "можно",
+  "надо",
+  "только",
+  "этот",
+  "эта",
+  "эти",
+]);
 
 function looksLikeTeamPair(home: string, away: string): boolean {
   const side = (value: string) => {
     const words = value.split(/\s+/).filter(Boolean);
-    return words.length > 0 && words.length <= 4 && /^[\p{L}\p{N} .]+$/u.test(value);
+    if (words.length === 0 || words.length > 4) {
+      return false;
+    }
+    if (!/^[\p{L}\p{N} ]+$/u.test(value)) {
+      return false;
+    }
+    if (!words.some((word) => word.length >= 4)) {
+      return false;
+    }
+    return !words.some((word) => PROSE_WORDS.has(word.toLocaleLowerCase("ru")));
   };
   return side(home) && side(away);
 }
@@ -34,6 +80,20 @@ function splitTeams(value: string): { home: string; away: string } | null {
     home: parts[0] ?? "",
     away: parts.slice(1).join(" - "),
   };
+}
+
+function plausibleScore(left: string, separator: string, right: string): boolean {
+  const homeGoals = Number(left);
+  const awayGoals = Number(right);
+  if (homeGoals > MAX_GOALS || awayGoals > MAX_GOALS) {
+    return false;
+  }
+  // "22:20" and "14:00" are clocks. A football score written with a colon
+  // uses a single digit on each side ("2:1"), never a zero-padded minute.
+  if (separator === ":" && (left.length > 1 || right.length > 1)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -53,10 +113,14 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
     return null;
   }
 
-  const scores = [...line.matchAll(SCORE)];
+  const scores = [...line.matchAll(SCORE)].filter((match) =>
+    plausibleScore(match[1] ?? "", match[2] ?? "", match[3] ?? ""),
+  );
   const score = scores.at(-1);
   if (!score || score.index == null) {
-    const teams = splitTeams(line);
+    const unrecognized = UNRECOGNIZED_SCORE.exec(line);
+    const teamLine = unrecognized?.[1]?.trim() || line;
+    const teams = splitTeams(teamLine);
     if (!teams || !looksLikeTeamPair(teams.home, teams.away)) {
       return null;
     }
@@ -67,7 +131,7 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
       homeGoals: null,
       awayGoals: null,
       markedAsMt,
-      warnings: ["Missing score"],
+      warnings: [unrecognized ? "Unrecognized score" : "Missing score"],
     };
   }
 
@@ -75,7 +139,7 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
   const after = line.slice(score.index + score[0].length).trim();
   const teams = splitTeams(before) ?? (before && after ? { home: before, away: after } : null);
   const homeGoals = Number(score[1]);
-  const awayGoals = Number(score[2]);
+  const awayGoals = Number(score[3]);
 
   if (!teams) {
     return {

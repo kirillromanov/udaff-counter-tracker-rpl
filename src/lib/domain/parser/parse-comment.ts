@@ -37,6 +37,11 @@ export function parseComment(raw: string, fixtures: FixtureRef[]): ParsedComment
     }
 
     const hasScore = parsed.homeGoals != null && parsed.awayGoals != null;
+    // A dash in ordinary prose is not a prediction. Keep a scoreless line only
+    // when it actually matches a fixture, so the admin can fill the score in.
+    if (!hasScore && !fixture) {
+      continue;
+    }
     lines.push({
       rawLine: parsed.rawLine,
       homeName: parsed.homeName,

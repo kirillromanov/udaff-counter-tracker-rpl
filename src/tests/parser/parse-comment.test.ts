@@ -105,7 +105,11 @@ describe("parseComment", () => {
     const chatter = parseComment("под чернику, на допенке – пишем письма в будущее", fixtures);
     expect(chatter.lines).toHaveLength(0);
     expect(teamSimilarity("Динамо Мх", "Динамо Махачкала")).toBe(1);
+    expect(teamSimilarity("Кр Советов", "Крылья Советов")).toBe(1);
+    expect(teamSimilarity("Краснодара", "Краснодар")).toBeGreaterThan(0.8);
     expect(matchFixture("Динамо", "ЦСКА", fixtures)?.fixtureId).toBe("din");
+    expect(matchFixture("Динамо", "Акрон", fixtures)?.fixtureId).toBe("dm");
+    expect(matchFixture("Локомотив", "Краснодара", fixtures)?.fixtureId).toBe("lok");
   });
 
   it("keeps a score that sits between the team names", () => {
@@ -128,6 +132,67 @@ describe("parseComment", () => {
     expect(malformed?.fixtureId).toBeNull();
     expect(malformed?.warnings.length).toBeGreaterThan(0);
     expect(parsed.lines.some((line) => line.rawLine === "hello friends")).toBe(false);
+    expect(rowsForStorage(parsed).map((row) => row.fixtureId)).toEqual(["zen"]);
+  });
+
+  it("reads noisy slips from the sample thread", () => {
+    const neofit = parseComment(
+      `__________𝐑𝐏𝐋 ⚽ 𝟐𝟔’𝟐𝟳__________
+17.10 14:00 Кр Советов — Факел 1-0
+17.10 16:30 Махачкала — Акрон 1-0
+18.10 16:15 Динамо — ЦСКА *² 1-1
+под чернику, на допенке – пишем письма в будущее
+— 𝗦𝗸𝗼𝗲𝗹 —`,
+      fixtures,
+    );
+    const neofitRows = rowsForStorage(neofit);
+
+    expect(neofitRows.map((row) => [row.fixtureId, row.homeGoals, row.awayGoals, row.markedAsMt])).toEqual([
+      ["ks", 1, 0, false],
+      ["dm", 1, 0, false],
+      ["din", 1, 1, true],
+    ]);
+    expect(neofit.lines).toHaveLength(3);
+
+    const glued = parseComment("19.10.2026 19:30 Родина — Оренбург1-2\n7.10.2026 14:00 Крылья Советов — Факел 3-1", fixtures);
+    expect(rowsForStorage(glued).map((row) => [row.fixtureId, row.homeGoals, row.awayGoals])).toEqual([
+      ["rod", 1, 2],
+      ["ks", 3, 1],
+    ]);
+
+    const unfinished = parseComment(
+      "17.10.2026 14:00 Крылья Советов — Факел\n18.10.2026 14:00 Зенит — Ахмат 3-0",
+      fixtures,
+    );
+    expect(rowsForStorage(unfinished).map((row) => [row.fixtureId, row.homeGoals, row.awayGoals])).toEqual([
+      ["ks", null, null],
+      ["zen", 3, 0],
+    ]);
+    expect(unfinished.lines[0]?.warnings).toContain("Missing score");
+
+    const handicap = parseComment("17.10.2026 14:00 Крылья Советов — Факел -1*\n18.10.2026 16:15 Динамо — ЦСКА (МТ) 1-1", fixtures);
+    expect(rowsForStorage(handicap).map((row) => [row.fixtureId, row.homeGoals, row.markedAsMt])).toEqual([
+      ["ks", null, false],
+      ["din", 1, true],
+    ]);
+    expect(handicap.lines[0]?.warnings).toContain("Unrecognized score");
+  });
+
+  it("drops prices, clocks, and prose dashes", () => {
+    const parsed = parseComment(
+      [
+        "18/09/2026 at 22:20 · Ответить · Править",
+        "В СПб 900-1000 рублей плюс минус за кило",
+        "У нас гуси за 4 плюс минус кило в магазах где-то за 2-3,8 штуки можно купить",
+        "Гребаные Крылья — как так то",
+        "по мне однахуйразница — заключение брака.",
+        "Вяленого гуся командам Динамо Махачкала и Акрон!",
+        "Зенит - Ахмат 1-0",
+      ].join("\n"),
+      fixtures,
+    );
+
+    expect(parsed.lines.map((line) => line.rawLine)).toEqual(["Зенит - Ахмат 1-0"]);
     expect(rowsForStorage(parsed).map((row) => row.fixtureId)).toEqual(["zen"]);
   });
 
