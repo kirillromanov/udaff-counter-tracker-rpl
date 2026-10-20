@@ -58,7 +58,7 @@ npm run dev
 Open `/admin`.
 
 1. Create a season, or open the seeded **RPL Demo 2026**.
-2. Open a round. Rounds 1 and 2 are already calculated, so the season table shows points, medals (☼), and movement (▲ N, ▼ N, ◄► 0).
+2. Open a round. The overview groups totals, import, participants, round results, and season standings. Rounds 1 and 2 are already calculated, so the season table shows points, medals (☼), and movement (▲ N, ▼ N, ◄► 0). Changed places are tinted. Parse conflicts and rows that still need a correction are marked on the review page.
 3. **Fixtures and results** edits teams, marks one official Match of the Round, and stores actual scores.
 4. **Review predictions** fetches a forum URL, parses comments, and keeps the latest scored comment per participant. Rename, merge, edit scores, ignore a line, or choose a different comment. A line marked `(МТ)` does not change the official Match of the Round.
 5. **Calculate round** scores every selected prediction set, writes round totals, marks the winner or winners, and rebuilds the cumulative snapshot through that round.

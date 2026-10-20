@@ -2,6 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { createSeasonAction } from "./actions";
+import { SubmitButton } from "./submit-button";
+import { EmptyState, Field, KpiGrid, Notice, PageBody, PageHeader, Section, fieldClass } from "./ui";
 
 export const instant = false;
 
@@ -16,43 +18,65 @@ export default async function AdminPage({
     orderBy: { name: "asc" },
     include: { _count: { select: { rounds: true, participants: true } } },
   });
+  const rounds = seasons.reduce((total, season) => total + season._count.rounds, 0);
+  const participants = seasons.reduce((total, season) => total + season._count.participants, 0);
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">Seasons</h1>
-      <p className="mt-3 text-neutral-600">
-        Open a season to manage rounds, standings, and forum exports.
-      </p>
-      {query.error ? <p className="mt-4 border border-red-300 bg-red-50 p-3">{query.error}</p> : null}
-      {seasons.length === 0 ? (
-        <p className="mt-6">No seasons yet. Create one below, or seed the demo contest.</p>
-      ) : (
-        <ul className="mt-6 space-y-3">
-          {seasons.map((season) => (
-            <li className="border p-4" key={season.id}>
-              <Link className="text-lg underline" href={`/admin/seasons/${season.id}`}>
-                {season.name}
-              </Link>
-              <p className="mt-1 text-sm text-neutral-600">
-                {season._count.rounds} rounds, {season._count.participants} participants
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-      <section className="mt-8 border p-4">
-        <h2 className="font-semibold">Create a season</h2>
-        <form action={createSeasonAction} className="mt-3 flex flex-wrap items-center gap-2">
-          <input className="border px-2 py-1" name="name" placeholder="Season name" />
-          <input className="border px-2 py-1" name="slug" placeholder="slug (optional)" />
-          <button className="border px-3 py-1" type="submit">
-            Create
-          </button>
-        </form>
-      </section>
-      <Link className="mt-8 inline-block underline" href="/">
-        Home
-      </Link>
-    </main>
+    <>
+      <PageHeader
+        description="Open a season to manage rounds, import predictions, and publish standings."
+        title="Seasons"
+      />
+      <PageBody>
+        {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        <KpiGrid
+          items={[
+            { label: "Seasons", value: seasons.length },
+            { label: "Rounds", value: rounds },
+            { label: "Participants", value: participants, hint: "Across every season" },
+          ]}
+        />
+        <Section
+          action={
+            <form action={createSeasonAction} className="flex flex-wrap items-end gap-2">
+              <Field label="Name">
+                <input className={`${fieldClass} w-44`} name="name" placeholder="RPL 2026" />
+              </Field>
+              <Field label="Slug">
+                <input className={`${fieldClass} w-36`} name="slug" placeholder="optional" />
+              </Field>
+              <SubmitButton pendingLabel="Creating…" variant="primary">
+                Create season
+              </SubmitButton>
+            </form>
+          }
+          description="A season holds rounds, participants, and one scoring config."
+          id="overview"
+          title="All seasons"
+        >
+          {seasons.length === 0 ? (
+            <EmptyState detail="Create a season here, or seed the demo contest." title="No seasons yet" />
+          ) : (
+            <ul className="divide-y divide-zinc-100">
+              {seasons.map((season) => (
+                <li className="flex flex-wrap items-baseline justify-between gap-3 py-3 first:pt-0 last:pb-0" key={season.id}>
+                  <div>
+                    <Link className="font-medium text-zinc-950 hover:underline" href={`/admin/seasons/${season.id}`}>
+                      {season.name}
+                    </Link>
+                    <p className="mt-0.5 text-sm text-zinc-500">
+                      {season._count.rounds} rounds · {season._count.participants} participants
+                    </p>
+                  </div>
+                  <Link className="text-sm text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}`}>
+                    Open
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </PageBody>
+    </>
   );
 }

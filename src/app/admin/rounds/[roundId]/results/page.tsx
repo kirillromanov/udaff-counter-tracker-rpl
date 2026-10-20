@@ -1,10 +1,31 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { parseBreakdown } from "@/lib/domain/export/export-audit";
+import { RoundNav } from "../../../round-nav";
+import {
+  Badge,
+  CrumbLink,
+  EmptyState,
+  Notice,
+  PageBody,
+  PageHeader,
+  RoundScoreTable,
+  Section,
+  cx,
+} from "../../../ui";
 
 export const instant = false;
+
+function categoryTone(category: string): string {
+  if (category === "exact") {
+    return "text-emerald-700";
+  }
+  if (category === "miss") {
+    return "text-rose-700";
+  }
+  return "text-zinc-700";
+}
 
 export default async function RoundResultsPage({
   params,
@@ -19,6 +40,7 @@ export default async function RoundResultsPage({
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
+      season: true,
       roundScores: { include: { participant: true } },
     },
   });
@@ -34,79 +56,81 @@ export default async function RoundResultsPage({
   });
 
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <p className="text-sm">
-        <Link className="underline" href={`/admin/rounds/${round.id}`}>
-          {round.number}. {round.name ?? "Round"}
-        </Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Round standings</h1>
-      {query.calculated ? (
-        <p className="mt-4 border border-green-300 bg-green-50 p-3">Calculated {query.calculated} participants.</p>
-      ) : null}
-      {scores.length === 0 ? (
-        <p className="mt-4 text-neutral-600">Enter results and calculate this round.</p>
-      ) : (
-        <>
-          <table className="mt-4 w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="py-1 pr-3">Rank</th>
-                <th className="py-1 pr-3">Participant</th>
-                <th className="py-1 pr-3">Points</th>
-                <th className="py-1 pr-3">Match + bonus</th>
-                <th className="py-1">Medal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scores.map((score, index) => (
-                <tr className="border-b" key={score.id}>
-                  <td className="py-1 pr-3">{index + 1}</td>
-                  <td className="py-1 pr-3">{score.participant.name}</td>
-                  <td className="py-1 pr-3">{score.totalPoints}</td>
-                  <td className="py-1 pr-3">
-                    {score.matchPoints}+ {score.roundBonusPoints}
-                  </td>
-                  <td className="py-1">{score.isRoundWinner ? "☼ winner" : ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="mt-6 space-y-6">
-            {scores.map((score) => {
-              const breakdown = parseBreakdown(score.breakdownJson);
-              return (
-                <section className="border p-4" key={`${score.id}-detail`}>
-                  <h2 className="font-semibold">
-                    {score.participant.name}
-                    {score.isRoundWinner ? " — round winner" : ""} — {score.totalPoints}
-                  </h2>
-                  {!breakdown ? (
-                    <p className="mt-2 text-sm text-neutral-600">No breakdown stored.</p>
-                  ) : (
-                    <ul className="mt-3 space-y-2 text-sm">
-                      {breakdown.matches.map((match) => (
-                        <li key={match.label}>
-                          <span className="font-medium">{match.label}</span> pred {match.predicted} actual {match.actual}{" "}
-                          {match.baseCategory} {match.basePoints}
-                          {match.bonusPoints ? ` +${match.bonusPoints}` : ""}
-                          {match.mtApplied ? ` x${match.mtMultiplier}` : ""} = {match.finalMatchPoints}
-                          <span className="block text-neutral-600">{match.explanations.join(" · ")}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="mt-2 text-sm">
-                    Round total-goals bonus: {score.roundBonusPoints}. Exact {score.exactCount}, neighbor {score.neighborCount},
-                    diff {score.diffCount}, outcome {score.outcomeCount}, miss {score.missCount}.
-                  </p>
-                </section>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </main>
+    <>
+      <PageHeader
+        crumbs={
+          <>
+            <CrumbLink href="/admin">Seasons</CrumbLink>
+            <span>/</span>
+            <CrumbLink href={`/admin/seasons/${round.seasonId}`}>{round.season.name}</CrumbLink>
+            <span>/</span>
+            <CrumbLink href={`/admin/rounds/${round.id}`}>
+              {round.number}. {round.name ?? "Round"}
+            </CrumbLink>
+          </>
+        }
+        description="Winners share the top score and are marked with a medal. Official Match of the Round shows the multiplier."
+        nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
+        title="Round results"
+      />
+      <PageBody>
+        {query.calculated ? <Notice tone="success">Calculated {query.calculated} participants.</Notice> : null}
+        {scores.length === 0 ? (
+          <Section id="results" title="Round results">
+            <EmptyState detail="Enter results and calculate this round from the overview." title="Nothing calculated yet" />
+          </Section>
+        ) : (
+          <>
+            <Section id="results" title="Ranking">
+              <RoundScoreTable rows={scores} />
+            </Section>
+            <div className="space-y-4">
+              {scores.map((score) => {
+                const breakdown = parseBreakdown(score.breakdownJson);
+                return (
+                  <Section
+                    description={`Exact ${score.exactCount} · neighbor ${score.neighborCount} · diff ${score.diffCount} · outcome ${score.outcomeCount} · miss ${score.missCount}`}
+                    key={`${score.id}-detail`}
+                    title={`${score.participant.name} — ${score.totalPoints}`}
+                    action={score.isRoundWinner ? <Badge tone="warning">☼ round winner</Badge> : undefined}
+                  >
+                    {!breakdown ? (
+                      <p className="text-sm text-zinc-500">No breakdown stored.</p>
+                    ) : (
+                      <ul className="divide-y divide-zinc-100 text-sm">
+                        {breakdown.matches.map((match) => (
+                          <li className="py-2.5" key={match.label}>
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                              <span className="font-medium">{match.label}</span>
+                              <span className="tabular-nums">
+                                <span className={categoryTone(match.baseCategory)}>{match.baseCategory}</span> {match.basePoints}
+                                {match.bonusPoints ? ` +${match.bonusPoints}` : ""}
+                                {match.mtApplied ? ` ×${match.mtMultiplier}` : ""} = {match.finalMatchPoints}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-zinc-500">
+                              pred {match.predicted} · actual {match.actual}
+                              {match.mtApplied ? (
+                                <span className="ml-2">
+                                  <Badge tone="info">Official MT ×{match.mtMultiplier}</Badge>
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className={cx("mt-1 text-xs", match.mtApplied ? "text-sky-800" : "text-zinc-500")}>
+                              {match.explanations.join(" · ")}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-3 text-sm text-zinc-600">Round total-goals bonus: {score.roundBonusPoints}.</p>
+                  </Section>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </PageBody>
+    </>
   );
 }
