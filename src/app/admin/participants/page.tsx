@@ -18,10 +18,11 @@ function membershipOf(status: string | undefined): MembershipState {
 export default async function ParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; saved?: string; seasonId?: string; archived?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; seasonId?: string; archived?: string; q?: string }>;
 }) {
   await connection();
   const query = await searchParams;
+  const search = (query.q ?? "").trim().toLocaleLowerCase("ru");
   const [participants, seasons] = await Promise.all([
     prisma.participant.findMany({
       include: { aliases: { orderBy: { alias: "asc" } }, seasons: true },
@@ -31,7 +32,16 @@ export default async function ParticipantsPage({
   ]);
   const season = seasons.find((item) => item.id === query.seasonId) ?? seasons[0] ?? null;
   const showArchived = query.archived === "1";
-  const visible = participants.filter((participant) => showArchived || participant.archivedAt == null);
+  const visible = participants.filter((participant) => {
+    if (!showArchived && participant.archivedAt != null) {
+      return false;
+    }
+    if (!search) {
+      return true;
+    }
+    const aliases = participant.aliases.map((alias) => alias.alias.toLocaleLowerCase("ru")).join(" ");
+    return participant.name.toLocaleLowerCase("ru").includes(search) || aliases.includes(search);
+  });
 
   return (
     <>
@@ -73,19 +83,31 @@ export default async function ParticipantsPage({
 
         <Section
           action={
-            <div className="flex flex-wrap items-center gap-2 text-sm">
+            <form className="flex flex-wrap items-center gap-2" method="get">
+              {query.seasonId ? <input name="seasonId" type="hidden" value={query.seasonId} /> : null}
+              {showArchived ? <input name="archived" type="hidden" value="1" /> : null}
+              <input
+                aria-label="Search participants"
+                className={`${fieldClass} w-48`}
+                defaultValue={query.q ?? ""}
+                name="q"
+                placeholder="Name or alias"
+              />
+              <button className="rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-800" type="submit">
+                Search
+              </button>
               {season ? (
-                <Link className="text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/roster`}>
-                  Open {season.name} roster
+                <Link className="text-sm text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/roster`}>
+                  Roster
                 </Link>
               ) : null}
               <Link
-                className="text-zinc-600 hover:text-zinc-950"
+                className="text-sm text-zinc-600 hover:text-zinc-950"
                 href={showArchived ? "/admin/participants" : "/admin/participants?archived=1"}
               >
                 {showArchived ? "Hide archived" : "Show archived"}
               </Link>
-            </div>
+            </form>
           }
           description={
             season
@@ -95,7 +117,10 @@ export default async function ParticipantsPage({
           title="Registry"
         >
           {visible.length === 0 ? (
-            <EmptyState detail="Create the first participant with the form above." title="No participants to show" />
+            <EmptyState
+              detail={search ? "Try another nick or alias." : "Create the first participant with the form above."}
+              title={search ? "No names match" : "No participants to show"}
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
@@ -124,7 +149,14 @@ export default async function ParticipantsPage({
                           </Link>
                         </td>
                         <td className="py-2.5 pr-3 text-zinc-600">
-                          {extraAliases.length > 0 ? extraAliases.map((alias) => alias.alias).join(", ") : "—"}
+                          {extraAliases.length > 0 ? (
+                            <span className="inline-flex flex-wrap items-center gap-1">
+                              <Badge tone="info">Alias</Badge>
+                              {extraAliases.map((alias) => alias.alias).join(", ")}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="py-2.5 pr-3">
                           {participant.archivedAt ? <Badge>Archived</Badge> : <Badge tone="success">Active</Badge>}

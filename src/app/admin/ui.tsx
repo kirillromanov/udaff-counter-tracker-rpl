@@ -157,16 +157,56 @@ const noticeLabels = {
 
 export function Notice({
   tone,
+  label,
   children,
 }: {
   tone: keyof typeof noticeTones;
+  label?: string;
   children: ReactNode;
 }) {
   return (
     <div className={cx("rounded-lg border px-4 py-3 text-sm", noticeTones[tone])} role={tone === "error" ? "alert" : "status"}>
-      <p className="text-xs font-semibold tracking-wide uppercase">{noticeLabels[tone]}</p>
+      <p className="text-xs font-semibold tracking-wide uppercase">{label ?? noticeLabels[tone]}</p>
       <div className="mt-1">{children}</div>
     </div>
+  );
+}
+
+export function LayerStrip({
+  items,
+}: {
+  items: { href: string; label: string; detail: string; current?: boolean }[];
+}) {
+  return (
+    <nav className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((item) => (
+        <Link
+          className={cx(
+            "rounded-lg border px-3 py-2",
+            item.current ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-400",
+          )}
+          href={item.href}
+          key={item.href}
+        >
+          <span className="block text-sm font-medium">{item.label}</span>
+          <span className={cx("mt-0.5 block text-xs", item.current ? "text-zinc-300" : "text-zinc-500")}>{item.detail}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+export function FilterLink({ href, current, children }: { href: string; current: boolean; children: ReactNode }) {
+  return (
+    <Link
+      className={cx(
+        "rounded-md px-2.5 py-1 text-xs font-medium",
+        current ? "bg-zinc-900 text-white" : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50",
+      )}
+      href={href}
+    >
+      {children}
+    </Link>
   );
 }
 

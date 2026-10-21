@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { exportSeasonStandings } from "@/lib/domain/export/export-season-standings";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { SeasonLayers } from "../../../layers";
 import { CopyButton } from "../../../copy-button";
 import { CrumbLink, EmptyState, Notice, PageBody, PageHeader, Section, StandingsTable, buttonClass } from "../../../ui";
 
@@ -43,7 +44,7 @@ export default async function SeasonStandingsPage({
             <CrumbLink href={`/admin/seasons/${season.id}`}>{season.name}</CrumbLink>
           </>
         }
-        description="Movement compares this table with the ranking before the latest scored round. Up, down, and new rows are tinted."
+        description="Computed from scored rounds. This is not the trusted baseline and it does not include unresolved parser rows."
         nav={
           snapshot ? (
             <Link className={buttonClass("secondary")} href={`/admin/rounds/${snapshot.id}`}>
@@ -51,16 +52,19 @@ export default async function SeasonStandingsPage({
             </Link>
           ) : null
         }
-        title="Season standings"
+        title="Computed standings"
       />
       <PageBody>
+        <SeasonLayers current="computed" seasonId={season.id} />
         {!snapshot ? (
-          <Section id="standings" title="Season standings">
-            <EmptyState detail="Calculate a round to build the cumulative table." title="No standings yet" />
+          <Section id="standings" title="Computed standings">
+            <EmptyState detail="Enter actual scores and calculate a round. The manual baseline stays on its own screen." title="No computed table yet" />
           </Section>
         ) : (
           <>
-            <Notice tone="info">After {snapshot.name ?? `round ${snapshot.number}`}.</Notice>
+            <Notice label="Computed standings" tone="info">
+              After {snapshot.name ?? `round ${snapshot.number}`}. Compare this table with the trusted baseline on the reconciliation screen.
+            </Notice>
             <Section id="standings" title="Table">
               <StandingsTable rows={rows} />
             </Section>

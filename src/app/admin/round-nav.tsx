@@ -8,11 +8,12 @@ export function RoundNav({ roundId, seasonId }: { roundId: string; seasonId: str
   const pathname = usePathname();
   const items = [
     { href: `/admin/rounds/${roundId}`, label: "Overview", exact: true },
-    { href: `/admin/rounds/${roundId}/review`, label: "Import & review" },
+    { href: `/admin/rounds/${roundId}/review`, label: "Parser review" },
     { href: `/admin/rounds/${roundId}/fixtures`, label: "Fixtures" },
     { href: `/admin/rounds/${roundId}/results`, label: "Round results" },
     { href: `/admin/rounds/${roundId}/export`, label: "Export" },
-    { href: `/admin/seasons/${seasonId}/standings`, label: "Season standings" },
+    { href: `/admin/seasons/${seasonId}/checkpoint`, label: "Baseline" },
+    { href: `/admin/seasons/${seasonId}/reconciliation`, label: "Reconcile" },
   ];
 
   return (

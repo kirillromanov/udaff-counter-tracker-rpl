@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { roundLayerLabel } from "@/lib/domain/review/operator-status";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { SeasonLayers } from "../../layers";
 import { createRoundAction, importRoundsAction } from "../../actions";
 import { SubmitButton } from "../../submit-button";
 import {
@@ -16,7 +18,6 @@ import {
   PageHeader,
   Section,
   StandingsTable,
-  StatusBadge,
   buttonClass,
   fieldClass,
 } from "../../ui";
@@ -48,9 +49,23 @@ export default async function SeasonPage({
   const nextNumber = (season.rounds.at(-1)?.number ?? 0) + 1;
   const scoredRounds = season.rounds.filter((round) => round._count.roundScores > 0).length;
   const leader = snapshot?.standingSnapshots[0];
-  const activeRoster = await prisma.seasonParticipant.count({
-    where: { seasonId: season.id, status: "included", participant: { archivedAt: null } },
-  });
+  const [activeRoster, acceptedGroups, flaggedGroups] = await Promise.all([
+    prisma.seasonParticipant.count({
+      where: { seasonId: season.id, status: "included", participant: { archivedAt: null } },
+    }),
+    prisma.predictionSet.groupBy({
+      by: ["roundId"],
+      where: { status: "accepted", selected: true, round: { seasonId: season.id } },
+      _count: { _all: true },
+    }),
+    prisma.predictionSet.groupBy({
+      by: ["roundId"],
+      where: { status: "flagged", round: { seasonId: season.id } },
+      _count: { _all: true },
+    }),
+  ]);
+  const acceptedByRound = new Map(acceptedGroups.map((group) => [group.roundId, group._count._all]));
+  const flaggedByRound = new Map(flaggedGroups.map((group) => [group.roundId, group._count._all]));
 
   return (
     <>
@@ -62,7 +77,7 @@ export default async function SeasonPage({
             <span>{season.name}</span>
           </>
         }
-        description="Rounds, the season roster, and the latest cumulative table."
+        description="Check the registry, review imported slips, then compare them with the trusted baseline. Computed standings stay separate."
         nav={
           <div className="flex flex-wrap gap-2">
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/roster`}>
@@ -88,6 +103,7 @@ export default async function SeasonPage({
         title={season.name}
       />
       <PageBody>
+        <SeasonLayers seasonId={season.id} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.imported ? <Notice tone="success">{query.imported}</Notice> : null}
         <KpiGrid
@@ -111,16 +127,16 @@ export default async function SeasonPage({
           }
           description={
             snapshot
-              ? `After ${snapshot.name ?? `round ${snapshot.number}`}. Changed places are tinted.`
-              : "The table appears after the first calculation."
+              ? `Computed after ${snapshot.name ?? `round ${snapshot.number}`}. This is not the trusted baseline.`
+              : "Empty until actual scores are entered and a round is calculated. This is not the trusted baseline."
           }
           id="standings"
-          title="Season standings"
+          title="Computed standings"
         >
           {snapshot ? (
             <StandingsTable rows={snapshot.standingSnapshots} />
           ) : (
-            <EmptyState detail="Enter results on a round and calculate it." title="No cumulative table yet" />
+            <EmptyState detail="Enter actual scores on a round, then calculate it. The manual baseline stays separate." title="No computed table yet" />
           )}
         </Section>
 
@@ -139,9 +155,9 @@ export default async function SeasonPage({
               </SubmitButton>
             </form>
           }
-          description="Open a round for fixtures, import, and results."
+          description="Imported raw means the parser stored slips and did not calculate points. Computed means this round already has scores."
           id="rounds"
-          title="Rounds"
+          title="Round imports"
         >
           {season.rounds.length === 0 ? (
             <EmptyState detail="Create the first round with the form above." title="No rounds yet" />
@@ -151,32 +167,42 @@ export default async function SeasonPage({
                 <thead>
                   <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
                     <th className="py-2 pr-3 font-medium">Round</th>
-                    <th className="py-2 pr-3 font-medium">Status</th>
+                    <th className="py-2 pr-3 font-medium">Layer</th>
                     <th className="py-2 pr-3 font-medium">Fixtures</th>
-                    <th className="py-2 font-medium">Scored</th>
+                    <th className="py-2 pr-3 font-medium">Accepted</th>
+                    <th className="py-2 pr-3 font-medium">Flagged</th>
+                    <th className="py-2 font-medium">Review</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {season.rounds.map((round) => (
-                    <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
-                      <td className="py-2.5 pr-3">
-                        <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
-                          {round.number}. {round.name ?? "Round"}
-                        </Link>
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        <StatusBadge status={round.status} />
-                      </td>
-                      <td className="py-2.5 pr-3 tabular-nums text-zinc-600">{round._count.matches}</td>
-                      <td className="py-2.5 text-zinc-600">
-                        {round._count.roundScores > 0 ? (
-                          <Badge tone="success">{round._count.roundScores} participants</Badge>
-                        ) : (
-                          <span className="text-zinc-400">Not calculated</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {season.rounds.map((round) => {
+                    const layer = roundLayerLabel(round.status, round._count.roundScores);
+                    const flagged = flaggedByRound.get(round.id) ?? 0;
+                    return (
+                      <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
+                        <td className="py-2.5 pr-3">
+                          <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
+                            {round.number}. {round.name ?? "Round"}
+                          </Link>
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <Badge tone={layer === "Computed" ? "info" : layer === "Imported raw" ? "warning" : "neutral"}>
+                            {layer}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 pr-3 tabular-nums text-zinc-600">{round._count.matches}</td>
+                        <td className="py-2.5 pr-3 tabular-nums">{acceptedByRound.get(round.id) ?? 0}</td>
+                        <td className="py-2.5 pr-3 tabular-nums">
+                          {flagged > 0 ? <Badge tone="warning">{flagged}</Badge> : "0"}
+                        </td>
+                        <td className="py-2.5">
+                          <Link className="text-zinc-700 hover:underline" href={`/admin/rounds/${round.id}/review`}>
+                            Parser review
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

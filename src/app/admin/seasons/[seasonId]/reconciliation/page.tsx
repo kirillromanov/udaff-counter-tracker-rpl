@@ -1,14 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import {
+  OPERATOR_LABEL,
+  comparisonLabel,
+  operatorTone,
+  reconciliationViewOf,
+  rowInReconciliationView,
+  unknownAuthorLabel,
+  type ReconciliationView,
+} from "@/lib/domain/review/operator-status";
 import { loadReconciliation } from "@/lib/domain/standings/load-reconciliation";
 import type { ComparisonRow, ReconciliationCause, ReconciliationReport } from "@/lib/domain/standings/reconcile";
+import { SeasonLayers } from "../../../layers";
 import { SubmitButton } from "../../../submit-button";
 import {
   Badge,
   CrumbLink,
   EmptyState,
   Field,
+  FilterLink,
   KpiGrid,
   Notice,
   PageBody,
@@ -145,7 +156,16 @@ function ComparisonTable({
                 {row.fields.length > 0 ? <p className="mt-1 text-xs text-zinc-500">{row.fields.join("; ")}</p> : null}
               </td>
               <td className="max-w-xs py-3 pr-3">
-                {row.cause ? <Badge tone={causeTone(row.cause)}>{CAUSE_LABEL[row.cause]}</Badge> : <Badge tone="success">Match</Badge>}
+                {comparisonLabel(row) ? (
+                  <Badge tone={operatorTone(comparisonLabel(row)!)}>{OPERATOR_LABEL[comparisonLabel(row)!]}</Badge>
+                ) : (
+                  <Badge tone="success">Exact match</Badge>
+                )}
+                {row.cause ? (
+                  <span className="ml-1">
+                    <Badge tone={causeTone(row.cause)}>{CAUSE_LABEL[row.cause]}</Badge>
+                  </span>
+                ) : null}
                 <p className="mt-1 text-xs text-zinc-500">{row.causeDetail}</p>
                 {row.decision ? (
                   <p className="mt-2 text-xs text-zinc-700">
@@ -169,11 +189,31 @@ function ComparisonTable({
   );
 }
 
-function reportBody(report: ReconciliationReport, seasonId: string, roundHref: Map<number, string>, participants: { id: string; name: string }[]) {
-  const discrepancies = report.rows.filter((row) => row.status !== "exact");
+function reportBody(
+  report: ReconciliationReport,
+  seasonId: string,
+  roundHref: Map<number, string>,
+  participants: { id: string; name: string }[],
+  view: ReconciliationView,
+  query: string,
+) {
+  const visibleRows = report.rows.filter((row) => rowInReconciliationView(row, view, query));
+  const filterHref = (next: ReconciliationView) => {
+    const params = new URLSearchParams();
+    if (next !== "open") {
+      params.set("view", next);
+    }
+    if (query.trim()) {
+      params.set("q", query.trim());
+    }
+    const suffix = params.toString();
+    return `/admin/seasons/${seasonId}/reconciliation${suffix ? `?${suffix}` : ""}`;
+  };
   return (
     <>
-      <Notice tone={report.trustworthy ? "success" : "warning"}>{report.summary}</Notice>
+      <Notice label={report.trustworthy ? "Exact match" : "Unresolved review"} tone={report.trustworthy ? "success" : "warning"}>
+        {report.summary}
+      </Notice>
       <Section title="What to look at first">
         <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-700">
           {report.highlights.map((line) => (
@@ -247,7 +287,31 @@ function reportBody(report: ReconciliationReport, seasonId: string, roundHref: M
         id="differences"
         title="Checkpoint comparison"
       >
-        <ComparisonTable afterRoundNumber={report.afterRoundNumber} rows={discrepancies} seasonId={seasonId} />
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <FilterLink current={view === "open"} href={filterHref("open")}>
+            Open ({report.rows.filter((row) => row.status !== "exact").length})
+          </FilterLink>
+          <FilterLink current={view === "baseline"} href={filterHref("baseline")}>
+            Baseline mismatch
+          </FilterLink>
+          <FilterLink current={view === "scoring"} href={filterHref("scoring")}>
+            Scoring mismatch
+          </FilterLink>
+          <FilterLink current={view === "exact"} href={filterHref("exact")}>
+            Exact ({report.exactMatches.length})
+          </FilterLink>
+          <FilterLink current={view === "all"} href={filterHref("all")}>
+            All
+          </FilterLink>
+          <form className="flex items-center gap-2" method="get">
+            {view !== "open" ? <input name="view" type="hidden" value={view} /> : null}
+            <input aria-label="Search checkpoint rows" className={`${fieldClass} w-44`} defaultValue={query} name="q" placeholder="Name" />
+            <button className="rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm" type="submit">
+              Search
+            </button>
+          </form>
+        </div>
+        <ComparisonTable afterRoundNumber={report.afterRoundNumber} rows={visibleRows} seasonId={seasonId} />
       </Section>
 
       <Section description="These rows agree on rank, points, movement, and round wins." id="exact" title="Exact matches">
@@ -338,7 +402,9 @@ function reportBody(report: ReconciliationReport, seasonId: string, roundHref: M
                       {issue.name} <span className="font-normal text-zinc-500">· {issue.commentCount} comments</span>
                     </p>
                     <p className="mt-1 max-w-xl text-xs text-zinc-500">{issue.detail}</p>
-                    <Badge tone="warning">{CAUSE_LABEL[issue.cause]}</Badge>
+                    <Badge tone={operatorTone(unknownAuthorLabel(issue.suspects.length))}>
+                      {OPERATOR_LABEL[unknownAuthorLabel(issue.suspects.length)]}
+                    </Badge>
                   </div>
                   <div className="flex flex-wrap items-end gap-2">
                     <Field label="Roster name">
@@ -390,11 +456,12 @@ export default async function ReconciliationPage({
   searchParams,
 }: {
   params: Promise<{ seasonId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; rebuilt?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; rebuilt?: string; view?: string; q?: string }>;
 }) {
   await connection();
   const { seasonId } = await params;
   const query = await searchParams;
+  const view = reconciliationViewOf(query.view);
   const data = await loadReconciliation(seasonId);
   if (!data) {
     notFound();
@@ -428,6 +495,7 @@ export default async function ReconciliationPage({
         title="Round reconciliation"
       />
       <PageBody>
+        <SeasonLayers current="review" seasonId={data.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Saved a review decision for {query.saved}. The manual checkpoint was not changed.</Notice> : null}
         {query.rebuilt ? <Notice tone="success">Calculated {query.rebuilt} round scores. The manual checkpoint was not changed.</Notice> : null}
@@ -445,7 +513,7 @@ export default async function ReconciliationPage({
                 Open the manual baseline
               </Link>
             </div>
-            {reportBody(data.report, data.seasonId, roundHref, data.participants)}
+            {reportBody(data.report, data.seasonId, roundHref, data.participants, view, query.q ?? "")}
           </>
         )}
       </PageBody>

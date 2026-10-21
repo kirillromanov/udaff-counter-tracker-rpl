@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { formatMovement } from "@/lib/domain/standings/format-movement";
+import { SeasonLayers } from "../../../layers";
 import { Badge, CrumbLink, EmptyState, Notice, PageBody, PageHeader, Section } from "../../../ui";
 
 export const instant = false;
@@ -37,19 +38,20 @@ export default async function CheckpointPage({
             <CrumbLink href={`/admin/seasons/${season.id}`}>{season.name}</CrumbLink>
           </>
         }
-        description="A hand-checked forum table. Calculated snapshots stay separate and can be reconciled against this later."
-        title="Manual checkpoint"
+        description="Trusted manual baseline. Parser output and computed standings are separate and do not change this table."
+        title="Trusted baseline"
       />
       <PageBody>
+        <SeasonLayers current="baseline" seasonId={season.id} />
         {!checkpoint ? (
           <Section title="No checkpoint">
             <EmptyState detail="Seed the round 11 table, or save a manual checkpoint for this season." title="Nothing stored yet" />
           </Section>
         ) : (
           <>
-            <Notice tone="info">
-              {checkpoint.label}. {checkpoint.rows.length} rows, source {checkpoint.source}. ☼ is stored as a marker count
-              and lines up with round wins when standings are reconciled.
+            <Notice label="Trusted manual baseline" tone="info">
+              {checkpoint.label}. {checkpoint.rows.length} rows, source {checkpoint.source}. This table is not calculated
+              and review actions cannot replace it. ☼ is a marker count and lines up with round wins during reconciliation.
             </Notice>
             {unmatched.length > 0 ? (
               <Notice tone="warning">
