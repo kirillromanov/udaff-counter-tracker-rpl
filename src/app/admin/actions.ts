@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
+import { importRounds } from "@/lib/domain/import/batch-import";
 
 function slugify(value: string): string {
   const slug = value
@@ -71,6 +72,33 @@ export async function createRoundAction(formData: FormData): Promise<void> {
     if (unique(error)) {
       fail(path, new Error("That round number already exists in this season"));
     }
+    fail(path, error);
+  }
+}
+
+export async function importRoundsAction(formData: FormData): Promise<void> {
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const path = `/admin/seasons/${seasonId}`;
+  try {
+    const reports = await importRounds({ seasonId });
+    const rounds = await prisma.round.findMany({ where: { seasonId }, select: { id: true } });
+    revalidatePath("/admin");
+    revalidatePath(path);
+    revalidatePath(`/admin/seasons/${seasonId}/checkpoint`);
+    for (const round of rounds) {
+      revalidatePath(`/admin/rounds/${round.id}`);
+      revalidatePath(`/admin/rounds/${round.id}/review`);
+    }
+    const failed = reports.filter((report) => report.error);
+    if (failed.length > 0) {
+      throw new Error(failed.map((report) => `Round ${report.number}: ${report.error}`).join("; "));
+    }
+    const accepted = reports.reduce((total, report) => total + report.accepted, 0);
+    const flagged = reports.reduce((total, report) => total + report.flaggedSets + report.unmatchedAuthors, 0);
+    redirect(
+      `${path}?imported=${encodeURIComponent(`Imported ${reports.length} rounds. ${accepted} slips accepted, ${flagged} rows left in review. Standings were not calculated.`)}`,
+    );
+  } catch (error) {
     fail(path, error);
   }
 }

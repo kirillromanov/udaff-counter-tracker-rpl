@@ -26,6 +26,21 @@ export async function findParticipantByName(value: string) {
   return alias?.participant ?? null;
 }
 
+export async function ensureAlias(participantName: string, alias: string): Promise<void> {
+  const owner = await findParticipantByName(participantName);
+  const key = normalizeParticipantName(alias);
+  if (!owner || !key || key === owner.normalizedName) {
+    return;
+  }
+  const taken = await findParticipantByName(alias);
+  if (taken) {
+    return;
+  }
+  await prisma.participantAlias.create({
+    data: { participantId: owner.id, alias: alias.trim(), normalized: key, isPrimary: false },
+  });
+}
+
 export async function createParticipant(value: string) {
   const name = displayName(value);
   const key = normalizeParticipantName(name);

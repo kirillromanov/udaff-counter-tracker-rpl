@@ -84,6 +84,16 @@ function commentBody(chunk: string): { html: string; text: string } {
   return { html, text: stripTags(html) };
 }
 
+export function extractOpeningPost(html: string): string {
+  const start = html.search(/class="post-bodycopy/i);
+  if (start < 0) {
+    return "";
+  }
+  const rest = html.slice(start);
+  const end = rest.search(/<li\b[^>]*\bid="comment-\d+"/i);
+  return stripTags(end >= 0 ? rest.slice(0, end) : rest.slice(0, 80_000));
+}
+
 export function extractForumPost(html: string, sourceUrl: string): ForumPost {
   const parts = html.split(/<li\b[^>]*\bid="comment-(\d+)"[^>]*>/i);
   const comments: ForumCommentExtract[] = [];
@@ -109,6 +119,7 @@ export function extractForumPost(html: string, sourceUrl: string): ForumPost {
   return {
     title: extractTitle(html),
     sourceUrl,
+    openingText: extractOpeningPost(html),
     comments,
   };
 }

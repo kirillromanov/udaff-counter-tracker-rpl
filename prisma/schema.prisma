@@ -29,6 +29,12 @@ model Round {
   number    Int
   name      String?
   forumUrl  String?
+  /// When the source thread was last downloaded.
+  fetchedAt DateTime?
+  /// Plain text of the opening post. Comments keep their own raw HTML.
+  sourceSnapshot String?
+  /// Schedule notes from the last import, such as a missing Match of the Round.
+  importNotes String?
   status    String   @default("draft")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -120,6 +126,9 @@ model ForumComment {
   postedAt   DateTime?
   rawHtml    String
   rawText    String
+  /// stored, accepted, or flagged. Flagged comments stay in review.
+  reviewState String   @default("stored")
+  reviewNote  String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

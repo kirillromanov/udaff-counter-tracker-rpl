@@ -57,6 +57,8 @@ npm run dev
 
 Open `/admin`. The participant registry is at `/admin/participants`. A season roster is at `/admin/seasons/<id>/roster`.
 
+Import the first eleven forum threads with `npm run import:rounds`, or with **Import rounds 1–11** on the season page. The command stores each source URL, fetch time, opening post, and raw comment. It parses slips against the registry and leaves uncertain rows on **Import & review**. It does not calculate standings.
+
 A manual season table posted after round 11 is stored as a trusted checkpoint and shown at `/admin/seasons/<id>/checkpoint`. It is matched to the registry and kept separate from calculated snapshots. Later calculated standings are compared with it by participant: rank, points, movement direction and delta, and ☼ count against round wins.
 
 The registry stores each person once. Aliases use the same normalization as forum nicks (`Йош!` and `йош` match; `Павел` and `Павел Абросимов` do not). **Include** puts someone on a season roster. **Exclude** keeps the roster row and any past scores, but marks them inactive. **Archive** removes them from the active registry and from every current roster without deleting standings. **Delete permanently** is available only when they have no prediction sets, round scores, or standing rows.

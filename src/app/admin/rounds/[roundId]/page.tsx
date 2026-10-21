@@ -81,6 +81,13 @@ export default async function RoundPage({
       />
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        {round.status === "imported" ? (
+          <Notice tone="info">
+            Imported for review{round.fetchedAt ? ` at ${round.fetchedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}.
+            Standings were not calculated.
+            {round.importNotes ? ` ${round.importNotes}` : ""}
+          </Notice>
+        ) : null}
         {summary.conflicts > 0 ? (
           <Notice tone="warning">
             {summary.conflicts} prediction {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Open review
