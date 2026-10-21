@@ -61,9 +61,14 @@ export default async function CheckpointPage({
             )}
             <Section
               action={
-                <Link className="text-sm text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/standings`}>
-                  Calculated standings
-                </Link>
+                <span className="flex flex-wrap gap-3 text-sm">
+                  <Link className="text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/reconciliation`}>
+                    Reconciliation report
+                  </Link>
+                  <Link className="text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/standings`}>
+                    Calculated standings
+                  </Link>
+                </span>
               }
               description="Later calculated standings for this season are compared by participant on rank, points, movement direction and delta, and marker count against round wins. This table is not an input to scoring."
               title={`After round ${checkpoint.afterRoundNumber}`}

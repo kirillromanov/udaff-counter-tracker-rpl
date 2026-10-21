@@ -74,6 +74,9 @@ export default async function SeasonPage({
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/checkpoint`}>
               Round 11 checkpoint
             </Link>
+            <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/reconciliation`}>
+              Reconcile
+            </Link>
             <form action={importRoundsAction}>
               <input name="seasonId" type="hidden" value={season.id} />
               <SubmitButton pendingLabel="Importing…" variant="primary">
