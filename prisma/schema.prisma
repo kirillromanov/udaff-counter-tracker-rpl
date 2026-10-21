@@ -20,6 +20,7 @@ model Season {
   participants      SeasonParticipant[]
   scoringConfig     ScoringConfig?
   standingSnapshots StandingSnapshot[]
+  checkpoints       StandingsCheckpoint[]
 }
 
 model Round {
@@ -79,6 +80,7 @@ model Participant {
   predictionSets PredictionSet[]
   roundScores    RoundScore[]
   standings      StandingSnapshot[]
+  checkpointRows StandingsCheckpointRow[]
 }
 
 model ParticipantAlias {
@@ -216,6 +218,44 @@ model StandingSnapshot {
 
   @@unique([seasonId, roundId, participantId])
   @@index([seasonId, roundId, rank])
+}
+
+/// Trusted hand-entered season table. Separate from calculated StandingSnapshot rows.
+model StandingsCheckpoint {
+  id               String   @id @default(cuid())
+  seasonId         String
+  afterRoundNumber Int
+  source           String   @default("manual")
+  label            String
+  rawText          String
+  createdAt        DateTime @default(now())
+
+  season Season                     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  rows   StandingsCheckpointRow[]
+
+  @@unique([seasonId, afterRoundNumber, source])
+}
+
+model StandingsCheckpointRow {
+  id            String @id @default(cuid())
+  checkpointId  String
+  participantId String?
+  rank          Int
+  /// up, down, same, or new
+  movement      String
+  movementDelta Int
+  previousRank  Int?
+  displayName   String
+  totalPoints   Int
+  /// Count of ☼ markers on the forum line. In this contest those are round wins.
+  markerCount   Int
+  rawLine       String
+
+  checkpoint  StandingsCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  participant Participant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([checkpointId, rank])
+  @@index([participantId])
 }
 
 model ScoringConfig {
