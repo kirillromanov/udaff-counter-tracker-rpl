@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as scoringDb } from "../src/lib/db/prisma";
+import { KNOWN_PARTICIPANTS } from "../src/lib/domain/participants/known-participants";
+import { createParticipant, setRosterStatus } from "../src/lib/domain/participants/registry";
 import { recalculateRound } from "../src/lib/domain/standings/recalculate-round";
 
 const prisma = new PrismaClient();
@@ -8,15 +10,9 @@ async function main() {
   await prisma.season.deleteMany();
   await prisma.participant.deleteMany();
 
-  const anna = await prisma.participant.create({
-    data: { name: "Anna", forumNick: "anna" },
-  });
-  const boris = await prisma.participant.create({
-    data: { name: "Boris", forumNick: "boris" },
-  });
-  const clara = await prisma.participant.create({
-    data: { name: "Clara", forumNick: "clara" },
-  });
+  const anna = await createParticipant("Anna");
+  const boris = await createParticipant("Boris");
+  const clara = await createParticipant("Clara");
 
   const season = await prisma.season.create({
     data: {
@@ -29,9 +25,9 @@ async function main() {
       },
       participants: {
         create: [
-          { participantId: anna.id },
-          { participantId: boris.id },
-          { participantId: clara.id },
+          { participantId: anna.id, status: "included" },
+          { participantId: boris.id, status: "included" },
+          { participantId: clara.id, status: "included" },
         ],
       },
       rounds: {
@@ -259,6 +255,11 @@ async function main() {
       },
     },
   });
+
+  for (const name of KNOWN_PARTICIPANTS) {
+    const participant = await createParticipant(name);
+    await setRosterStatus(participant.id, season.id, "include");
+  }
 
   await prisma.predictionSet.updateMany({
     where: { roundId: { in: [round1.id, round2.id] } },

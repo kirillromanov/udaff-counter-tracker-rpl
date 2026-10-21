@@ -47,6 +47,9 @@ export default async function SeasonPage({
   const nextNumber = (season.rounds.at(-1)?.number ?? 0) + 1;
   const scoredRounds = season.rounds.filter((round) => round._count.roundScores > 0).length;
   const leader = snapshot?.standingSnapshots[0];
+  const activeRoster = await prisma.seasonParticipant.count({
+    where: { seasonId: season.id, status: "included", participant: { archivedAt: null } },
+  });
 
   return (
     <>
@@ -58,7 +61,17 @@ export default async function SeasonPage({
             <span>{season.name}</span>
           </>
         }
-        description="Rounds, who is in the contest, and the latest cumulative table."
+        description="Rounds, the season roster, and the latest cumulative table."
+        nav={
+          <div className="flex flex-wrap gap-2">
+            <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/roster`}>
+              Roster
+            </Link>
+            <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/standings`}>
+              Standings
+            </Link>
+          </div>
+        }
         title={season.name}
       />
       <PageBody>
@@ -67,7 +80,7 @@ export default async function SeasonPage({
           items={[
             { label: "Rounds", value: season.rounds.length },
             { label: "Scored", value: scoredRounds, hint: "Rounds with a calculation" },
-            { label: "Participants", value: season._count.participants },
+            { label: "On roster", value: activeRoster, hint: `${season._count.participants} roster rows` },
             {
               label: "Leader",
               value: leader ? leader.totalPoints : "—",

@@ -55,7 +55,9 @@ Vitest covers score categories, bonuses, the Match of the Round multiplier, roun
 npm run dev
 ```
 
-Open `/admin`.
+Open `/admin`. The participant registry is at `/admin/participants`. A season roster is at `/admin/seasons/<id>/roster`.
+
+The registry stores each person once. Aliases use the same normalization as forum nicks (`Йош!` and `йош` match; `Павел` and `Павел Абросимов` do not). **Include** puts someone on a season roster. **Exclude** keeps the roster row and any past scores, but marks them inactive. **Archive** removes them from the active registry and from every current roster without deleting standings. **Delete permanently** is available only when they have no prediction sets, round scores, or standing rows.
 
 1. Create a season, or open the seeded **RPL Demo 2026**.
 2. Open a round. The overview groups totals, import, participants, round results, and season standings. Rounds 1 and 2 are already calculated, so the season table shows points, medals (☼), and movement (▲ N, ▼ N, ◄► 0). Changed places are tinted. Parse conflicts and rows that still need a correction are marked on the review page.
