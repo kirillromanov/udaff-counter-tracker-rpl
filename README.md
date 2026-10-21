@@ -27,7 +27,7 @@ npm run db:push
 npm run db:seed
 ```
 
-Re-running the seed clears the existing seasons and participants, then loads the demo contest again.
+Re-running the seed clears the existing seasons and participants, then loads the contest roster, the round 11 checkpoint, and the open sample round. It does not create sample participants.
 
 ## Scoring
 
@@ -62,7 +62,7 @@ A manual season table posted after round 11 is stored as a trusted checkpoint an
 The registry stores each person once. Aliases use the same normalization as forum nicks (`Йош!` and `йош` match; `Павел` and `Павел Абросимов` do not). **Include** puts someone on a season roster. **Exclude** keeps the roster row and any past scores, but marks them inactive. **Archive** removes them from the active registry and from every current roster without deleting standings. **Delete permanently** is available only when they have no prediction sets, round scores, or standing rows.
 
 1. Create a season, or open the seeded **RPL Demo 2026**.
-2. Open a round. The overview groups totals, import, participants, round results, and season standings. Rounds 1 and 2 are already calculated, so the season table shows points, medals (☼), and movement (▲ N, ▼ N, ◄► 0). Changed places are tinted. Parse conflicts and rows that still need a correction are marked on the review page.
+2. Open **11th tour**. The overview groups totals, import, participants, round results, and season standings. Nothing is calculated yet, so the season table stays empty until a round is calculated. After a calculation it shows points, medals (☼), and movement (▲ N, ▼ N, ◄► 0), and changed places are tinted. Parse conflicts and rows that still need a correction are marked on the review page.
 3. **Fixtures and results** edits teams, marks one official Match of the Round, and stores actual scores.
 4. **Review predictions** fetches a forum URL, parses comments, and keeps the latest scored comment per participant. Rename, merge, edit scores, ignore a line, or choose a different comment. A line marked `(МТ)` does not change the official Match of the Round.
 5. **Calculate round** scores every selected prediction set, writes round totals, marks the winner or winners, and rebuilds the cumulative snapshot through that round.
