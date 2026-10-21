@@ -21,6 +21,7 @@ model Season {
   scoringConfig     ScoringConfig?
   standingSnapshots StandingSnapshot[]
   checkpoints       StandingsCheckpoint[]
+  reconciliationDecisions ReconciliationDecision[]
 }
 
 model Round {
@@ -87,6 +88,7 @@ model Participant {
   roundScores    RoundScore[]
   standings      StandingSnapshot[]
   checkpointRows StandingsCheckpointRow[]
+  reconciliationDecisions ReconciliationDecision[]
 }
 
 model ParticipantAlias {
@@ -264,6 +266,27 @@ model StandingsCheckpointRow {
   participant Participant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
 
   @@unique([checkpointId, rank])
+  @@index([participantId])
+}
+
+/// An admin choice about one reconciliation row. Never rewrites the manual checkpoint.
+model ReconciliationDecision {
+  id               String   @id @default(cuid())
+  seasonId         String
+  afterRoundNumber Int
+  /// Checkpoint display name, or an unmatched forum author.
+  subjectName      String
+  participantId    String?
+  /// accept_computed, keep_manual, alias, or manual_correction
+  action           String
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  season      Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([seasonId, afterRoundNumber, subjectName])
   @@index([participantId])
 }
 
