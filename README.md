@@ -61,6 +61,8 @@ Import the first eleven forum threads with `npm run import:rounds`, or with **Im
 
 A manual season table posted after round 11 is stored as a trusted checkpoint and shown at `/admin/seasons/<id>/checkpoint`. It is matched to the registry and kept separate from calculated snapshots. The comparison lives at `/admin/seasons/<id>/reconciliation`: rank, points, movement, and ☼ count against round wins, plus parser and alias review. Review actions do not replace the checkpoint. Calculated standings are written only when every fixture through that round has an actual score.
 
+Operator order: check participants, open each round’s parser review on the needs-review filter, read the trusted baseline, then open reconciliation. Imported slips, the baseline, computed standings, and unresolved review stay on separate screens.
+
 The registry stores each person once. Aliases use the same normalization as forum nicks (`Йош!` and `йош` match; `Павел` and `Павел Абросимов` do not). **Include** puts someone on a season roster. **Exclude** keeps the roster row and any past scores, but marks them inactive. **Archive** removes them from the active registry and from every current roster without deleting standings. **Delete permanently** is available only when they have no prediction sets, round scores, or standing rows.
 
 1. Create a season, or open the seeded **RPL Demo 2026**.

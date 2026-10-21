@@ -82,9 +82,9 @@ export default async function RoundPage({
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {round.status === "imported" ? (
-          <Notice tone="info">
-            Imported for review{round.fetchedAt ? ` at ${round.fetchedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}.
-            Standings were not calculated.
+          <Notice label="Imported parser results" tone="info">
+            These slips are raw parser output{round.fetchedAt ? `, fetched ${round.fetchedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}.
+            They are not the trusted baseline and they are not computed standings.
             {round.importNotes ? ` ${round.importNotes}` : ""}
           </Notice>
         ) : null}

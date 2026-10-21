@@ -9,13 +9,26 @@ import {
   toSetToneInput,
   predictionTone,
 } from "@/lib/domain/import/review-status";
+import {
+  OPERATOR_LABEL,
+  aliasSuggestions,
+  operatorTone,
+  reviewQueueOf,
+  setInQueue,
+  setLabels,
+  setNeedsReview,
+  unknownAuthorLabel,
+  type ReviewSetFacts,
+} from "@/lib/domain/review/operator-status";
 import { prisma } from "@/lib/db/prisma";
+import { SeasonLayers } from "../../../layers";
 import { RoundNav } from "../../../round-nav";
 import { SubmitButton } from "../../../submit-button";
 import {
   Badge,
   CrumbLink,
   EmptyState,
+  FilterLink,
   KpiGrid,
   Notice,
   PageBody,
@@ -54,11 +67,13 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; view?: string; q?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
   const query = await searchParams;
+  const queue = reviewQueueOf(query.view);
+  const search = query.q ?? "";
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
@@ -82,12 +97,6 @@ export default async function RoundImportPage({
   const participants = [...new Map(round.predictionSets.map((set) => [set.participant.id, set.participant])).values()].sort(
     (left, right) => left.name.localeCompare(right.name, "ru"),
   );
-  const setsByParticipant = new Map<string, typeof round.predictionSets>();
-  for (const set of round.predictionSets) {
-    const group = setsByParticipant.get(set.participantId) ?? [];
-    group.push(set);
-    setsByParticipant.set(set.participantId, group);
-  }
   const parsedCommentIds = new Set(
     round.predictionSets.map((set) => set.forumCommentId).filter((id): id is string => Boolean(id)),
   );
@@ -96,6 +105,72 @@ export default async function RoundImportPage({
   const unmatchedAuthors = round.forumComments.filter(
     (comment) => comment.reviewState === "flagged" && !parsedCommentIds.has(comment.id),
   );
+  const registryNames = (
+    await prisma.participant.findMany({ where: { archivedAt: null }, select: { name: true } })
+  ).map((person) => person.name);
+  const unmatchedGroups = [...unmatchedAuthors.reduce((groups, comment) => {
+    const current = groups.get(comment.authorName);
+    if (current) {
+      current.count += 1;
+    } else {
+      const suggestions = aliasSuggestions(comment.authorName, registryNames);
+      groups.set(comment.authorName, { count: 1, sample: comment.rawText || "(empty)", suggestions });
+    }
+    return groups;
+  }, new Map<string, { count: number; sample: string; suggestions: string[] }>())].sort(
+    (left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0], "ru"),
+  );
+  const factsById = new Map<string, ReviewSetFacts & { tone: ReviewSetFacts["tone"] }>();
+  for (const set of round.predictionSets) {
+    const reviewed = setTone(toSetToneInput(set));
+    const tone = set.status === "flagged" && reviewed === "ok" ? "correction" : reviewed;
+    factsById.set(set.id, {
+      participantName: set.participant.name,
+      authorName: set.forumComment?.authorName ?? set.participant.name,
+      status: set.status,
+      selected: set.selected,
+      manuallyEdited: set.manuallyEdited,
+      selection: set.selection,
+      warnings: readWarnings(set.warningsJson),
+      tone,
+    });
+  }
+  const visibleSets = round.predictionSets.filter((set) => setInQueue(factsById.get(set.id)!, queue, search));
+  const visibleByParticipant = new Map<string, typeof visibleSets>();
+  for (const set of visibleSets) {
+    const group = visibleByParticipant.get(set.participantId) ?? [];
+    group.push(set);
+    visibleByParticipant.set(set.participantId, group);
+  }
+  const visibleParticipants = participants
+    .filter((participant) => visibleByParticipant.has(participant.id))
+    .sort((left, right) => {
+      const rank = (id: string) => {
+        const sets = visibleByParticipant.get(id) ?? [];
+        if (sets.some((set) => factsById.get(set.id)?.tone === "conflict")) {
+          return 0;
+        }
+        if (sets.some((set) => setNeedsReview(factsById.get(set.id)!))) {
+          return 1;
+        }
+        return 2;
+      };
+      const delta = rank(left.id) - rank(right.id);
+      return delta === 0 ? left.name.localeCompare(right.name, "ru") : delta;
+    });
+  const reviewCount = [...factsById.values()].filter((set) => setNeedsReview(set)).length;
+  const acceptedCount = [...factsById.values()].filter((set) => set.selected && set.status === "accepted").length;
+  const queueHref = (next: typeof queue) => {
+    const params = new URLSearchParams();
+    if (next !== "review") {
+      params.set("view", next);
+    }
+    if (search.trim()) {
+      params.set("q", search.trim());
+    }
+    const suffix = params.toString();
+    return `/admin/rounds/${round.id}/review${suffix ? `?${suffix}` : ""}`;
+  };
 
   return (
     <>
@@ -109,19 +184,20 @@ export default async function RoundImportPage({
             <CrumbLink href={`/admin/rounds/${round.id}`}>{round.name ?? `Round ${round.number}`}</CrumbLink>
           </>
         }
-        description="Fetch the thread, parse score lines, then correct names, scores, and which comment counts."
+        description="Imported parser results for this round. Accepted slips can be scored later. Flagged and unmatched rows stay unresolved."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
-        title="Import and review"
+        title="Parser review"
       />
       <PageBody>
+        <SeasonLayers current="import" reviewHref={`/admin/rounds/${round.id}/review`} seasonId={round.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.imported ? <Notice tone="success">Saved {query.imported} comments.</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
         {round.fetchedAt ? (
-          <Notice tone="info">
+          <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}
-            {round.forumUrl ? ` from ${round.forumUrl}` : ""}. Accepted slips are selected. Flagged rows stay here and are not
-            scored. Standings are not calculated from this page.
+            {round.forumUrl ? ` from ${round.forumUrl}` : ""}. The default list is unresolved review. Accepted slips stay out of
+            that list until you open them. This page does not write the baseline or computed standings.
           </Notice>
         ) : null}
         {round.importNotes ? <Notice tone="warning">{round.importNotes}</Notice> : null}
@@ -189,20 +265,36 @@ export default async function RoundImportPage({
             <SubmitButton pendingLabel="Parsing…">Parse predictions</SubmitButton>
             <span className="text-sm text-zinc-500">{round.forumComments.length} comments stored</span>
           </form>
-          {unmatchedAuthors.length > 0 ? (
+          {queue !== "accepted" && unmatchedGroups.length > 0 ? (
             <div className="mt-5">
               <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Authors not in the registry</h3>
               <ul className="mt-2 space-y-2">
-                {unmatchedAuthors.map((comment) => (
-                  <li className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={comment.id}>
-                    <span className="font-medium">{comment.authorName}</span>
-                    <span className="ml-2 text-zinc-500">{formatWhen(comment.postedAt)}</span>
-                    <Badge tone="warning">Unmatched</Badge>
-                    <pre className="mt-2 max-h-36 overflow-auto font-sans text-sm whitespace-pre-wrap text-zinc-800">
-                      {comment.rawText || "(empty)"}
-                    </pre>
-                  </li>
-                ))}
+                {unmatchedGroups.map(([name, group]) => {
+                  const label = unknownAuthorLabel(group.suggestions.length);
+                  return (
+                    <li className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={name}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{name}</span>
+                        <span className="text-zinc-500">{group.count} comments</span>
+                        <Badge tone={operatorTone(label)}>{OPERATOR_LABEL[label]}</Badge>
+                      </div>
+                      {group.suggestions.length > 0 ? (
+                        <p className="mt-1 text-xs text-zinc-600">
+                          Looks like {group.suggestions.join(", ")}. Mark the alias on the reconciliation report. It is not linked
+                          from here.
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-zinc-600">No roster name starts with this nick. No participant was created.</p>
+                      )}
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-zinc-500">Sample comment</summary>
+                        <pre className="mt-2 max-h-36 overflow-auto font-sans text-sm whitespace-pre-wrap text-zinc-800">
+                          {group.sample}
+                        </pre>
+                      </details>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}
@@ -225,35 +317,67 @@ export default async function RoundImportPage({
         </Section>
 
         <Section
-          description="Rose rows are parse conflicts. Amber rows still need a score, a fixture, or a swapped-club check. User (МТ) is a label only."
+          description="Needs review is the default. Rose rows are parse conflicts. Amber rows still need a score, a fixture, or a swapped-club check."
           id="review"
           title="Parser review"
         >
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <FilterLink current={queue === "review"} href={queueHref("review")}>
+              Needs review ({reviewCount})
+            </FilterLink>
+            <FilterLink current={queue === "accepted"} href={queueHref("accepted")}>
+              Accepted ({acceptedCount})
+            </FilterLink>
+            <FilterLink current={queue === "all"} href={queueHref("all")}>
+              All ({round.predictionSets.length})
+            </FilterLink>
+            <form className="flex items-center gap-2" method="get">
+              {queue !== "review" ? <input name="view" type="hidden" value={queue} /> : null}
+              <input
+                aria-label="Search slips"
+                className={`${fieldClass} w-44`}
+                defaultValue={search}
+                name="q"
+                placeholder="Name"
+              />
+              <button className="rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm" type="submit">
+                Search
+              </button>
+            </form>
+          </div>
           {participants.length === 0 ? (
             <EmptyState detail="Parse the stored comments, or add a prediction set by hand below." title="No prediction sets yet" />
+          ) : visibleParticipants.length === 0 ? (
+            <EmptyState
+              detail={queue === "review" ? "Open Accepted to see slips that can be scored later." : "Try another name or queue."}
+              title="Nothing in this queue"
+            />
           ) : (
             <div className="space-y-8">
-              {participants.map((participant) => (
+              {visibleParticipants.map((participant) => (
                 <div key={participant.id}>
                   <h3 className="text-sm font-semibold text-zinc-950">{participant.name}</h3>
                   <div className="mt-3 space-y-4">
-                    {(setsByParticipant.get(participant.id) ?? []).map((set) => {
-                      const warnings = readWarnings(set.warningsJson);
+                    {(visibleByParticipant.get(participant.id) ?? []).map((set) => {
+                      const facts = factsById.get(set.id)!;
+                      const warnings = facts.warnings;
                       const unmatched = readLines(set.parsedJson).filter((line) => !line.fixtureId);
-                      const reviewed = setTone(toSetToneInput(set));
-                      const tone = set.status === "flagged" && reviewed === "ok" ? "correction" : reviewed;
+                      const tone = facts.tone;
+                      const labels = setLabels(facts);
                       return (
                         <article className={cx("rounded-lg border p-4", rowTone[tone])} key={set.id}>
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-medium">{set.forumComment?.authorName ?? participant.name}</h4>
                             <span className="text-xs text-zinc-500">{formatWhen(set.forumComment?.postedAt ?? null)}</span>
-                            <Badge>confidence {(set.confidence ?? 0).toFixed(2)}</Badge>
-                            {set.selected ? <Badge tone="success">Accepted</Badge> : <Badge>Not accepted</Badge>}
-                            {set.status === "flagged" ? <Badge tone="warning">Flagged</Badge> : null}
-                            <Badge>{set.selection}</Badge>
-                            {set.manuallyEdited ? <Badge tone="info">Edited</Badge> : null}
+                            {labels.map((label) => (
+                              <Badge key={label} tone={operatorTone(label)}>
+                                {OPERATOR_LABEL[label]}
+                              </Badge>
+                            ))}
                             {tone === "conflict" ? <Badge tone="danger">Parse conflict</Badge> : null}
-                            {tone === "correction" ? <Badge tone="warning">Needs correction</Badge> : null}
+                            {tone === "correction" && !labels.includes("malformed_prediction") ? (
+                              <Badge tone="warning">Needs correction</Badge>
+                            ) : null}
                             <form action={selectSetAction}>
                               <input name="roundId" type="hidden" value={round.id} />
                               <input name="setId" type="hidden" value={set.id} />
@@ -357,8 +481,11 @@ export default async function RoundImportPage({
         <Section
           description="Rename a nick, merge two people who are the same, or add a blank set when a comment failed to import."
           id="participants"
-          title="Participants"
+          title="Manual override"
         >
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-zinc-700">Rename, merge, or add a set</summary>
+            <div className="mt-4">
           {participants.length === 0 ? (
             <EmptyState detail="Participants appear here after a comment is parsed." title="No participants on this round" />
           ) : (
@@ -408,6 +535,8 @@ export default async function RoundImportPage({
               Add
             </SubmitButton>
           </form>
+            </div>
+          </details>
           <p className="mt-3 text-sm text-zinc-500">
             <Link className="hover:underline" href={`/admin/rounds/${round.id}`}>
               Back to the round overview
