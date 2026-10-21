@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { createSeasonAction } from "./actions";
 import { SubmitButton } from "./submit-button";
-import { EmptyState, Field, KpiGrid, Notice, PageBody, PageHeader, Section, fieldClass } from "./ui";
+import { EmptyState, Field, KpiGrid, Notice, PageBody, PageHeader, Section, buttonClass, fieldClass } from "./ui";
 
 export const instant = false;
 
@@ -24,7 +24,12 @@ export default async function AdminPage({
   return (
     <>
       <PageHeader
-        description="Open a season to manage rounds, import predictions, and publish standings."
+        description="Open a season for rounds and its roster, or open Participants for the registry."
+        nav={
+          <Link className={buttonClass("secondary")} href="/admin/participants">
+            Participant registry
+          </Link>
+        }
         title="Seasons"
       />
       <PageBody>

@@ -9,7 +9,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link className="text-sm font-semibold tracking-tight text-zinc-950" href="/admin">
             Contest admin
           </Link>
-          <span className="text-xs text-zinc-400">Local</span>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link className="text-zinc-600 hover:text-zinc-950" href="/admin/participants">
+              Participants
+            </Link>
+            <span className="text-xs text-zinc-400">Local</span>
+          </nav>
         </div>
       </header>
       {children}

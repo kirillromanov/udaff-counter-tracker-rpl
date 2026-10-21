@@ -63,23 +63,45 @@ model Match {
 }
 
 model Participant {
-  id        String   @id @default(cuid())
-  name      String
-  forumNick String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  forumNick      String?   @unique
+  /// participantKey(name). Together with aliases, this is the duplicate check.
+  /// Nullable so an existing database can take the column, then be reseeded.
+  normalizedName String?   @unique
+  /// Set when the person is removed from the registry. Historical scores stay.
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
+  aliases        ParticipantAlias[]
   seasons        SeasonParticipant[]
   predictionSets PredictionSet[]
   roundScores    RoundScore[]
   standings      StandingSnapshot[]
 }
 
-model SeasonParticipant {
+model ParticipantAlias {
   id            String   @id @default(cuid())
+  participantId String
+  alias         String
+  normalized    String   @unique
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+}
+
+model SeasonParticipant {
+  id            String    @id @default(cuid())
   seasonId      String
   participantId String
-  joinedAt      DateTime @default(now())
+  /// included: active on this season roster. excluded: kept, but not active.
+  status        String    @default("included")
+  joinedAt      DateTime  @default(now())
+  excludedAt    DateTime?
 
   season      Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)

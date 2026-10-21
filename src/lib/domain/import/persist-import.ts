@@ -2,35 +2,26 @@ import { prisma } from "@/lib/db/prisma";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import type { FixtureRef } from "@/lib/domain/parser/types";
-import { participantKey } from "./participant-key";
+import { createParticipant, findParticipantByName, transferIdentity, updateParticipantName } from "@/lib/domain/participants/registry";
 import { resolveSelections, type SelectableSet } from "./select-sets";
-
-function nickKey(value: string): string {
-  return participantKey(value);
-}
 
 async function ensureParticipant(authorName: string, seasonId: string) {
   const name = authorName.trim() || "unknown";
-  const key = nickKey(name);
-  const participants = await prisma.participant.findMany();
-  const existing = participants.find(
-    (participant) =>
-      nickKey(participant.forumNick ?? "") === key || nickKey(participant.name) === key,
-  );
-  const participant =
-    existing ??
-    (await prisma.participant.create({
-      data: { name, forumNick: name },
-    }));
-
-  await prisma.seasonParticipant.upsert({
-    where: {
-      seasonId_participantId: { seasonId, participantId: participant.id },
-    },
-    create: { seasonId, participantId: participant.id },
-    update: {},
+  const existing = await findParticipantByName(name);
+  const participant = existing ?? (await createParticipant(name));
+  const membership = await prisma.seasonParticipant.findUnique({
+    where: { seasonId_participantId: { seasonId, participantId: participant.id } },
   });
-
+  if (!membership) {
+    await prisma.seasonParticipant.create({
+      data: {
+        seasonId,
+        participantId: participant.id,
+        status: participant.archivedAt ? "excluded" : "included",
+        excludedAt: participant.archivedAt ? new Date() : null,
+      },
+    });
+  }
   return participant;
 }
 
@@ -222,31 +213,7 @@ export async function updatePredictionFromForm(formData: FormData): Promise<void
 }
 
 export async function renameParticipant(participantId: string, name: string): Promise<void> {
-  const nextName = name.trim();
-  if (!nextName) {
-    throw new Error("Participant name is required");
-  }
-  const current = await prisma.participant.findUniqueOrThrow({ where: { id: participantId } });
-  const key = nickKey(nextName);
-  const conflict = await prisma.participant.findMany();
-  if (
-    conflict.some(
-      (participant) =>
-        participant.id !== current.id &&
-        (nickKey(participant.name) === key || nickKey(participant.forumNick ?? "") === key),
-    )
-  ) {
-    throw new Error("Another participant already uses that name");
-  }
-
-  const nickWasName = nickKey(current.forumNick ?? "") === nickKey(current.name);
-  await prisma.participant.update({
-    where: { id: current.id },
-    data: {
-      name: nextName,
-      forumNick: nickWasName ? nextName : current.forumNick,
-    },
-  });
+  await updateParticipantName(participantId, name);
 }
 
 export async function mergeParticipants(sourceId: string, targetId: string): Promise<void> {
@@ -318,6 +285,7 @@ export async function mergeParticipants(sourceId: string, targetId: string): Pro
     }
   }
 
+  await transferIdentity(sourceId, targetId);
   await prisma.participant.delete({ where: { id: sourceId } });
   for (const roundId of roundIds) {
     await applyAutoSelection(roundId);
