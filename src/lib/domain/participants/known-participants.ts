@@ -26,3 +26,14 @@ export const KNOWN_PARTICIPANTS = [
   "Лысая_ Башка",
   "nikatin",
 ] as const;
+
+/**
+ * Forum spellings that are the same person as a registry name.
+ * A shorter name such as "Павел" is not an alias of "Павел Абросимов".
+ */
+export const KNOWN_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "Лысая_ Башка": ["Лысая_Башка"],
+  моноклон: ["monoklon"],
+  зукабля: ["Zukoblya"],
+  "Vinnie Jones": ["Vinnie_Jones"],
+};

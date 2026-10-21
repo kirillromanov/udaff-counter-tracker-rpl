@@ -3,6 +3,8 @@ import type { ForumPost } from "@/lib/domain/forum/types";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import type { FixtureRef } from "@/lib/domain/parser/types";
 import { createParticipant, findParticipantByName, transferIdentity, updateParticipantName } from "@/lib/domain/participants/registry";
+import { importNeedsReview, isAcceptableImport } from "./accept-import";
+import { readLines, readWarnings } from "./review-status";
 import { resolveSelections, type SelectableSet } from "./select-sets";
 
 async function ensureParticipant(authorName: string, seasonId: string) {
@@ -95,7 +97,18 @@ export async function parseStoredComments(roundId: string): Promise<number> {
     }
 
     const parsed = parseComment(comment.rawText, fixtures);
-    const participant = await ensureParticipant(comment.authorName, round.seasonId);
+    const participant = await findParticipantByName(comment.authorName);
+    if (!participant) {
+      await prisma.forumComment.update({
+        where: { id: comment.id },
+        data: {
+          reviewState: "flagged",
+          reviewNote: "Author is not in the registry",
+        },
+      });
+      parsedCount += 1;
+      continue;
+    }
     const rows = rowsForStorage(parsed).map(predictionData);
     const shared = {
       participantId: participant.id,
@@ -135,14 +148,17 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
     where: { roundId },
     include: { predictions: true, forumComment: true },
   });
+  const fixtureCount = await prisma.match.count({ where: { roundId } });
   const selectable: SelectableSet[] = sets.map((set) => ({
     id: set.id,
     participantId: set.participantId,
     postedAt: set.forumComment?.postedAt ?? set.createdAt,
-    valid: set.predictions.some(
-      (prediction) =>
-        !prediction.ignored && prediction.homeGoals != null && prediction.awayGoals != null,
-    ),
+    valid: isAcceptableImport({
+      warnings: readWarnings(set.warningsJson),
+      unmatchedLines: readLines(set.parsedJson).filter((line) => !line.fixtureId).length,
+      fixtureCount,
+      predictions: set.predictions,
+    }),
     selection: set.selection === "manual" ? "manual" : "auto",
     selected: set.selected,
   }));
@@ -150,10 +166,32 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
 
   for (const set of sets) {
     const selected = chosen.has(set.id);
-    if (set.selected !== selected) {
+    const shape = {
+      warnings: readWarnings(set.warningsJson),
+      unmatchedLines: readLines(set.parsedJson).filter((line) => !line.fixtureId).length,
+      fixtureCount,
+      predictions: set.predictions,
+    };
+    const status = set.manuallyEdited
+      ? set.status
+      : selected
+        ? "accepted"
+        : importNeedsReview(shape)
+          ? "flagged"
+          : "parsed";
+    if (set.selected !== selected || set.status !== status) {
       await prisma.predictionSet.update({
         where: { id: set.id },
-        data: { selected },
+        data: { selected, status },
+      });
+    }
+    if (set.forumCommentId && !set.manuallyEdited) {
+      await prisma.forumComment.update({
+        where: { id: set.forumCommentId },
+        data: {
+          reviewState: status === "accepted" ? "accepted" : status === "flagged" ? "flagged" : "stored",
+          reviewNote: status === "flagged" ? "Needs review before it can be accepted" : null,
+        },
       });
     }
   }

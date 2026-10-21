@@ -118,6 +118,8 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
 
   let line = normalizeCommentText(original);
   const markedAsMt = MT_MARKER.test(line);
+  // "1. 31.07.2026 20:00 Родина-Ростов 2-1" and "6 28.08.2026 18:00 Акрон - ЦСКА 1-2".
+  line = line.replace(/^\d{1,2}[.)]?\s+(?=\d{1,2}[./]\d{1,2})/u, "");
   line = line.replace(MT_MARKER, " ").replace(DATETIME_PREFIX, "").replace(/\s+/g, " ").trim();
   if (!line) {
     return null;

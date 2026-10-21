@@ -92,7 +92,10 @@ export default async function RoundImportPage({
     round.predictionSets.map((set) => set.forumCommentId).filter((id): id is string => Boolean(id)),
   );
   const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
-  const waiting = round.forumComments.filter((comment) => !parsedCommentIds.has(comment.id));
+  const waiting = round.forumComments.filter((comment) => !parsedCommentIds.has(comment.id) && comment.reviewState !== "flagged");
+  const unmatchedAuthors = round.forumComments.filter(
+    (comment) => comment.reviewState === "flagged" && !parsedCommentIds.has(comment.id),
+  );
 
   return (
     <>
@@ -114,6 +117,14 @@ export default async function RoundImportPage({
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.imported ? <Notice tone="success">Saved {query.imported} comments.</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
+        {round.fetchedAt ? (
+          <Notice tone="info">
+            Fetched {formatWhen(round.fetchedAt)}
+            {round.forumUrl ? ` from ${round.forumUrl}` : ""}. Accepted slips are selected. Flagged rows stay here and are not
+            scored. Standings are not calculated from this page.
+          </Notice>
+        ) : null}
+        {round.importNotes ? <Notice tone="warning">{round.importNotes}</Notice> : null}
         {summary.conflicts > 0 ? (
           <Notice tone="warning">
             {summary.conflicts} {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Duplicate lines and
@@ -178,6 +189,23 @@ export default async function RoundImportPage({
             <SubmitButton pendingLabel="Parsing…">Parse predictions</SubmitButton>
             <span className="text-sm text-zinc-500">{round.forumComments.length} comments stored</span>
           </form>
+          {unmatchedAuthors.length > 0 ? (
+            <div className="mt-5">
+              <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Authors not in the registry</h3>
+              <ul className="mt-2 space-y-2">
+                {unmatchedAuthors.map((comment) => (
+                  <li className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={comment.id}>
+                    <span className="font-medium">{comment.authorName}</span>
+                    <span className="ml-2 text-zinc-500">{formatWhen(comment.postedAt)}</span>
+                    <Badge tone="warning">Unmatched</Badge>
+                    <pre className="mt-2 max-h-36 overflow-auto font-sans text-sm whitespace-pre-wrap text-zinc-800">
+                      {comment.rawText || "(empty)"}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {waiting.length > 0 ? (
             <div className="mt-5">
               <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Fetched, not parsed yet</h3>
@@ -212,14 +240,16 @@ export default async function RoundImportPage({
                     {(setsByParticipant.get(participant.id) ?? []).map((set) => {
                       const warnings = readWarnings(set.warningsJson);
                       const unmatched = readLines(set.parsedJson).filter((line) => !line.fixtureId);
-                      const tone = setTone(toSetToneInput(set));
+                      const reviewed = setTone(toSetToneInput(set));
+                      const tone = set.status === "flagged" && reviewed === "ok" ? "correction" : reviewed;
                       return (
                         <article className={cx("rounded-lg border p-4", rowTone[tone])} key={set.id}>
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-medium">{set.forumComment?.authorName ?? participant.name}</h4>
                             <span className="text-xs text-zinc-500">{formatWhen(set.forumComment?.postedAt ?? null)}</span>
                             <Badge>confidence {(set.confidence ?? 0).toFixed(2)}</Badge>
-                            {set.selected ? <Badge tone="success">Selected</Badge> : <Badge>Not selected</Badge>}
+                            {set.selected ? <Badge tone="success">Accepted</Badge> : <Badge>Not accepted</Badge>}
+                            {set.status === "flagged" ? <Badge tone="warning">Flagged</Badge> : null}
                             <Badge>{set.selection}</Badge>
                             {set.manuallyEdited ? <Badge tone="info">Edited</Badge> : null}
                             {tone === "conflict" ? <Badge tone="danger">Parse conflict</Badge> : null}

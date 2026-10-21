@@ -21,5 +21,5 @@ export async function fetchForumPost(url: string): Promise<ForumPost> {
     throw new Error(`Forum request failed (${response.status})`);
   }
   const html = await response.text();
-  return extractForumPost(html, sourceUrl);
+  return { ...extractForumPost(html, sourceUrl), fetchedAt: new Date() };
 }

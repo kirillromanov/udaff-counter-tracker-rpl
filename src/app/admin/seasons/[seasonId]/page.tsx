@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
-import { createRoundAction } from "../../actions";
+import { createRoundAction, importRoundsAction } from "../../actions";
 import { SubmitButton } from "../../submit-button";
 import {
   Badge,
@@ -22,13 +22,14 @@ import {
 } from "../../ui";
 
 export const instant = false;
+export const maxDuration = 300;
 
 export default async function SeasonPage({
   params,
   searchParams,
 }: {
   params: Promise<{ seasonId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string }>;
 }) {
   await connection();
   const { seasonId } = await params;
@@ -73,12 +74,19 @@ export default async function SeasonPage({
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/checkpoint`}>
               Round 11 checkpoint
             </Link>
+            <form action={importRoundsAction}>
+              <input name="seasonId" type="hidden" value={season.id} />
+              <SubmitButton pendingLabel="Importing…" variant="primary">
+                Import rounds 1–11
+              </SubmitButton>
+            </form>
           </div>
         }
         title={season.name}
       />
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        {query.imported ? <Notice tone="success">{query.imported}</Notice> : null}
         <KpiGrid
           items={[
             { label: "Rounds", value: season.rounds.length },
