@@ -70,6 +70,9 @@ export default async function SeasonPage({
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/standings`}>
               Standings
             </Link>
+            <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/checkpoint`}>
+              Round 11 checkpoint
+            </Link>
           </div>
         }
         title={season.name}

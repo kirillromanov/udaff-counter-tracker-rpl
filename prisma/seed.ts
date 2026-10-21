@@ -3,6 +3,8 @@ import { prisma as scoringDb } from "../src/lib/db/prisma";
 import { KNOWN_PARTICIPANTS } from "../src/lib/domain/participants/known-participants";
 import { createParticipant, setRosterStatus } from "../src/lib/domain/participants/registry";
 import { recalculateRound } from "../src/lib/domain/standings/recalculate-round";
+import { ROUND_11_CHECKPOINT } from "../src/lib/domain/standings/round-11-checkpoint";
+import { saveManualCheckpoint } from "../src/lib/domain/standings/save-checkpoint";
 
 const prisma = new PrismaClient();
 
@@ -259,6 +261,16 @@ async function main() {
   for (const name of KNOWN_PARTICIPANTS) {
     const participant = await createParticipant(name);
     await setRosterStatus(participant.id, season.id, "include");
+  }
+
+  const checkpoint = await saveManualCheckpoint({
+    seasonId: season.id,
+    afterRoundNumber: 11,
+    label: "Manual checkpoint after round 11",
+    rawText: ROUND_11_CHECKPOINT,
+  });
+  if (checkpoint.unmatched.length > 0) {
+    throw new Error(`Checkpoint names did not match the registry: ${checkpoint.unmatched.join(", ")}`);
   }
 
   await prisma.predictionSet.updateMany({
