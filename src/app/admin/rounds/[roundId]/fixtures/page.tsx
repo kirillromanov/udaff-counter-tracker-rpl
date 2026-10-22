@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { alignToFixture } from "@/lib/domain/results/decide";
+import { SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { RoundNav } from "../../../round-nav";
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
@@ -14,12 +15,12 @@ export default async function FixturesPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; confirmed?: string; conflicts?: string; failed?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; confirmed?: string; verified?: string; conflicts?: string; failed?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
   const query = await searchParams;
-  const [round, logs] = await Promise.all([
+  const [round, logs, health] = await Promise.all([
     prisma.round.findUnique({
       where: { id: roundId },
       include: {
@@ -27,7 +28,8 @@ export default async function FixturesPage({
         matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { orderBy: { source: "asc" } } } },
       },
     }),
-    prisma.resultFetchLog.findMany({ orderBy: { fetchedAt: "desc" }, take: 6 }),
+    prisma.resultFetchLog.findMany({ orderBy: { fetchedAt: "desc" }, take: 10 }),
+    prisma.resultSourceHealth.findMany({ orderBy: { source: "asc" } }),
   ]);
   if (!round) {
     notFound();
@@ -56,13 +58,13 @@ export default async function FixturesPage({
         {query.saved ? <Notice tone="success">Fixtures saved.</Notice> : null}
         {query.fetched ? (
           <Notice tone={query.conflicts && query.conflicts !== "0" ? "warning" : "success"}>
-            Fetched results for the season. {query.confirmed ?? "0"} matches confirmed, {query.conflicts ?? "0"} conflicts,{" "}
-            {query.failed ?? "0"} sources failed. A conflict does not replace the stored score.
+            Fetched results for the season. {query.verified ?? "0"} verified, {query.confirmed ?? "0"} confirmed by one source,{" "}
+            {query.conflicts ?? "0"} conflicts, {query.failed ?? "0"} sources failed. A conflict does not replace the stored score.
           </Notice>
         ) : null}
 
         <Section
-          description="Sport.ru is the primary table. Championat and Sportbox are fallbacks and may be blocked. Fetching again updates the same rows."
+          description={`Preferred: ${SOURCE_POLICY.preferred.join(", ")}. Fallback: ${SOURCE_POLICY.fallback.join(", ")}. Verification only: ${SOURCE_POLICY.verification.join(", ")}. A failed source is skipped. Three failures in a row mark it degraded until it succeeds.`}
           id="ingest"
           title="Import actual results"
         >
@@ -72,6 +74,24 @@ export default async function FixturesPage({
               Fetch results
             </SubmitButton>
           </form>
+          {health.length === 0 ? (
+            <p className="mt-3 text-sm text-zinc-500">No source health has been recorded yet.</p>
+          ) : (
+            <ul className="mt-3 space-y-1 text-sm text-zinc-700">
+              {health.map((row) => {
+                const down = row.degraded || (row.lastFailureAt != null && (row.lastSuccessAt == null || row.lastFailureAt > row.lastSuccessAt));
+                return (
+                  <li key={row.source}>
+                    <Badge tone={row.degraded ? "warning" : down ? "danger" : "success"}>{row.degraded ? "degraded" : down ? "down" : "healthy"}</Badge>{" "}
+                    <span className="font-medium">{row.source}</span> · {row.role} · {row.consecutiveFailures} consecutive failures
+                    {row.lastSuccessAt ? <span className="text-zinc-500"> · last success {row.lastSuccessAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span> : null}
+                    {row.lastFailureAt ? <span className="text-zinc-500"> · last failure {row.lastFailureAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span> : null}
+                    {row.lastError ? <span className="text-zinc-500"> · {row.lastError}</span> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           {logs.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">No fetch has been recorded yet.</p>
           ) : (
@@ -79,7 +99,7 @@ export default async function FixturesPage({
               {logs.map((log) => (
                 <li key={log.id}>
                   <Badge tone={log.status === "ok" ? "success" : "danger"}>{log.status}</Badge>{" "}
-                  <span className="font-medium">{log.source}</span> · {log.matchCount} finished matches
+                  <span className="font-medium">{log.source}</span> · {log.role} · {log.matchCount} finished matches
                   {log.error ? <span className="text-zinc-500"> · {log.error}</span> : null}
                 </li>
               ))}
@@ -127,7 +147,7 @@ export default async function FixturesPage({
                     </label>
                     <Badge
                       tone={
-                        match.resultConflict ? "danger" : match.resultState === "confirmed" ? "success" : match.resultState === "manual" ? "info" : "neutral"
+                        match.resultConflict ? "danger" : match.resultState === "verified" || match.resultState === "confirmed" ? "success" : match.resultState === "manual" ? "info" : "neutral"
                       }
                     >
                       {match.resultConflict ? "Conflict" : match.resultState}
@@ -166,7 +186,10 @@ export default async function FixturesPage({
                             <input name="homeGoals" type="hidden" value={aligned.homeGoals} />
                             <input name="awayGoals" type="hidden" value={aligned.awayGoals} />
                             <span className="text-xs text-zinc-600">
-                              {observation.source} {aligned.homeGoals}-{aligned.awayGoals}
+                              {observation.source} · {observation.role} · {observation.confidence} · {aligned.homeGoals}-{aligned.awayGoals}
+                              {" · "}
+                              {observation.fetchedAt.toISOString().slice(0, 16).replace("T", " ")} UTC
+                              {health.find((row) => row.source === observation.source)?.degraded ? " · not used while degraded" : ""}
                             </span>
                             {match.resultConflict ? (
                               <SubmitButton pendingLabel="Saving…" variant="ghost">

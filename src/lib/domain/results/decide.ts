@@ -1,5 +1,6 @@
 import { teamSimilarity } from "@/lib/domain/parser/match-fixture";
-import type { SourceMatch } from "./types";
+import { canonicalTeamName } from "./team-names";
+import type { ConfidenceLevel, SourceMatch, SourceRole } from "./types";
 
 const MIN_SIDE = 0.8;
 
@@ -16,11 +17,13 @@ export interface AlignedObservation {
   awayTeam: string;
   homeGoals: number;
   awayGoals: number;
+  role: SourceRole;
+  confidence: ConfidenceLevel;
 }
 
 export interface ResultDecision {
   fixtureId: string;
-  outcome: "none" | "confirmed" | "conflict";
+  outcome: "none" | "confirmed" | "verified" | "conflict";
   homeGoals: number | null;
   awayGoals: number | null;
   note: string;
@@ -42,8 +45,8 @@ export interface ResultWrite {
 }
 
 function sideScore(result: Pick<SourceMatch, "homeTeam" | "awayTeam">, fixture: FixtureSide, swapped: boolean): number {
-  const home = swapped ? result.awayTeam : result.homeTeam;
-  const away = swapped ? result.homeTeam : result.awayTeam;
+  const home = canonicalTeamName(swapped ? result.awayTeam : result.homeTeam);
+  const away = canonicalTeamName(swapped ? result.homeTeam : result.awayTeam);
   return Math.min(teamSimilarity(home, fixture.homeTeam), teamSimilarity(away, fixture.awayTeam));
 }
 
@@ -86,6 +89,8 @@ export function attachResults(fixtures: readonly FixtureSide[], results: readonl
       awayTeam: result.awayTeam,
       homeGoals: best.aligned.homeGoals,
       awayGoals: best.aligned.awayGoals,
+      role: result.role,
+      confidence: result.confidence,
     });
     grouped.set(best.fixture.id, list);
   }
@@ -96,13 +101,17 @@ function sameScore(left: AlignedObservation, right: AlignedObservation): boolean
   return left.homeGoals === right.homeGoals && left.awayGoals === right.awayGoals;
 }
 
+function canWriteScore(observation: AlignedObservation): boolean {
+  return observation.role !== "verification";
+}
+
 export function decideFixture(fixtureId: string, observations: readonly AlignedObservation[]): ResultDecision {
   if (observations.length === 0) {
     return { fixtureId, outcome: "none", homeGoals: null, awayGoals: null, note: "" };
   }
   const first = observations[0] as AlignedObservation;
   const agreed = observations.every((item) => sameScore(item, first));
-  const listed = observations.map((item) => `${item.source} ${item.homeGoals}-${item.awayGoals}`).join(", ");
+  const listed = observations.map((item) => `${item.source} (${item.role}, ${item.confidence}) ${item.homeGoals}-${item.awayGoals}`).join(", ");
   if (!agreed) {
     return {
       fixtureId,
@@ -112,13 +121,26 @@ export function decideFixture(fixtureId: string, observations: readonly AlignedO
       note: `Sources disagree: ${listed}. The stored score was left unchanged.`,
     };
   }
+  const writers = observations.filter(canWriteScore);
+  if (writers.length === 0) {
+    return { fixtureId, outcome: "none", homeGoals: null, awayGoals: null, note: "" };
+  }
   const names = observations.map((item) => item.source).join(" and ");
+  if (observations.length >= 2) {
+    return {
+      fixtureId,
+      outcome: "verified",
+      homeGoals: first.homeGoals,
+      awayGoals: first.awayGoals,
+      note: `Verified by ${names}.`,
+    };
+  }
   return {
     fixtureId,
     outcome: "confirmed",
     homeGoals: first.homeGoals,
     awayGoals: first.awayGoals,
-    note: observations.length === 1 ? `Confirmed by ${names}. No other source reported this match.` : `Confirmed by ${names}.`,
+    note: `Confirmed by ${names}. No other source reported this match.`,
   };
 }
 
@@ -138,7 +160,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
     return {
       actualHomeGoals: stored.actualHomeGoals,
       actualAwayGoals: stored.actualAwayGoals,
-      resultState: stored.resultState === "manual" || stored.resultState === "confirmed" ? stored.resultState : "conflict",
+      resultState: stored.resultState === "manual" || stored.resultState === "confirmed" || stored.resultState === "verified" ? stored.resultState : "conflict",
       resultConflict: true,
       resultNote: decision.note,
       changedGoals: false,
@@ -161,7 +183,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
   return {
     actualHomeGoals: decision.homeGoals,
     actualAwayGoals: decision.awayGoals,
-    resultState: "confirmed",
+    resultState: decision.outcome === "verified" ? "verified" : "confirmed",
     resultConflict: false,
     resultNote: decision.note,
     changedGoals: !same,

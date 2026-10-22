@@ -39,7 +39,7 @@ describe("result source parsers", () => {
     const wall = `<html><title>Чемпионат</title><p>Вход через SberID</p></html>`;
     expect(isAccessBlocked(wall)).toBe(true);
     expect(interpretSourcePage(
-      { id: "championat", role: "fallback", url: "https://example.test", parse: parseChampionat },
+      { id: "championat", role: "fallback", confidence: "medium", url: "https://example.test", parse: parseChampionat },
       true,
       wall,
       null,
@@ -50,7 +50,7 @@ describe("result source parsers", () => {
     const html = `<tr><td class="tour">11</td><td class="team1">Локомотив М</td><td class="score">3:3</td><td class="team2">Краснодар</td></tr>`;
     expect(parseSportbox(html)[0]).toMatchObject({ source: "sportbox", homeGoals: 3, awayGoals: 3, roundNumber: 11 });
     const blocked = interpretSourcePage(
-      { id: "sportbox", role: "fallback", url: "https://example.test", parse: parseSportbox },
+      { id: "sportbox", role: "fallback", confidence: "medium", url: "https://example.test", parse: parseSportbox },
       false,
       "Доступ запрещен",
       "HTTP 403",
@@ -70,7 +70,7 @@ describe("result decisions", () => {
   it("maps source nicknames onto the fixture and flips a reversed pair", () => {
     const attached = attachResults(fixtures, [
       ...parseSportRu(SPORT_RU),
-      { source: "sportbox", sourceKey: "rev", roundNumber: 11, homeTeam: "Краснодар", awayTeam: "Локомотив М", homeGoals: 1, awayGoals: 4 },
+      { source: "sportbox", sourceKey: "rev", roundNumber: 11, homeTeam: "Краснодар", awayTeam: "Локомотив М", homeGoals: 1, awayGoals: 4, role: "fallback", confidence: "medium" },
     ]);
     expect(attached.get("dinamo")).toEqual([expect.objectContaining({ source: "sport-ru", homeGoals: 3, awayGoals: 1 })]);
     expect(attached.get("makh")).toEqual([expect.objectContaining({ homeGoals: 1, awayGoals: 1 })]);
@@ -78,7 +78,7 @@ describe("result decisions", () => {
   });
 
   it("confirms one source and refuses to overwrite when sources disagree", () => {
-    const agreed = decideFixture("dinamo", [{ source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1 }]);
+    const agreed = decideFixture("dinamo", [{ source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1, role: "primary", confidence: "high" }]);
     expect(agreed.outcome).toBe("confirmed");
     expect(applyResultDecision({ resultState: "open", actualHomeGoals: null, actualAwayGoals: null }, agreed)).toMatchObject({
       actualHomeGoals: 3,
@@ -89,8 +89,8 @@ describe("result decisions", () => {
     });
 
     const conflict = decideFixture("dinamo", [
-      { source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1 },
-      { source: "championat", sourceKey: "b", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 2, awayGoals: 1 },
+      { source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1, role: "primary", confidence: "high" },
+      { source: "championat", sourceKey: "b", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 2, awayGoals: 1, role: "fallback", confidence: "medium" },
     ]);
     expect(conflict.outcome).toBe("conflict");
     expect(conflict.note).toMatch(/disagree/);
@@ -107,7 +107,7 @@ describe("result decisions", () => {
 
   it("leaves a manual score in place when a later fetch disagrees", () => {
     const decision = decideFixture("dinamo", [
-      { source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1 },
+      { source: "sport-ru", sourceKey: "a", homeTeam: "Динамо", awayTeam: "ЦСКА", homeGoals: 3, awayGoals: 1, role: "primary", confidence: "high" },
     ]);
     expect(
       applyResultDecision({ resultState: "manual", actualHomeGoals: 2, actualAwayGoals: 2 }, decision),

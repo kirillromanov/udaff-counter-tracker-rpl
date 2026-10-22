@@ -1,3 +1,6 @@
+export type SourceRole = "primary" | "fallback" | "verification";
+export type ConfidenceLevel = "high" | "medium" | "low";
+
 export interface SourceMatch {
   source: string;
   sourceKey: string;
@@ -6,18 +9,25 @@ export interface SourceMatch {
   awayTeam: string;
   homeGoals: number;
   awayGoals: number;
+  role: SourceRole;
+  confidence: ConfidenceLevel;
 }
 
 export interface SourceAdapter {
   id: string;
-  role: "primary" | "fallback";
+  role: SourceRole;
+  /** How much this source is trusted before it is compared with the others. */
+  confidence: ConfidenceLevel;
   url: string;
-  parse: (html: string) => SourceMatch[];
+  /** html pages are scraped. json bodies are parsed as an API or data payload. */
+  format?: "html" | "json";
+  parse: (body: string) => SourceMatch[];
+  load?: () => Promise<SourceFetchResult>;
 }
 
 export interface SourceFetchResult {
   source: string;
-  role: "primary" | "fallback";
+  role: SourceRole;
   url: string;
   status: "ok" | "failed";
   results: SourceMatch[];

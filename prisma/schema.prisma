@@ -61,7 +61,7 @@ model Match {
   isMatchOfTheRound Boolean   @default(false)
   actualHomeGoals   Int?
   actualAwayGoals   Int?
-  /// open, confirmed, conflict, or manual. Manual scores are never replaced by a fetch.
+  /// open, confirmed, verified, conflict, or manual. Manual scores are never replaced by a fetch.
   resultState       String    @default("open")
   /// Sources disagreed, or a manual score does not match the fetched sources.
   resultConflict    Boolean   @default(false)
@@ -83,11 +83,26 @@ model ResultFetchLog {
   url        String
   /// ok or failed
   status     String
+  /// primary, fallback, or verification
+  role       String   @default("fallback")
   matchCount Int      @default(0)
   error      String?
   fetchedAt  DateTime @default(now())
 
   @@index([fetchedAt])
+}
+
+/// Rolling health for one result source. A failed call updates this row and does not erase scores.
+model ResultSourceHealth {
+  source              String    @id
+  /// primary, fallback, or verification
+  role                String
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  consecutiveFailures Int       @default(0)
+  degraded            Boolean   @default(false)
+  lastError           String?
+  updatedAt           DateTime  @updatedAt
 }
 
 /// A finished score as published by one source. Re-fetching the same match updates this row.
@@ -100,6 +115,10 @@ model ResultObservation {
   awayTeam    String
   homeGoals   Int
   awayGoals   Int
+  /// primary, fallback, or verification. Verification-only rows do not confirm a score alone.
+  role        String   @default("fallback")
+  /// high, medium, or low
+  confidence  String   @default("medium")
   matchId     String?
   fetchedAt   DateTime @default(now())
 

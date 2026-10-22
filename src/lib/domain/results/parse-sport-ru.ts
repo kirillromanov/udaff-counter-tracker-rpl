@@ -45,6 +45,8 @@ export function parseSportRu(html: string): SourceMatch[] {
       awayTeam,
       homeGoals,
       awayGoals,
+      role: "primary",
+      confidence: "high",
     });
   }
   return matches;

@@ -32,6 +32,8 @@ export function parseSportbox(html: string): SourceMatch[] {
       awayTeam,
       homeGoals: Number(goals[1]),
       awayGoals: Number(goals[2]),
+      role: "fallback",
+      confidence: "medium",
     });
   }
   return matches;

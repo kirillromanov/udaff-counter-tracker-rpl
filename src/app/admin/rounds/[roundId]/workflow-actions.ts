@@ -158,7 +158,7 @@ export async function fetchResultsAction(formData: FormData): Promise<void> {
     const report = await ingestRoundResults(roundId);
     refresh(roundId);
     const failed = report.sources.filter((source) => source.status === "failed").length;
-    redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&conflicts=${report.conflicts}&failed=${failed}`);
+    redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&verified=${report.verified}&conflicts=${report.conflicts}&failed=${failed}`);
   } catch (error) {
     fail(fixturesPath(roundId), error);
   }
