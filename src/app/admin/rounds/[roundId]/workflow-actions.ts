@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
-import { ingestRoundResults } from "@/lib/domain/results/ingest";
+import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
+import { ingestAndTrack, pollDueRounds } from "@/lib/domain/results/poll-run";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 
 function hubPath(roundId: string): string {
@@ -79,6 +80,7 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
                 resultConflict: false,
                 resultResolution: actualHomeGoals == null ? "" : "manual",
                 resultNote: actualHomeGoals == null ? null : "Entered on the fixtures page.",
+                conflictAcknowledgedAt: null,
               }
             : {}),
         },
@@ -156,10 +158,90 @@ export async function saveForumUrlAction(formData: FormData): Promise<void> {
 export async function fetchResultsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    const report = await ingestRoundResults(roundId);
+    const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
+    const report = await ingestAndTrack(round.seasonId);
     refresh(roundId);
     const failed = report.sources.filter((source) => source.status === "failed").length;
     redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&verified=${report.verified}&conflicts=${report.conflicts}&insufficient=${report.insufficient}&failed=${failed}`);
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
+  }
+}
+
+export async function pollDueAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const report = await pollDueRounds();
+    refresh(roundId);
+    if (!report.checked) {
+      redirect(`${fixturesPath(roundId)}?polled=stopped`);
+    }
+    const result = report.seasons[0]?.report;
+    const failed = result?.sources.filter((source) => source.status === "failed").length ?? 0;
+    redirect(
+      `${fixturesPath(roundId)}?polled=1&confirmed=${result?.confirmed ?? 0}&verified=${result?.verified ?? 0}&conflicts=${result?.conflicts ?? 0}&insufficient=${result?.insufficient ?? 0}&failed=${failed}`,
+    );
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
+  }
+}
+
+export async function pollRoundAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const report = await pollDueRounds({ forceRoundId: roundId });
+    refresh(roundId);
+    if (!report.checked) {
+      redirect(`${fixturesPath(roundId)}?polled=stopped`);
+    }
+    const result = report.seasons[0]?.report;
+    const failed = result?.sources.filter((source) => source.status === "failed").length ?? 0;
+    redirect(
+      `${fixturesPath(roundId)}?polled=1&confirmed=${result?.confirmed ?? 0}&verified=${result?.verified ?? 0}&conflicts=${result?.conflicts ?? 0}&insufficient=${result?.insufficient ?? 0}&failed=${failed}`,
+    );
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
+  }
+}
+
+export async function acknowledgeConflictAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const matchId = String(formData.get("matchId") ?? "");
+    const match = await prisma.match.findUnique({ where: { id: matchId } });
+    if (!match || !match.resultConflict) {
+      throw new Error("This fixture has no source conflict to acknowledge");
+    }
+    await prisma.match.update({
+      where: { id: matchId },
+      data: {
+        conflictAcknowledgedAt: new Date(),
+        resultNote: match.resultNote ? `${match.resultNote} Conflict acknowledged by admin.` : "Conflict acknowledged by admin.",
+      },
+    });
+    const round = await prisma.round.findUniqueOrThrow({
+      where: { id: roundId },
+      include: { matches: true },
+    });
+    const plan = planRoundPoll(
+      round.matches.map((item) => ({
+        kickoffAt: item.kickoffAt,
+        actualHomeGoals: item.actualHomeGoals,
+        actualAwayGoals: item.actualAwayGoals,
+        resultState: item.resultState,
+        resultResolution: item.resultResolution,
+        resultConflict: item.resultConflict,
+        conflictAcknowledgedAt: item.conflictAcknowledgedAt,
+      })),
+      new Date(),
+      pollIntervals(),
+    );
+    await prisma.round.update({
+      where: { id: roundId },
+      data: { pollStatus: plan.pollStatus, nextPollAt: plan.nextPollAt },
+    });
+    refresh(roundId);
+    redirect(`${fixturesPath(roundId)}?saved=1`);
   } catch (error) {
     fail(fixturesPath(roundId), error);
   }
@@ -184,6 +266,7 @@ export async function acceptSourceScoreAction(formData: FormData): Promise<void>
         resultConflict: false,
         resultResolution: "manual",
         resultNote: `Accepted ${source} ${homeGoals}-${awayGoals}. Later fetches will not replace it.`,
+        conflictAcknowledgedAt: null,
       },
     });
     refresh(roundId);

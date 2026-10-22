@@ -2,32 +2,27 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { alignToFixture, type AlignedObservation } from "@/lib/domain/results/decide";
+import { fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, type FixturePhase } from "@/lib/domain/results/poll";
 import { unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { rankFixtureResult, SOURCE_RANK, type CandidateStanding } from "@/lib/domain/results/ranking";
 import { RoundNav } from "../../../round-nav";
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
-import { acceptSourceScoreAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, saveFixturesAction } from "../workflow-actions";
+import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 
 export const instant = false;
 
-function resolutionBadge(resultState: string, classification: string | undefined, hasCandidates: boolean): { label: string; tone: "success" | "warning" | "danger" | "info" | "neutral" } {
-  if (resultState === "manual") {
-    return { label: "manual", tone: "info" };
+function phaseTone(phase: FixturePhase, acknowledged: boolean): "success" | "warning" | "danger" | "info" | "neutral" {
+  if (phase === "finished-verified") {
+    return "success";
   }
-  if (!hasCandidates) {
-    return { label: resultState, tone: resultState === "verified" || resultState === "confirmed" ? "success" : "neutral" };
+  if (phase === "conflict-review") {
+    return acknowledged ? "info" : "danger";
   }
-  if (classification === "verified") {
-    return { label: "verified", tone: "success" };
+  if (phase === "finished-unverified" || phase === "live") {
+    return "warning";
   }
-  if (classification === "provisional") {
-    return { label: "provisionally accepted", tone: "warning" };
-  }
-  if (classification === "conflict-review") {
-    return { label: "conflict review needed", tone: "danger" };
-  }
-  return { label: "insufficient data", tone: "neutral" };
+  return "neutral";
 }
 
 function standingTone(standing: CandidateStanding): "success" | "warning" | "danger" | "info" | "neutral" {
@@ -48,7 +43,7 @@ export default async function FixturesPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; polled?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -93,6 +88,20 @@ export default async function FixturesPage({
       return [match.id, { aligned, ranking: rankFixtureResult(aligned, { unavailable, now: rankedAt }) }] as const;
     }),
   );
+  const pollPlan = planRoundPoll(
+    round.matches.map((match) => ({
+      kickoffAt: match.kickoffAt,
+      actualHomeGoals: match.actualHomeGoals,
+      actualAwayGoals: match.actualAwayGoals,
+      resultState: match.resultState,
+      resultResolution: match.resultResolution,
+      resultConflict: match.resultConflict,
+      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+      liveReported: match.resultObservations.some((observation) => observation.matchStatus === "live"),
+    })),
+    rankedAt,
+    pollIntervals(),
+  );
 
   return (
     <>
@@ -115,12 +124,56 @@ export default async function FixturesPage({
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Fixtures saved.</Notice> : null}
+        {query.polled === "stopped" ? (
+          <Notice tone="info">Polling is stopped for this round. Every fixture is final, or this round is not due.</Notice>
+        ) : null}
+        {query.polled === "1" ? (
+          <Notice tone={query.conflicts && query.conflicts !== "0" ? "warning" : "success"}>
+            Checked due results. {query.verified ?? "0"} verified, {query.confirmed ?? "0"} provisionally accepted, {query.conflicts ?? "0"} need review,{" "}
+            {query.insufficient ?? "0"} insufficient, {query.failed ?? "0"} sources failed.
+          </Notice>
+        ) : null}
         {query.fetched ? (
           <Notice tone={query.conflicts && query.conflicts !== "0" ? "warning" : "success"}>
             Fetched results for the season. {query.verified ?? "0"} verified, {query.confirmed ?? "0"} provisionally accepted,{" "}
             {query.conflicts ?? "0"} need review, {query.insufficient ?? "0"} insufficient, {query.failed ?? "0"} sources failed. A conflict does not replace the stored score.
           </Notice>
         ) : null}
+
+        <Section
+          description="The dev server does not poll by itself. A due check uses the same multi-source ingestion. A finalized round is skipped until a fixture is unfinished or an open conflict returns."
+          id="poll"
+          title="Result polling"
+        >
+          <p className="text-sm text-zinc-700">
+            <Badge tone={pollPlan.pollStatus === "finalized" ? "success" : pollPlan.pollStatus === "live" ? "warning" : "neutral"}>{pollPlan.pollStatus}</Badge>{" "}
+            {pollPlan.reason}
+          </p>
+          <p className="mt-2 text-xs text-zinc-600">
+            Last check {round.lastPolledAt ? `${round.lastPolledAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : "not recorded"}
+            {" · "}
+            Next check {pollPlan.nextPollAt ? `${pollPlan.nextPollAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : "stopped"}
+            {" · "}
+            Last successful source {round.lastSuccessfulSource ?? "none"}
+          </p>
+          {round.pollHealthSummary ? <p className="mt-1 text-xs text-zinc-600">{round.pollHealthSummary}</p> : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <form action={pollDueAction}>
+              <input name="roundId" type="hidden" value={round.id} />
+              <SubmitButton pendingLabel="Checking…" variant="secondary">
+                Check due rounds
+              </SubmitButton>
+            </form>
+            {pollPlan.active ? (
+              <form action={pollRoundAction}>
+                <input name="roundId" type="hidden" value={round.id} />
+                <SubmitButton pendingLabel="Checking…" variant="primary">
+                  Check this round now
+                </SubmitButton>
+              </form>
+            ) : null}
+          </div>
+        </Section>
 
         <Section
           description={`Ranked sources: ${Object.entries(SOURCE_RANK)
@@ -206,8 +259,24 @@ export default async function FixturesPage({
                       <input defaultChecked={match.isMatchOfTheRound} name="matchOfTheRound" type="radio" value={match.id} />
                       Official MT
                     </label>
-                    <Badge tone={resolutionBadge(match.resultState, rankings.get(match.id)?.ranking.classification, (rankings.get(match.id)?.ranking.candidates.length ?? 0) > 0).tone}>
-                      {resolutionBadge(match.resultState, rankings.get(match.id)?.ranking.classification, (rankings.get(match.id)?.ranking.candidates.length ?? 0) > 0).label}
+                    <Badge tone={phaseTone(fixturePhase({
+                      kickoffAt: match.kickoffAt,
+                      actualHomeGoals: match.actualHomeGoals,
+                      actualAwayGoals: match.actualAwayGoals,
+                      resultState: match.resultState,
+                      resultResolution: match.resultResolution,
+                      resultConflict: match.resultConflict,
+                      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                    }, rankedAt), match.conflictAcknowledgedAt != null)}>
+                      {fixturePhaseLabel(fixturePhase({
+                        kickoffAt: match.kickoffAt,
+                        actualHomeGoals: match.actualHomeGoals,
+                        actualAwayGoals: match.actualAwayGoals,
+                        resultState: match.resultState,
+                        resultResolution: match.resultResolution,
+                        resultConflict: match.resultConflict,
+                        conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                      }, rankedAt), match.conflictAcknowledgedAt != null)}
                     </Badge>
                   </div>
                   {match.resultNote ? <p className="mt-2 text-xs text-zinc-600">{match.resultNote}</p> : null}
@@ -232,6 +301,15 @@ export default async function FixturesPage({
                     <p className="font-medium">
                       {match.homeTeam} — {match.awayTeam}
                     </p>
+                    {match.resultConflict && !match.conflictAcknowledgedAt ? (
+                      <form action={acknowledgeConflictAction} className="mt-2">
+                        <input name="roundId" type="hidden" value={round.id} />
+                        <input name="matchId" type="hidden" value={match.id} />
+                        <SubmitButton pendingLabel="Acknowledging…" variant="secondary">
+                          Acknowledge conflict
+                        </SubmitButton>
+                      </form>
+                    ) : null}
                     <p className="mt-1 text-xs text-zinc-600">
                       {match.resultState === "manual"
                         ? "Manual score is selected. A later fetch will not replace it."

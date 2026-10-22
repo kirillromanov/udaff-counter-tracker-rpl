@@ -37,6 +37,14 @@ model Round {
   /// Schedule notes from the last import, such as a missing Match of the Round.
   importNotes String?
   status    String   @default("draft")
+  /// scheduled, live, or finalized. Finalized rounds are left out of the next poll.
+  pollStatus            String    @default("scheduled")
+  lastPolledAt          DateTime?
+  nextPollAt            DateTime?
+  /// Highest-ranked source that returned rows on the last check.
+  lastSuccessfulSource  String?
+  /// Compact ok/failed line from the last multi-source check.
+  pollHealthSummary     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -68,6 +76,8 @@ model Match {
   /// verified, provisional, conflict-review, insufficient, or manual. Empty until a fetch or an edit classifies the row.
   resultResolution  String    @default("")
   resultNote        String?
+  /// Set when an admin leaves a source conflict visible but allows the round to stop polling.
+  conflictAcknowledgedAt DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

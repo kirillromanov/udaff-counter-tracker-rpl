@@ -102,6 +102,8 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
       awayTeam: match.awayTeam,
       roundNumber: round.number,
       resultState: match.resultState,
+      resultConflict: match.resultConflict,
+      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
       actualHomeGoals: match.actualHomeGoals,
       actualAwayGoals: match.actualAwayGoals,
     })),
@@ -217,6 +219,7 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
         resultConflict: write.resultConflict,
         resultResolution: write.resultResolution,
         resultNote: write.resultNote,
+        conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
       },
     });
   }

@@ -1,6 +1,6 @@
 import { loadEnvFile } from "node:process";
 import { prisma } from "@/lib/db/prisma";
-import { ingestSeasonResults } from "@/lib/domain/results/ingest";
+import { ingestAndTrack } from "@/lib/domain/results/poll-run";
 
 try {
   loadEnvFile();
@@ -14,7 +14,7 @@ async function main() {
     throw new Error("No season found.");
   }
   for (const season of seasons) {
-    const report = await ingestSeasonResults(season.id);
+    const report = await ingestAndTrack(season.id);
     console.log(`${season.name}: ${report.verified} verified, ${report.confirmed} provisional, ${report.conflicts} need review, ${report.insufficient} insufficient`);
     for (const source of report.sources) {
       console.log(`  ${source.role} ${source.source}: ${source.status} (${source.matchCount})${source.error ? ` ${source.error}` : ""}`);
