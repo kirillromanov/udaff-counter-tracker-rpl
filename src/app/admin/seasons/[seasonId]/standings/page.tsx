@@ -66,13 +66,26 @@ export default async function SeasonStandingsPage({
           id="live-season"
           title="Provisional season"
         >
+          {live.baselineOpenRounds.length > 0 ? (
+            <p className="mb-3 text-sm text-zinc-600">
+              {live.baselineOpenRounds.map((round, index) => (
+                <span key={round.id}>
+                  {index > 0 ? ", " : null}
+                  <Link className="font-medium text-zinc-900 underline" href={`/admin/rounds/${round.id}/results`}>
+                    {round.name ?? `Round ${round.number}`}
+                  </Link>
+                </span>
+              ))}{" "}
+              {live.baselineOpenRounds.length === 1 ? "is" : "are"} still in progress. The live table stays on the round page. Those points are not added on top of the trusted baseline.
+            </p>
+          ) : null}
           {live.unverifiedRounds.length > 0 ? (
             <p className="mb-3 text-sm text-zinc-600">
               Live delta is from {live.unverifiedRounds.map((round) => round.name ?? `round ${round.number}`).join(", ")}. It includes verified and provisional match points from those rounds and is not part of the confirmed total.
             </p>
-          ) : (
+          ) : live.baselineOpenRounds.length === 0 ? (
             <p className="mb-3 text-sm text-zinc-600">No unfinished round is adding a live delta. The live total matches the confirmed total.</p>
-          )}
+          ) : null}
           {live.verifiedUnstored.length > 0 ? (
             <p className="mb-3 text-sm text-zinc-600">
               {live.verifiedUnstored.map((round) => round.name ?? `Round ${round.number}`).join(", ")} {live.verifiedUnstored.length === 1 ? "is" : "are"} verified and not in the confirmed total until you calculate {live.verifiedUnstored.length === 1 ? "it" : "them"}.

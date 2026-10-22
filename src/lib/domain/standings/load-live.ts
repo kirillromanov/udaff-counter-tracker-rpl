@@ -81,6 +81,8 @@ export interface LiveSeasonView {
   baselineLabel: string | null;
   rows: LiveSeasonRow[];
   unverifiedRounds: { number: number; name: string | null }[];
+  /** In progress, but already covered by the trusted baseline, so their points are not added again. */
+  baselineOpenRounds: { id: string; number: number; name: string | null }[];
   verifiedUnstored: { number: number; name: string | null }[];
 }
 
@@ -110,6 +112,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
 
   const baselineAfterRound = checkpoint?.afterRoundNumber ?? null;
   const unverifiedRounds: { number: number; name: string | null }[] = [];
+  const baselineOpenRounds: { id: string; number: number; name: string | null }[] = [];
   const verifiedUnstored: { number: number; name: string | null }[] = [];
   const seasonRounds = rounds.flatMap((round) => {
     const insideBaseline = baselineAfterRound != null && round.number <= baselineAfterRound;
@@ -117,6 +120,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
     const complete = roundIsComplete(fixtures);
     if (!complete) {
       if (insideBaseline) {
+        baselineOpenRounds.push({ id: round.id, number: round.number, name: round.name });
         return [];
       }
       unverifiedRounds.push({ number: round.number, name: round.name });
@@ -165,6 +169,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
     baselineAfterRound: checkpoint?.afterRoundNumber ?? null,
     baselineLabel: checkpoint?.label ?? null,
     unverifiedRounds,
+    baselineOpenRounds,
     verifiedUnstored,
     rows: buildLiveSeasonTable({
       baselineAfterRound,
