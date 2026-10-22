@@ -48,6 +48,11 @@ model Round {
   lastSuccessfulSource  String?
   /// Compact ok/failed line from the last multi-source check.
   pollHealthSummary     String?
+  /// Last forum fetch for prediction comments. Separate from result polling.
+  lastPredictionFetchAt DateTime?
+  nextPredictionFetchAt DateTime?
+  /// Counts from the last prediction fetch: new, updated, duplicate, ignored, flagged.
+  predictionFetchSummary String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -219,6 +224,9 @@ model ForumComment {
   reviewNote  String?
   /// Parse this comment even when the author is on the ignored list.
   importAnyway Boolean @default(false)
+  /// new, updated, unchanged, duplicate, ignored, or flagged.
+  ingestionStatus String   @default("unchanged")
+  lastFetchedAt   DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

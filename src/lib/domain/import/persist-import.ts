@@ -13,8 +13,24 @@ import {
 } from "@/lib/domain/participants/registry";
 import { AUTHOR_NOTE, effectiveAuthorResolution } from "@/lib/domain/participants/resolve-author";
 import { importNeedsReview, isAcceptableImport } from "./accept-import";
+import {
+  authorIdentityKey,
+  DUPLICATE_COMMENT_NOTE,
+  isContentClass,
+  MANUAL_PREDICTION_NOTE,
+  resolveIngestionStatus,
+  shouldReplaceStoredSlip,
+  classifyIncomingComment,
+  type ContentClass,
+  type StoredCommentShape,
+} from "./incremental";
 import { readLines, readWarnings } from "./review-status";
 import { resolveSelections, type SelectableSet } from "./select-sets";
+
+export interface ForumSaveResult {
+  saved: number;
+  classes: { externalId: string; content: ContentClass }[];
+}
 
 async function ensureParticipant(authorName: string, seasonId: string) {
   const name = authorName.trim() || "unknown";
@@ -36,41 +52,100 @@ async function ensureParticipant(authorName: string, seasonId: string) {
   return participant;
 }
 
-export async function saveForumPost(roundId: string, post: ForumPost): Promise<number> {
+function linkedParticipantId(authorName: string, catalog: Awaited<ReturnType<typeof loadIdentityCatalog>>): string | null {
+  const resolution = effectiveAuthorResolution(authorName, catalog, false);
+  if (resolution.kind === "participant" || resolution.kind === "alias") {
+    return resolution.participantId;
+  }
+  return null;
+}
+
+export async function saveForumPost(roundId: string, post: ForumPost): Promise<ForumSaveResult> {
   await prisma.round.update({
     where: { id: roundId },
     data: { forumUrl: post.sourceUrl },
   });
 
+  const catalog = await loadIdentityCatalog();
+  const existing = await prisma.forumComment.findMany({
+    where: { roundId },
+    select: { externalId: true, authorName: true, rawText: true },
+  });
+  const stored: StoredCommentShape[] = existing.flatMap((row) => {
+    if (!row.externalId) {
+      return [];
+    }
+    return [
+      {
+        externalId: row.externalId,
+        authorKey: authorIdentityKey({
+          participantId: linkedParticipantId(row.authorName, catalog),
+          authorName: row.authorName,
+        }),
+        text: row.rawText,
+      },
+    ];
+  });
+  const fetchedAt = post.fetchedAt ?? new Date();
+  const ordered = [...post.comments].sort((left, right) => {
+    const leftTime = left.postedAt?.getTime() ?? 0;
+    const rightTime = right.postedAt?.getTime() ?? 0;
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+    return (left.externalId ?? "").localeCompare(right.externalId ?? "");
+  });
+
   let saved = 0;
-  for (const comment of post.comments) {
-    if (!comment.externalId) {
+  const classes: ForumSaveResult["classes"] = [];
+  for (const comment of ordered) {
+    const authorKey = authorIdentityKey({
+      participantId: linkedParticipantId(comment.authorName, catalog),
+      authorName: comment.authorName,
+    });
+    const content = classifyIncomingComment({
+      externalId: comment.externalId,
+      authorKey,
+      text: comment.rawText,
+      stored,
+    });
+    if (content === "skipped" || !comment.externalId) {
       continue;
     }
+    const identity = {
+      sourceUrl: post.sourceUrl,
+      authorName: comment.authorName,
+      postedAt: comment.postedAt,
+      rawHtml: comment.rawHtml,
+      rawText: comment.rawText,
+      lastFetchedAt: fetchedAt,
+    };
     await prisma.forumComment.upsert({
       where: {
         roundId_externalId: { roundId, externalId: comment.externalId },
       },
       create: {
         roundId,
-        sourceUrl: post.sourceUrl,
         externalId: comment.externalId,
-        authorName: comment.authorName,
-        postedAt: comment.postedAt,
-        rawHtml: comment.rawHtml,
-        rawText: comment.rawText,
+        ingestionStatus: content,
+        ...identity,
       },
       update: {
-        sourceUrl: post.sourceUrl,
-        authorName: comment.authorName,
-        postedAt: comment.postedAt,
-        rawHtml: comment.rawHtml,
-        rawText: comment.rawText,
+        ...identity,
+        ...(content === "unchanged" ? {} : { ingestionStatus: content }),
       },
     });
+    const remembered = stored.findIndex((row) => row.externalId === comment.externalId);
+    const shape = { externalId: comment.externalId, authorKey, text: comment.rawText };
+    if (remembered >= 0) {
+      stored[remembered] = shape;
+    } else {
+      stored.push(shape);
+    }
+    classes.push({ externalId: comment.externalId, content });
     saved += 1;
   }
-  return saved;
+  return { saved, classes };
 }
 
 function predictionData(line: ReturnType<typeof rowsForStorage>[number]) {
@@ -107,7 +182,35 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
     const existing = await prisma.predictionSet.findFirst({
       where: { forumCommentId: comment.id },
     });
+    const content: ContentClass = isContentClass(comment.ingestionStatus) ? comment.ingestionStatus : existing ? "unchanged" : "new";
+    if (content === "duplicate") {
+      if (existing && !existing.manuallyEdited && existing.selection !== "manual") {
+        await prisma.predictionSet.delete({ where: { id: existing.id } });
+      }
+      await prisma.forumComment.update({
+        where: { id: comment.id },
+        data: {
+          ingestionStatus: "duplicate",
+          reviewState: "ignored",
+          reviewNote: DUPLICATE_COMMENT_NOTE,
+        },
+      });
+      continue;
+    }
     if (existing?.manuallyEdited) {
+      if (content === "updated") {
+        await prisma.forumComment.update({
+          where: { id: comment.id },
+          data: {
+            ingestionStatus: "flagged",
+            reviewState: "flagged",
+            reviewNote: MANUAL_PREDICTION_NOTE,
+          },
+        });
+      }
+      continue;
+    }
+    if (!shouldReplaceStoredSlip(content, false, Boolean(existing))) {
       continue;
     }
 
@@ -119,6 +222,7 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
       await prisma.forumComment.update({
         where: { id: comment.id },
         data: {
+          ingestionStatus: resolveIngestionStatus(content, resolution.kind, false),
           reviewState: resolution.kind === "ignored" ? "ignored" : "flagged",
           reviewNote:
             resolution.kind === "ignored"
@@ -164,6 +268,10 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
         },
       });
     }
+    await prisma.forumComment.update({
+      where: { id: comment.id },
+      data: { ingestionStatus: resolveIngestionStatus(content, resolution.kind, false) },
+    });
     parsedCount += 1;
   }
 

@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { fetchForumPost } from "@/lib/domain/forum/fetch-post";
+import { prisma } from "@/lib/db/prisma";
+import { refreshDuePredictions, refreshRoundPredictions } from "@/lib/domain/import/refresh-predictions";
 import {
   addManualPredictionSet,
   mergeParticipants,
   parseStoredComments,
   renameParticipant,
   reparseAuthor,
-  saveForumPost,
   selectPredictionSet,
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
@@ -25,9 +25,14 @@ function reviewPath(roundId: string): string {
   return `/admin/rounds/${roundId}/review`;
 }
 
-function refreshRound(roundId: string): void {
+function refreshRound(roundId: string, seasonId?: string): void {
   revalidatePath(reviewPath(roundId));
   revalidatePath(`/admin/rounds/${roundId}`);
+  revalidatePath(`/admin/rounds/${roundId}/results`);
+  if (seasonId) {
+    revalidatePath(`/admin/seasons/${seasonId}`);
+    revalidatePath(`/admin/seasons/${seasonId}/standings`);
+  }
 }
 
 function fail(roundId: string, error: unknown): never {
@@ -39,10 +44,31 @@ function fail(roundId: string, error: unknown): never {
 export async function fetchCommentsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    const post = await fetchForumPost(String(formData.get("url") ?? ""));
-    const saved = await saveForumPost(roundId, post);
-    refreshRound(roundId);
-    redirect(`${reviewPath(roundId)}?imported=${saved}`);
+    const url = String(formData.get("url") ?? "").trim();
+    const report = await refreshRoundPredictions(roundId, url ? { url } : undefined);
+    refreshRound(roundId, report.seasonId);
+    redirect(`${reviewPath(roundId)}?fetched=${encodeURIComponent(report.summary)}`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+export async function refreshDuePredictionsAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const report = await refreshDuePredictions();
+    const seasonIds = [...new Set(report.rounds.map((round) => round.seasonId).filter(Boolean))];
+    refreshRound(roundId, seasonIds[0]);
+    for (const seasonId of seasonIds.slice(1)) {
+      refreshRound(roundId, seasonId);
+    }
+    for (const round of report.rounds) {
+      refreshRound(round.roundId, round.seasonId);
+    }
+    const message = report.checked
+      ? report.rounds.map((round) => `Round ${round.number}: ${round.summary}`).join(" · ")
+      : "No active round is due.";
+    redirect(`${reviewPath(roundId)}?fetched=${encodeURIComponent(message)}`);
   } catch (error) {
     fail(roundId, error);
   }
@@ -52,7 +78,8 @@ export async function parseCommentsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
     const parsed = await parseStoredComments(roundId);
-    refreshRound(roundId);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    refreshRound(roundId, round?.seasonId);
     redirect(`${reviewPath(roundId)}?parsed=${parsed}`);
   } catch (error) {
     fail(roundId, error);

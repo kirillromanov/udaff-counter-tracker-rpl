@@ -37,12 +37,16 @@ import {
   cx,
   fieldClass,
 } from "../../../ui";
+import { ingestionStatusLabel, planPredictionRefresh } from "@/lib/domain/import/incremental";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
+import type { PollFixture } from "@/lib/domain/results/poll";
 import { AuthorIdentityReview } from "./author-identity";
 import {
   addManualSetAction,
   fetchCommentsAction,
   mergeParticipantsAction,
   parseCommentsAction,
+  refreshDuePredictionsAction,
   renameParticipantAction,
   selectSetAction,
   updatePredictionAction,
@@ -68,7 +72,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; identity?: string; view?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -184,6 +188,27 @@ export default async function RoundImportPage({
     const suffix = params.toString();
     return `/admin/rounds/${round.id}/review${suffix ? `?${suffix}` : ""}`;
   };
+  const predictionPlan = planPredictionRefresh(
+    {
+      standingRole: round.standingRole,
+      hasForumUrl: Boolean(round.forumUrl),
+      fixtures: round.matches.map(
+        (match): PollFixture => ({
+          kickoffAt: match.kickoffAt,
+          actualHomeGoals: match.actualHomeGoals,
+          actualAwayGoals: match.actualAwayGoals,
+          resultState: match.resultState,
+          resultResolution: match.resultResolution,
+          resultConflict: match.resultConflict,
+          conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+        }),
+      ),
+    },
+    new Date(),
+  );
+  const notableComments = round.forumComments.filter((comment) =>
+    ["new", "updated", "duplicate", "ignored", "flagged"].includes(comment.ingestionStatus),
+  );
 
   return (
     <>
@@ -205,6 +230,7 @@ export default async function RoundImportPage({
         <SeasonLayers current="import" reviewHref={`/admin/rounds/${round.id}/review`} seasonId={round.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.imported ? <Notice tone="success">Saved {query.imported} comments.</Notice> : null}
+        {query.fetched ? <Notice tone="success">Prediction refresh: {query.fetched}</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
         {query.identity ? <Notice tone="success">Author identity updated. Slips were parsed again for that nick.</Notice> : null}
         {round.fetchedAt ? (
@@ -239,8 +265,35 @@ export default async function RoundImportPage({
         />
 
         <Section
-          description="The download stores raw text. Parsing keeps a set you have already edited."
+          description="Refresh reads the thread again. A repeated comment stays stored once. An edited comment updates its slip unless you already edited that slip by hand."
           id="import"
+          title="Prediction refresh"
+        >
+          <p className="text-sm text-zinc-700">
+            {round.standingRole === ARCHIVED_ROUND
+              ? "Archived round. Refresh predictions here for a reference fetch. Automatic refresh covers active and upcoming rounds."
+              : predictionPlan.reason}{" "}
+            Selected slips from this refresh feed the live table.
+          </p>
+          <p className="mt-2 text-xs text-zinc-600">
+            Last fetch {round.lastPredictionFetchAt ? formatWhen(round.lastPredictionFetchAt) : "not recorded"}
+            {" · "}
+            Next check {predictionPlan.active ? (round.nextPredictionFetchAt ? formatWhen(round.nextPredictionFetchAt) : "due now") : "stopped"}
+          </p>
+          {round.predictionFetchSummary ? <p className="mt-1 text-xs text-zinc-600">{round.predictionFetchSummary}</p> : null}
+          <div className="mt-3">
+            <form action={refreshDuePredictionsAction}>
+              <input name="roundId" type="hidden" value={round.id} />
+              <SubmitButton pendingLabel="Refreshing…" variant="secondary">
+                Refresh due rounds
+              </SubmitButton>
+            </form>
+          </div>
+        </Section>
+
+        <Section
+          description="The download stores raw text. Parsing keeps a set you have already edited."
+          id="fetch"
           title="Import"
         >
           {round.matches.length === 0 ? (
@@ -270,8 +323,8 @@ export default async function RoundImportPage({
                 type="url"
               />
             </label>
-            <SubmitButton pendingLabel="Fetching…" variant="primary">
-              Fetch comments
+            <SubmitButton pendingLabel="Refreshing…" variant="primary">
+              Refresh predictions
             </SubmitButton>
           </form>
           <form action={parseCommentsAction} className="mt-3 flex flex-wrap items-center gap-3">
@@ -279,6 +332,36 @@ export default async function RoundImportPage({
             <SubmitButton pendingLabel="Parsing…">Parse predictions</SubmitButton>
             <span className="text-sm text-zinc-500">{round.forumComments.length} comments stored</span>
           </form>
+          {notableComments.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              <h3 className="text-sm font-semibold text-zinc-950">New, updated, duplicate, ignored, and flagged comments</h3>
+              <ul className="space-y-2">
+                {notableComments.map((comment) => (
+                  <li className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm" key={comment.id}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{comment.authorName}</span>
+                      <Badge tone={comment.ingestionStatus === "flagged" ? "warning" : comment.ingestionStatus === "new" ? "success" : "info"}>
+                        {ingestionStatusLabel(comment.ingestionStatus)}
+                      </Badge>
+                      <span className="text-xs text-zinc-500">{formatWhen(comment.postedAt)}</span>
+                      {comment.externalId ? (
+                        <a
+                          className="text-xs text-sky-700 underline"
+                          href={`${comment.sourceUrl}#comment-${comment.externalId}`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Forum comment {comment.externalId}
+                        </a>
+                      ) : null}
+                    </div>
+                    {comment.reviewNote ? <p className="mt-1 text-xs text-zinc-600">{comment.reviewNote}</p> : null}
+                    <pre className="mt-2 max-h-24 overflow-auto font-sans text-xs whitespace-pre-wrap text-zinc-700">{comment.rawText}</pre>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {queue !== "accepted" ? (
             <AuthorIdentityReview
               groups={identityGroups}
@@ -342,6 +425,11 @@ export default async function RoundImportPage({
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-medium">{set.forumComment?.authorName ?? participant.name}</h4>
                             <span className="text-xs text-zinc-500">{formatWhen(set.forumComment?.postedAt ?? null)}</span>
+                            {set.forumComment && set.forumComment.ingestionStatus !== "unchanged" ? (
+                              <Badge tone={set.forumComment.ingestionStatus === "flagged" ? "warning" : set.forumComment.ingestionStatus === "new" ? "success" : "info"}>
+                                {ingestionStatusLabel(set.forumComment.ingestionStatus)}
+                              </Badge>
+                            ) : null}
                             {labels.map((label) => (
                               <Badge key={label} tone={operatorTone(label)}>
                                 {OPERATOR_LABEL[label]}

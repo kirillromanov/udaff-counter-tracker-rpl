@@ -86,7 +86,7 @@ async function importOne(
       });
 
   const fixtures = await ensureFixtures(round.id, post);
-  const comments = await saveForumPost(round.id, post);
+  const comments = (await saveForumPost(round.id, post)).saved;
   await parseStoredComments(round.id);
   const [accepted, flaggedSets, unmatchedAuthors] = await Promise.all([
     prisma.predictionSet.count({ where: { roundId: round.id, status: "accepted" } }),

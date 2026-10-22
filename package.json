@@ -14,7 +14,8 @@
     "import:rounds": "tsx scripts/import-rounds.ts",
     "identity:sync": "tsx scripts/sync-identities.ts",
     "results:ingest": "tsx scripts/ingest-results.ts",
-    "results:poll": "tsx scripts/poll-results.ts"
+    "results:poll": "tsx scripts/poll-results.ts",
+    "predictions:refresh": "tsx scripts/refresh-predictions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
