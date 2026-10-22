@@ -15,7 +15,7 @@ async function main() {
   }
   for (const season of seasons) {
     const report = await ingestSeasonResults(season.id);
-    console.log(`${season.name}: ${report.verified} verified, ${report.confirmed} confirmed, ${report.conflicts} conflicts`);
+    console.log(`${season.name}: ${report.verified} verified, ${report.confirmed} provisional, ${report.conflicts} need review, ${report.insufficient} insufficient`);
     for (const source of report.sources) {
       console.log(`  ${source.role} ${source.source}: ${source.status} (${source.matchCount})${source.error ? ` ${source.error}` : ""}`);
     }

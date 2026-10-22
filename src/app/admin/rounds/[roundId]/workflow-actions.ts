@@ -77,6 +77,7 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
             ? {
                 resultState: actualHomeGoals == null ? "open" : "manual",
                 resultConflict: false,
+                resultResolution: actualHomeGoals == null ? "" : "manual",
                 resultNote: actualHomeGoals == null ? null : "Entered on the fixtures page.",
               }
             : {}),
@@ -158,7 +159,7 @@ export async function fetchResultsAction(formData: FormData): Promise<void> {
     const report = await ingestRoundResults(roundId);
     refresh(roundId);
     const failed = report.sources.filter((source) => source.status === "failed").length;
-    redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&verified=${report.verified}&conflicts=${report.conflicts}&failed=${failed}`);
+    redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&verified=${report.verified}&conflicts=${report.conflicts}&insufficient=${report.insufficient}&failed=${failed}`);
   } catch (error) {
     fail(fixturesPath(roundId), error);
   }
@@ -181,6 +182,7 @@ export async function acceptSourceScoreAction(formData: FormData): Promise<void>
         actualAwayGoals: awayGoals,
         resultState: "manual",
         resultConflict: false,
+        resultResolution: "manual",
         resultNote: `Accepted ${source} ${homeGoals}-${awayGoals}. Later fetches will not replace it.`,
       },
     });

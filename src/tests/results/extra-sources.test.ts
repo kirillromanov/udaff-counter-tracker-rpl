@@ -193,7 +193,9 @@ describe("premierliga and footbolno results", () => {
       new Set(),
     );
     expect(partialIgnored.outcome).toBe("confirmed");
+    expect(partialIgnored.resolution).toBe("provisional");
     expect(partialIgnored.note).toContain("sport-ru");
-    expect(partialIgnored.note).not.toContain("premierliga");
+    expect(partialIgnored.candidates.find((row) => row.source === "premierliga")?.standing).toBe("excluded");
+    expect(partialIgnored.candidates.find((row) => row.source === "premierliga")?.reason).toMatch(/Partial parse/);
   });
 });

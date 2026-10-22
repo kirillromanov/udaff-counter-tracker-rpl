@@ -61,10 +61,12 @@ model Match {
   isMatchOfTheRound Boolean   @default(false)
   actualHomeGoals   Int?
   actualAwayGoals   Int?
-  /// open, confirmed, verified, conflict, or manual. Manual scores are never replaced by a fetch.
+  /// open, confirmed, verified, conflict, or manual. confirmed is a provisional acceptance. Manual scores are never replaced by a fetch.
   resultState       String    @default("open")
   /// Sources disagreed, or a manual score does not match the fetched sources.
   resultConflict    Boolean   @default(false)
+  /// verified, provisional, conflict-review, insufficient, or manual. Empty until a fetch or an edit classifies the row.
+  resultResolution  String    @default("")
   resultNote        String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

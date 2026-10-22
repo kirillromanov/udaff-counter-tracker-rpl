@@ -108,16 +108,19 @@ describe("multi-source verification", () => {
     });
   });
 
-  it("keeps the stored score and the conflict when sources disagree", () => {
+  it("keeps an official score provisional when only a weaker source disagrees", () => {
     const decision = decideFixture("rodina", [primary, { ...understat, homeGoals: 1, awayGoals: 1 }]);
-    expect(decision.outcome).toBe("conflict");
-    expect(decision.note).toMatch(/understat/);
-    expect(decision.note).toMatch(/disagree/);
+    expect(decision.outcome).toBe("confirmed");
+    expect(decision.resolution).toBe("provisional");
+    expect(decision.selectedSource).toBe("sport-ru");
+    expect(decision.homeGoals).toBe(2);
+    expect(decision.candidates.find((row) => row.source === "understat")).toMatchObject({ standing: "downgraded", homeGoals: 1, awayGoals: 1 });
     expect(applyResultDecision({ resultState: "verified", actualHomeGoals: 2, actualAwayGoals: 2 }, decision)).toMatchObject({
       actualHomeGoals: 2,
       actualAwayGoals: 2,
-      resultState: "verified",
-      resultConflict: true,
+      resultState: "confirmed",
+      resultResolution: "provisional",
+      resultConflict: false,
       changedGoals: false,
     });
   });

@@ -1,5 +1,6 @@
 import type { ResultDecision, AlignedObservation } from "./decide";
 import { decideFixture, isDecisiveEvidence } from "./decide";
+import { isStaleObservation } from "./ranking";
 import type { SourceAdapter, SourceFetchResult, SourceRole } from "./types";
 
 /** Three consecutive failures mark a source degraded until the next success. */
@@ -67,23 +68,41 @@ export function unavailableSources(
   return unavailable;
 }
 
+/** Sources that are degraded, or whose latest attempt failed, stay out of the ranking. */
+export function unavailableFromHealth(
+  health: readonly { source: string; degraded: boolean; lastSuccessAt: Date | null; lastFailureAt: Date | null }[],
+): Set<string> {
+  const unavailable = new Set<string>();
+  for (const row of health) {
+    const down = row.degraded || (row.lastFailureAt != null && (row.lastSuccessAt == null || row.lastFailureAt > row.lastSuccessAt));
+    if (down) {
+      unavailable.add(row.source);
+    }
+  }
+  return unavailable;
+}
+
 /**
- * Preferred source wins when it reported a valid score.
- * A missing or failed preferred source falls through to fallbacks.
- * Disagreement among the sources that are available stays a conflict.
+ * Official-strength sources are ranked. A failed or stale preferred source falls through.
+ * A disagreement between official-strength sources stays in review.
  */
 export function resolveFixture(
   fixtureId: string,
   observations: readonly AlignedObservation[],
   unavailable: ReadonlySet<string>,
+  options?: { now?: Date },
 ): ResultDecision {
-  const available = observations.filter((item) => !unavailable.has(item.source) && isDecisiveEvidence(item));
-  const decision = decideFixture(fixtureId, available);
-  const preferredDown = SOURCE_POLICY.preferred.some((source) => unavailable.has(source));
-  const preferredReported = available.some((item) => item.role === "primary");
-  if (preferredReported || decision.outcome === "none") {
+  const decision = decideFixture(fixtureId, observations, { now: options?.now, unavailable });
+  const preferredFresh = observations.some(
+    (item) => item.role === "primary" && !unavailable.has(item.source) && isDecisiveEvidence(item) && !isStaleObservation(item, options?.now),
+  );
+  const preferredStale = observations.some(
+    (item) => item.role === "primary" && !unavailable.has(item.source) && isDecisiveEvidence(item) && isStaleObservation(item, options?.now),
+  );
+  if (preferredFresh || preferredStale || decision.outcome === "none") {
     return decision;
   }
+  const preferredDown = SOURCE_POLICY.preferred.some((source) => unavailable.has(source));
   const why = preferredDown ? "Preferred source is unavailable." : "Preferred source did not report this match.";
   return { ...decision, note: `${why} ${decision.note}` };
 }

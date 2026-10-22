@@ -22,6 +22,7 @@ export interface IngestReport {
   confirmed: number;
   verified: number;
   conflicts: number;
+  insufficient: number;
   sources: { source: string; role: string; status: string; matchCount: number; error: string | null }[];
 }
 
@@ -169,6 +170,7 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
   let confirmed = 0;
   let verified = 0;
   let conflicts = 0;
+  let insufficient = 0;
   for (const fixture of fixtures) {
     const aligned: AlignedObservation[] = stored.flatMap((row) => {
       if (row.matchId !== fixture.id) {
@@ -189,14 +191,17 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
         confidence: confidenceLevel(row.confidence),
         matchStatus: row.matchStatus,
         completeness: row.completeness,
+        fetchedAt: row.fetchedAt,
       }];
     });
-    const decision = resolveFixture(fixture.id, aligned, unavailable);
-    if (decision.outcome === "none") {
+    const decision = resolveFixture(fixture.id, aligned, unavailable, { now: fetchedAt });
+    if (decision.outcome === "none" && decision.note === "") {
       continue;
     }
     const write = applyResultDecision(fixture, decision);
-    if (write.resultConflict) {
+    if (write.resultResolution === "insufficient") {
+      insufficient += 1;
+    } else if (write.resultConflict) {
       conflicts += 1;
     } else if (write.resultState === "verified") {
       verified += 1;
@@ -210,6 +215,7 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
         actualAwayGoals: write.actualAwayGoals,
         resultState: write.resultState,
         resultConflict: write.resultConflict,
+        resultResolution: write.resultResolution,
         resultNote: write.resultNote,
       },
     });
@@ -219,6 +225,7 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
     confirmed,
     verified,
     conflicts,
+    insufficient,
     sources: fetches.map((fetchResult) => ({
       source: fetchResult.source,
       role: fetchResult.role,

@@ -1,4 +1,5 @@
 import { teamSimilarity } from "@/lib/domain/parser/match-fixture";
+import { rankFixtureResult, type RankedCandidate, type ResolutionClass } from "./ranking";
 import { canonicalTeamName } from "./team-names";
 import type { ConfidenceLevel, SourceMatch, SourceRole } from "./types";
 
@@ -21,13 +22,18 @@ export interface AlignedObservation {
   confidence: ConfidenceLevel;
   matchStatus?: string | null;
   completeness?: string | null;
+  fetchedAt?: Date | null;
 }
 
 export interface ResultDecision {
   fixtureId: string;
   outcome: "none" | "confirmed" | "verified" | "conflict";
+  /** verified, provisional, conflict-review, or insufficient. */
+  resolution: ResolutionClass;
   homeGoals: number | null;
   awayGoals: number | null;
+  selectedSource: string | null;
+  candidates: RankedCandidate[];
   note: string;
 }
 
@@ -43,6 +49,7 @@ export interface ResultWrite {
   resultState: string;
   resultConflict: boolean;
   resultNote: string | null;
+  resultResolution: string;
   changedGoals: boolean;
 }
 
@@ -101,14 +108,6 @@ export function attachResults(fixtures: readonly FixtureSide[], results: readonl
   return grouped;
 }
 
-function sameScore(left: AlignedObservation, right: AlignedObservation): boolean {
-  return left.homeGoals === right.homeGoals && left.awayGoals === right.awayGoals;
-}
-
-function canWriteScore(observation: AlignedObservation): boolean {
-  return observation.role !== "verification";
-}
-
 /** A partial parse, or a match that is not finished, stays visible and does not decide the score. */
 export function isDecisiveEvidence(observation: Pick<AlignedObservation, "matchStatus" | "completeness">): boolean {
   if (observation.completeness === "partial") {
@@ -117,42 +116,23 @@ export function isDecisiveEvidence(observation: Pick<AlignedObservation, "matchS
   return (observation.matchStatus ?? "finished") === "finished";
 }
 
-export function decideFixture(fixtureId: string, observations: readonly AlignedObservation[]): ResultDecision {
-  if (observations.length === 0) {
-    return { fixtureId, outcome: "none", homeGoals: null, awayGoals: null, note: "" };
-  }
-  const first = observations[0] as AlignedObservation;
-  const agreed = observations.every((item) => sameScore(item, first));
-  const listed = observations.map((item) => `${item.source} (${item.role}, ${item.confidence}) ${item.homeGoals}-${item.awayGoals}`).join(", ");
-  if (!agreed) {
-    return {
-      fixtureId,
-      outcome: "conflict",
-      homeGoals: null,
-      awayGoals: null,
-      note: `Sources disagree: ${listed}. The stored score was left unchanged.`,
-    };
-  }
-  const writers = observations.filter(canWriteScore);
-  if (writers.length === 0) {
-    return { fixtureId, outcome: "none", homeGoals: null, awayGoals: null, note: "" };
-  }
-  const names = observations.map((item) => item.source).join(" and ");
-  if (observations.length >= 2) {
-    return {
-      fixtureId,
-      outcome: "verified",
-      homeGoals: first.homeGoals,
-      awayGoals: first.awayGoals,
-      note: `Verified by ${names}.`,
-    };
-  }
+export function decideFixture(
+  fixtureId: string,
+  observations: readonly AlignedObservation[],
+  options?: { now?: Date; unavailable?: ReadonlySet<string> },
+): ResultDecision {
+  const ranking = rankFixtureResult(observations, options);
+  const outcome =
+    ranking.classification === "verified" ? "verified" : ranking.classification === "provisional" ? "confirmed" : ranking.classification === "conflict-review" ? "conflict" : "none";
   return {
     fixtureId,
-    outcome: "confirmed",
-    homeGoals: first.homeGoals,
-    awayGoals: first.awayGoals,
-    note: `Confirmed by ${names}. No other source reported this match.`,
+    outcome,
+    resolution: ranking.classification,
+    homeGoals: outcome === "verified" || outcome === "confirmed" ? ranking.homeGoals : null,
+    awayGoals: outcome === "verified" || outcome === "confirmed" ? ranking.awayGoals : null,
+    selectedSource: ranking.selectedSource,
+    candidates: ranking.candidates,
+    note: ranking.note,
   };
 }
 
@@ -164,7 +144,8 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
       actualAwayGoals: stored.actualAwayGoals,
       resultState: stored.resultState,
       resultConflict: false,
-      resultNote: null,
+      resultNote: decision.note || null,
+      resultResolution: decision.note ? "insufficient" : "",
       changedGoals: false,
     };
   }
@@ -175,6 +156,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
       resultState: stored.resultState === "manual" || stored.resultState === "confirmed" || stored.resultState === "verified" ? stored.resultState : "conflict",
       resultConflict: true,
       resultNote: decision.note,
+      resultResolution: "conflict-review",
       changedGoals: false,
     };
   }
@@ -189,6 +171,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
         stored.actualHomeGoals != null && !same
           ? `Manual score ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}`
           : "Manual score matches the sources.",
+      resultResolution: stored.actualHomeGoals != null && !same ? "conflict-review" : "manual",
       changedGoals: false,
     };
   }
@@ -198,6 +181,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
     resultState: decision.outcome === "verified" ? "verified" : "confirmed",
     resultConflict: false,
     resultNote: decision.note,
+    resultResolution: decision.resolution === "verified" ? "verified" : "provisional",
     changedGoals: !same,
   };
 }
