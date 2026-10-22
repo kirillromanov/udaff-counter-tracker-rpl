@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "import:rounds": "tsx scripts/import-rounds.ts",
-    "identity:sync": "tsx scripts/sync-identities.ts"
+    "identity:sync": "tsx scripts/sync-identities.ts",
+    "results:ingest": "tsx scripts/ingest-results.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

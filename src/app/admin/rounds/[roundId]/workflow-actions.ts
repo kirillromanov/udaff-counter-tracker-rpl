@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
+import { ingestRoundResults } from "@/lib/domain/results/ingest";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 
 function hubPath(roundId: string): string {
@@ -62,6 +63,7 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
       if ((actualHomeGoals == null) !== (actualAwayGoals == null)) {
         throw new Error(`Enter both scores for ${homeTeam} — ${awayTeam}, or leave both empty`);
       }
+      const scoreChanged = actualHomeGoals !== match.actualHomeGoals || actualAwayGoals !== match.actualAwayGoals;
       await prisma.match.update({
         where: { id: match.id },
         data: {
@@ -71,6 +73,13 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
           actualHomeGoals,
           actualAwayGoals,
           isMatchOfTheRound: match.id === matchOfTheRound,
+          ...(scoreChanged
+            ? {
+                resultState: actualHomeGoals == null ? "open" : "manual",
+                resultConflict: false,
+                resultNote: actualHomeGoals == null ? null : "Entered on the fixtures page.",
+              }
+            : {}),
         },
       });
     }
@@ -140,6 +149,45 @@ export async function saveForumUrlAction(formData: FormData): Promise<void> {
     redirect(hubPath(roundId));
   } catch (error) {
     fail(hubPath(roundId), error);
+  }
+}
+
+export async function fetchResultsAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const report = await ingestRoundResults(roundId);
+    refresh(roundId);
+    const failed = report.sources.filter((source) => source.status === "failed").length;
+    redirect(`${fixturesPath(roundId)}?fetched=1&confirmed=${report.confirmed}&conflicts=${report.conflicts}&failed=${failed}`);
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
+  }
+}
+
+export async function acceptSourceScoreAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const matchId = String(formData.get("matchId") ?? "");
+    const homeGoals = goals(formData.get("homeGoals"));
+    const awayGoals = goals(formData.get("awayGoals"));
+    const source = String(formData.get("source") ?? "").trim();
+    if (homeGoals == null || awayGoals == null || !source) {
+      throw new Error("Choose a source score to keep");
+    }
+    await prisma.match.update({
+      where: { id: matchId },
+      data: {
+        actualHomeGoals: homeGoals,
+        actualAwayGoals: awayGoals,
+        resultState: "manual",
+        resultConflict: false,
+        resultNote: `Accepted ${source} ${homeGoals}-${awayGoals}. Later fetches will not replace it.`,
+      },
+    });
+    refresh(roundId);
+    redirect(`${fixturesPath(roundId)}?saved=1`);
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
   }
 }
 

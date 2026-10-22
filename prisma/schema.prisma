@@ -61,13 +61,52 @@ model Match {
   isMatchOfTheRound Boolean   @default(false)
   actualHomeGoals   Int?
   actualAwayGoals   Int?
+  /// open, confirmed, conflict, or manual. Manual scores are never replaced by a fetch.
+  resultState       String    @default("open")
+  /// Sources disagreed, or a manual score does not match the fetched sources.
+  resultConflict    Boolean   @default(false)
+  resultNote        String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  predictions Prediction[]
+  round         Round                @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  predictions   Prediction[]
+  resultObservations ResultObservation[]
 
   @@index([roundId])
+}
+
+/// One attempt to download a public results page. A failed source does not erase earlier rows.
+model ResultFetchLog {
+  id         String   @id @default(cuid())
+  source     String
+  url        String
+  /// ok or failed
+  status     String
+  matchCount Int      @default(0)
+  error      String?
+  fetchedAt  DateTime @default(now())
+
+  @@index([fetchedAt])
+}
+
+/// A finished score as published by one source. Re-fetching the same match updates this row.
+model ResultObservation {
+  id          String   @id @default(cuid())
+  source      String
+  sourceKey   String
+  roundNumber Int?
+  homeTeam    String
+  awayTeam    String
+  homeGoals   Int
+  awayGoals   Int
+  matchId     String?
+  fetchedAt   DateTime @default(now())
+
+  match Match? @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceKey])
+  @@index([matchId])
 }
 
 model Participant {
