@@ -12,6 +12,20 @@ import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, d
 
 export const instant = false;
 
+function formatUtc(value: Date): string {
+  return `${value.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+function nextCheckLabel(stored: Date | null, active: boolean, now: Date): string {
+  if (!active) {
+    return "stopped";
+  }
+  if (!stored || stored.getTime() <= now.getTime()) {
+    return "due now";
+  }
+  return formatUtc(stored);
+}
+
 function phaseTone(phase: FixturePhase, acknowledged: boolean): "success" | "warning" | "danger" | "info" | "neutral" {
   if (phase === "finished-verified") {
     return "success";
@@ -124,8 +138,11 @@ export default async function FixturesPage({
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Fixtures saved.</Notice> : null}
+        {query.polled === "waiting" ? (
+          <Notice tone="info">No round is due yet. This round stays active until the next check time.</Notice>
+        ) : null}
         {query.polled === "stopped" ? (
-          <Notice tone="info">Polling is stopped for this round. Every fixture is final, or this round is not due.</Notice>
+          <Notice tone="info">Polling is stopped for this round. Every fixture is final.</Notice>
         ) : null}
         {query.polled === "1" ? (
           <Notice tone={query.conflicts && query.conflicts !== "0" ? "warning" : "success"}>
@@ -150,9 +167,9 @@ export default async function FixturesPage({
             {pollPlan.reason}
           </p>
           <p className="mt-2 text-xs text-zinc-600">
-            Last check {round.lastPolledAt ? `${round.lastPolledAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : "not recorded"}
+            Last check {round.lastPolledAt ? formatUtc(round.lastPolledAt) : "not recorded"}
             {" · "}
-            Next check {pollPlan.nextPollAt ? `${pollPlan.nextPollAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : "stopped"}
+            Next check {nextCheckLabel(round.nextPollAt, pollPlan.active, rankedAt)}
             {" · "}
             Last successful source {round.lastSuccessfulSource ?? "none"}
           </p>

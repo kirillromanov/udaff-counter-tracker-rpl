@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { summarizeSets, toSetToneInput } from "@/lib/domain/import/review-status";
+import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { fixtureMode } from "@/lib/domain/standings/load-live";
 import { RoundNav } from "../../round-nav";
 import { SubmitButton } from "../../submit-button";
 import {
@@ -194,7 +196,7 @@ export default async function RoundPage({
               Edit fixtures
             </Link>
           }
-          description="Actual scores and the official Match of the Round. Calculation uses selected prediction sets only."
+          description="Verified fixtures can be stored as a confirmed total. Provisional, pending, and conflict fixtures stay on the live results page."
           id="results"
           title="Round results"
         >
@@ -204,6 +206,8 @@ export default async function RoundPage({
             <ul className="divide-y divide-zinc-100 text-sm">
               {round.matches.map((match) => {
                 const played = match.actualHomeGoals != null && match.actualAwayGoals != null;
+                const confidence = fixtureMode(match);
+                const tone = confidence === "verified" ? "success" : confidence === "conflict" ? "danger" : confidence === "provisional" ? "warning" : "neutral";
                 return (
                   <li className="flex flex-wrap items-center justify-between gap-2 py-2" key={match.id}>
                     <span className="flex flex-wrap items-center gap-2">
@@ -211,19 +215,23 @@ export default async function RoundPage({
                         {match.homeTeam} — {match.awayTeam}
                       </span>
                       {match.isMatchOfTheRound ? <Badge tone="info">Official MT</Badge> : null}
+                      <Badge tone={tone}>{confidenceLabel(confidence, match.resultConflict && match.conflictAcknowledgedAt != null)}</Badge>
                     </span>
                     {played ? (
                       <span className="font-medium tabular-nums">
                         {match.actualHomeGoals}–{match.actualAwayGoals}
                       </span>
                     ) : (
-                      <span className="text-zinc-400">No result</span>
+                      <span className="text-zinc-400">Pending</span>
                     )}
                   </li>
                 );
               })}
             </ul>
           )}
+          <p className="mt-4 text-sm text-zinc-600">
+            Live points update on Round results without being stored. Calculate writes the confirmed season total only after every fixture is verified.
+          </p>
           <form action={calculateRoundAction} className="mt-4">
             <input name="roundId" type="hidden" value={round.id} />
             <SubmitButton pendingLabel="Calculating…" variant="primary">
@@ -235,7 +243,7 @@ export default async function RoundPage({
           ) : (
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Latest ranking</h3>
+                <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Stored confirmed ranking</h3>
                 <Link className="text-sm text-zinc-600 hover:text-zinc-950" href={`/admin/rounds/${round.id}/results`}>
                   Breakdown
                 </Link>

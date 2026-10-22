@@ -4,9 +4,10 @@ import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { exportSeasonStandings } from "@/lib/domain/export/export-season-standings";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { loadLiveSeason } from "@/lib/domain/standings/load-live";
 import { SeasonLayers } from "../../../layers";
 import { CopyButton } from "../../../copy-button";
-import { CrumbLink, EmptyState, Notice, PageBody, PageHeader, Section, StandingsTable, buttonClass } from "../../../ui";
+import { CrumbLink, DataTable, EmptyState, MovementCell, Notice, PageBody, PageHeader, Section, StandingsTable, Th, buttonClass } from "../../../ui";
 
 export const instant = false;
 
@@ -21,7 +22,7 @@ export default async function SeasonStandingsPage({
   if (!season) {
     notFound();
   }
-  const snapshot = await latestSeasonSnapshot(season.id);
+  const [snapshot, live] = await Promise.all([latestSeasonSnapshot(season.id), loadLiveSeason(season.id)]);
   const rows = snapshot?.standingSnapshots ?? [];
   const text = exportSeasonStandings(
     rows.map((row) => ({
@@ -44,7 +45,7 @@ export default async function SeasonStandingsPage({
             <CrumbLink href={`/admin/seasons/${season.id}`}>{season.name}</CrumbLink>
           </>
         }
-        description="Computed from scored rounds. This is not the trusted baseline and it does not include unresolved parser rows."
+        description="The trusted baseline stays unchanged. Confirmed rounds after it are added separately from the current live delta."
         nav={
           snapshot ? (
             <Link className={buttonClass("secondary")} href={`/admin/rounds/${snapshot.id}`}>
@@ -56,16 +57,72 @@ export default async function SeasonStandingsPage({
       />
       <PageBody>
         <SeasonLayers current="computed" seasonId={season.id} />
+        <Section
+          description={
+            live.baselineLabel
+              ? `${live.baselineLabel}. Rounds through ${live.baselineAfterRound} stay inside that baseline and are not added again.`
+              : "No trusted baseline is stored, so the confirmed total starts at zero."
+          }
+          id="live-season"
+          title="Provisional season"
+        >
+          {live.unverifiedRounds.length > 0 ? (
+            <p className="mb-3 text-sm text-zinc-600">
+              Live delta is from {live.unverifiedRounds.map((round) => round.name ?? `round ${round.number}`).join(", ")}. It includes verified and provisional match points from those rounds and is not part of the confirmed total.
+            </p>
+          ) : (
+            <p className="mb-3 text-sm text-zinc-600">No unfinished round is adding a live delta. The live total matches the confirmed total.</p>
+          )}
+          {live.verifiedUnstored.length > 0 ? (
+            <p className="mb-3 text-sm text-zinc-600">
+              {live.verifiedUnstored.map((round) => round.name ?? `Round ${round.number}`).join(", ")} {live.verifiedUnstored.length === 1 ? "is" : "are"} verified and not in the confirmed total until you calculate {live.verifiedUnstored.length === 1 ? "it" : "them"}.
+            </p>
+          ) : null}
+          {live.rows.length === 0 ? (
+            <EmptyState detail="Add a baseline or calculate a verified round." title="No season rows" />
+          ) : (
+            <DataTable>
+              <thead>
+                <tr className="border-b border-zinc-200">
+                  <Th>Live rank</Th>
+                  <Th>Move</Th>
+                  <Th>Participant</Th>
+                  <Th className="text-right">Baseline</Th>
+                  <Th className="text-right">Confirmed rounds</Th>
+                  <Th className="text-right">Confirmed total</Th>
+                  <Th className="text-right">Live delta</Th>
+                  <Th className="text-right">Live total</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {live.rows.map((row) => (
+                  <tr className="border-b border-zinc-100 last:border-0" key={row.participantId}>
+                    <td className="px-3 py-2.5 text-zinc-500 tabular-nums">{row.liveRank}</td>
+                    <td className="px-3 py-2.5">
+                      <MovementCell movement={row.movement} previousRank={row.confirmedRank} rank={row.liveRank} />
+                    </td>
+                    <td className="px-3 py-2.5 font-medium">{row.name}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{row.baselinePoints}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{row.confirmedRoundPoints}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{row.confirmedTotal}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{row.liveDelta}</td>
+                    <td className="px-3 py-2.5 text-right font-medium tabular-nums">{row.liveTotal}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
+        </Section>
         {!snapshot ? (
-          <Section id="standings" title="Computed standings">
+          <Section id="standings" title="Stored confirmed calculation">
             <EmptyState detail="Enter actual scores and calculate a round. The manual baseline stays on its own screen." title="No computed table yet" />
           </Section>
         ) : (
           <>
-            <Notice label="Computed standings" tone="info">
+            <Notice label="Stored confirmed calculation" tone="info">
               After {snapshot.name ?? `round ${snapshot.number}`}. Compare this table with the trusted baseline on the reconciliation screen.
             </Notice>
-            <Section id="standings" title="Table">
+            <Section id="stored" title="Stored table">
               <StandingsTable rows={rows} />
             </Section>
             <Section

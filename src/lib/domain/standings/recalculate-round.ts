@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { defaultScoringConfig, scoringConfigFromRecord } from "@/lib/config/scoring";
+import { fixtureConfidence, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
 import { scoreRound } from "@/lib/domain/scoring/score-round";
 import type { RoundScoreResult } from "@/lib/domain/scoring/types";
 import type { StoredBreakdown } from "@/lib/domain/export/export-audit";
@@ -80,12 +81,25 @@ export async function recalculateRound(roundId: string): Promise<number> {
   if (round.matches.length === 0) {
     throw new Error("Add fixtures before calculating this round");
   }
-  const missing = round.matches.filter(
-    (match) => match.actualHomeGoals == null || match.actualAwayGoals == null,
-  );
-  if (missing.length > 0) {
-    const names = missing.map((match) => `${match.homeTeam} — ${match.awayTeam}`).join(", ");
-    throw new Error(`Enter actual scores for: ${names}`);
+  const unconfirmed = round.matches.flatMap((match) => {
+    const fixture: LiveFixtureInput = {
+      matchId: match.id,
+      label: `${match.homeTeam} — ${match.awayTeam}`,
+      actualHomeGoals: match.actualHomeGoals,
+      actualAwayGoals: match.actualAwayGoals,
+      resultState: match.resultState,
+      resultResolution: match.resultResolution,
+      resultConflict: match.resultConflict,
+      conflictAcknowledged: match.conflictAcknowledgedAt != null,
+      isMatchOfTheRound: match.isMatchOfTheRound,
+    };
+    const confidence = fixtureConfidence(fixture);
+    return confidence === "verified" ? [] : [`${fixture.label} (${confidence})`];
+  });
+  if (unconfirmed.length > 0) {
+    throw new Error(
+      `This round is still live: ${unconfirmed.join(", ")}. Provisional points stay on the results page. A confirmed total is stored only after every fixture is verified.`,
+    );
   }
   if (round.predictionSets.length === 0) {
     throw new Error("No selected prediction set to score");

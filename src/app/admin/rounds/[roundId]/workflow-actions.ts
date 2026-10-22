@@ -174,7 +174,25 @@ export async function pollDueAction(formData: FormData): Promise<void> {
     const report = await pollDueRounds();
     refresh(roundId);
     if (!report.checked) {
-      redirect(`${fixturesPath(roundId)}?polled=stopped`);
+      const round = await prisma.round.findUniqueOrThrow({
+        where: { id: roundId },
+        include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+      });
+      const plan = planRoundPoll(
+        round.matches.map((item) => ({
+          kickoffAt: item.kickoffAt,
+          actualHomeGoals: item.actualHomeGoals,
+          actualAwayGoals: item.actualAwayGoals,
+          resultState: item.resultState,
+          resultResolution: item.resultResolution,
+          resultConflict: item.resultConflict,
+          conflictAcknowledgedAt: item.conflictAcknowledgedAt,
+          liveReported: item.resultObservations.some((observation) => observation.matchStatus === "live"),
+        })),
+        new Date(),
+        pollIntervals(),
+      );
+      redirect(`${fixturesPath(roundId)}?polled=${plan.active ? "waiting" : "stopped"}`);
     }
     const result = report.seasons[0]?.report;
     const failed = result?.sources.filter((source) => source.status === "failed").length ?? 0;
@@ -221,7 +239,7 @@ export async function acknowledgeConflictAction(formData: FormData): Promise<voi
     });
     const round = await prisma.round.findUniqueOrThrow({
       where: { id: roundId },
-      include: { matches: true },
+      include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
     });
     const plan = planRoundPoll(
       round.matches.map((item) => ({
@@ -232,6 +250,7 @@ export async function acknowledgeConflictAction(formData: FormData): Promise<voi
         resultResolution: item.resultResolution,
         resultConflict: item.resultConflict,
         conflictAcknowledgedAt: item.conflictAcknowledgedAt,
+        liveReported: item.resultObservations.some((observation) => observation.matchStatus === "live"),
       })),
       new Date(),
       pollIntervals(),
