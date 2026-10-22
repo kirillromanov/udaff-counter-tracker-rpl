@@ -11,6 +11,7 @@ import {
   type RankedLiveScore,
 } from "@/lib/domain/scoring/live-score";
 import { oneSelectedSetPerParticipant } from "./recalculate-round";
+import { countsTowardProduction } from "./round-role";
 
 function toFixture(match: {
   id: string;
@@ -81,8 +82,8 @@ export interface LiveSeasonView {
   baselineLabel: string | null;
   rows: LiveSeasonRow[];
   unverifiedRounds: { number: number; name: string | null }[];
-  /** In progress, but already covered by the trusted baseline, so their points are not added again. */
-  baselineOpenRounds: { id: string; number: number; name: string | null }[];
+  /** Reference rounds inside the trusted baseline. Their scores are never added to production standings. */
+  archivedRounds: { id: string; number: number; name: string | null }[];
   verifiedUnstored: { number: number; name: string | null }[];
 }
 
@@ -112,23 +113,23 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
 
   const baselineAfterRound = checkpoint?.afterRoundNumber ?? null;
   const unverifiedRounds: { number: number; name: string | null }[] = [];
-  const baselineOpenRounds: { id: string; number: number; name: string | null }[] = [];
+  const archivedRounds: { id: string; number: number; name: string | null }[] = [];
   const verifiedUnstored: { number: number; name: string | null }[] = [];
   const seasonRounds = rounds.flatMap((round) => {
-    const insideBaseline = baselineAfterRound != null && round.number <= baselineAfterRound;
+    if (!countsTowardProduction(round.standingRole, round.number, baselineAfterRound)) {
+      archivedRounds.push({ id: round.id, number: round.number, name: round.name });
+      return [];
+    }
     const fixtures = round.matches.map(toFixture);
     const complete = roundIsComplete(fixtures);
     if (!complete) {
-      if (insideBaseline) {
-        baselineOpenRounds.push({ id: round.id, number: round.number, name: round.name });
-        return [];
-      }
       unverifiedRounds.push({ number: round.number, name: round.name });
       const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
       const sets = oneSelectedSetPerParticipant(round.predictionSets);
       return [
         {
           order: round.number,
+          production: true,
           complete: false,
           scores: sets.map((set) => {
             const predictions = set.predictions.flatMap((prediction) =>
@@ -147,14 +148,13 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
       ];
     }
     if (round.roundScores.length === 0) {
-      if (!insideBaseline) {
-        verifiedUnstored.push({ number: round.number, name: round.name });
-      }
+      verifiedUnstored.push({ number: round.number, name: round.name });
       return [];
     }
     return [
       {
         order: round.number,
+        production: true,
         complete: true,
         scores: round.roundScores.map((score) => ({
           participantId: score.participantId,
@@ -169,7 +169,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
     baselineAfterRound: checkpoint?.afterRoundNumber ?? null,
     baselineLabel: checkpoint?.label ?? null,
     unverifiedRounds,
-    baselineOpenRounds,
+    archivedRounds,
     verifiedUnstored,
     rows: buildLiveSeasonTable({
       baselineAfterRound,

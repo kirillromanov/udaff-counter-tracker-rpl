@@ -15,7 +15,7 @@ export function SeasonLayers({
         {
           href: `/admin/seasons/${seasonId}/checkpoint`,
           label: "Trusted baseline",
-          detail: "Hand-checked table. Scoring does not read it.",
+          detail: "Hand-checked table. Production standings start here.",
           current: current === "baseline",
         },
         {
@@ -26,14 +26,14 @@ export function SeasonLayers({
         },
         {
           href: `/admin/seasons/${seasonId}/standings`,
-          label: "Computed standings",
-          detail: "Written only after actual scores exist.",
+          label: "Production standings",
+          detail: "Baseline plus finalized rounds after it.",
           current: current === "computed",
         },
         {
           href: `/admin/seasons/${seasonId}/reconciliation`,
           label: "Unresolved review",
-          detail: "Flags, aliases, and baseline gaps.",
+          detail: "Ignored users, aliases, unknown authors, and baseline gaps.",
           current: current === "review",
         },
       ]}

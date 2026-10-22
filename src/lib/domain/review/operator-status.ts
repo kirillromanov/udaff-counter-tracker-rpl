@@ -16,9 +16,9 @@ export type OperatorStatus =
 export const OPERATOR_LABEL: Record<OperatorStatus, string> = {
   accepted: "Accepted",
   flagged: "Flagged",
-  unmatched_participant: "Unmatched participant",
-  alias_suggestion: "Alias suggestion",
-  ignored_author: "Ignored non-participant",
+  unmatched_participant: "Unknown author",
+  alias_suggestion: "Alias",
+  ignored_author: "Ignored user",
   malformed_prediction: "Malformed prediction",
   manual_override: "Manual override",
   baseline_mismatch: "Baseline mismatch",
@@ -167,9 +167,23 @@ export function rowInReconciliationView(
   return row.status !== "exact";
 }
 
-export function roundLayerLabel(status: string, scoredParticipants: number): "Computed" | "Imported raw" | "Draft" {
-  if (status === "scored" || scoredParticipants > 0) {
-    return "Computed";
+export function roundLayerLabel(
+  status: string,
+  scoredParticipants: number,
+  standingRole?: string,
+): "Reference total" | "Confirmed round" | "Imported raw" | "Draft" | "Archived round" {
+  const scored = status === "scored" || scoredParticipants > 0;
+  if (standingRole === "archived") {
+    if (scored) {
+      return "Reference total";
+    }
+    if (status === "imported") {
+      return "Imported raw";
+    }
+    return "Archived round";
+  }
+  if (scored) {
+    return "Confirmed round";
   }
   if (status === "imported") {
     return "Imported raw";

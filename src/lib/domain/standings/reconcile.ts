@@ -168,7 +168,7 @@ export function computedRebuildBlocker(
   rounds: { number: number; fixtureCount: number; scoredFixtureCount: number; selectedCount: number }[],
 ): string | null {
   if (rounds.length === 0) {
-    return "No rounds are available to calculate. The manual baseline was left unchanged.";
+    return "No archived rounds are available to check. The trusted baseline was left unchanged. Production standings were not changed.";
   }
   const problems: string[] = [];
   for (const round of [...rounds].sort((left, right) => left.number - right.number)) {
@@ -186,7 +186,7 @@ export function computedRebuildBlocker(
     return null;
   }
   const sentence = problems.map((problem) => problem.charAt(0).toUpperCase() + problem.slice(1)).join(". ");
-  return `Computed standings were not written, and the manual baseline was left unchanged. ${sentence}.`;
+  return `The reference check was not written. The trusted baseline was left unchanged. Production standings were not changed. ${sentence}.`;
 }
 
 function decisionFor(decisions: StoredDecision[], subjectName: string): StoredDecision | null {
@@ -259,7 +259,7 @@ function classifyComputedGap(
         : `Actual scores are missing for ${listRounds(roundsMissingActuals)}.`;
     return {
       cause: "missing_round_data",
-      detail: `Calculated standings after this checkpoint do not exist. ${blocker} ${coverage} The manual baseline was left unchanged.`,
+      detail: `No reference calculation is stored for the archived rounds inside this checkpoint. ${blocker} ${coverage} The trusted baseline was left unchanged. Production standings were not changed.`,
     };
   }
   return coverageCause(accepted, flagged, missing);

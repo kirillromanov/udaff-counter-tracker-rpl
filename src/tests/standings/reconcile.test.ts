@@ -304,7 +304,12 @@ describe("reconciliation report", () => {
         { number: 6, fixtureCount: 8, scoredFixtureCount: 0, selectedCount: 18 },
         { number: 7, fixtureCount: 8, scoredFixtureCount: 8, selectedCount: 21 },
       ]),
-    ).toMatch(/manual baseline was left unchanged/);
+    ).toMatch(/trusted baseline was left unchanged/);
+    expect(
+      computedRebuildBlocker([
+        { number: 6, fixtureCount: 8, scoredFixtureCount: 0, selectedCount: 18 },
+      ]),
+    ).toMatch(/Production standings were not changed/);
     expect(
       computedRebuildBlocker([{ number: 1, fixtureCount: 8, scoredFixtureCount: 8, selectedCount: 15 }]),
     ).toBeNull();

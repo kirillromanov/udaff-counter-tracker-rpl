@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { importRounds } from "@/lib/domain/import/batch-import";
+import { standingRoleForRound } from "@/lib/domain/standings/round-role";
 
 function slugify(value: string): string {
   const slug = value
@@ -57,12 +58,18 @@ export async function createRoundAction(formData: FormData): Promise<void> {
       throw new Error("Round number must be a positive integer");
     }
     const name = String(formData.get("name") ?? "").trim();
+    const checkpoint = await prisma.standingsCheckpoint.findFirst({
+      where: { seasonId, source: "manual" },
+      orderBy: { afterRoundNumber: "desc" },
+      select: { afterRoundNumber: true },
+    });
     const round = await prisma.round.create({
       data: {
         seasonId,
         number,
         name: name || null,
         status: "open",
+        standingRole: standingRoleForRound(number, checkpoint?.afterRoundNumber ?? null),
       },
     });
     revalidatePath(path);

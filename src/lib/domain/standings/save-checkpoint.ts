@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { matchCheckpointRows, parseStandingsCheckpoint } from "./parse-checkpoint";
+import { syncRoundStandingRoles } from "./sync-round-roles";
 
 export async function saveManualCheckpoint(input: {
   seasonId: string;
@@ -44,5 +45,6 @@ export async function saveManualCheckpoint(input: {
     },
   });
 
+  await syncRoundStandingRoles(input.seasonId);
   return { matched: rows.length - unmatched.length, unmatched };
 }

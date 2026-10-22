@@ -37,6 +37,9 @@ model Round {
   /// Schedule notes from the last import, such as a missing Match of the Round.
   importNotes String?
   status    String   @default("draft")
+  /// archived: baseline source kept for parser and source checks. Excluded from production standings.
+  /// operational: active production round. Finalized points are added on top of the trusted baseline.
+  standingRole          String    @default("operational")
   /// scheduled, live, or finalized. Finalized rounds are left out of the next poll.
   pollStatus            String    @default("scheduled")
   lastPolledAt          DateTime?

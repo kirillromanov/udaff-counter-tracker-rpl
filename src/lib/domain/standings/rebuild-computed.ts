@@ -3,8 +3,9 @@ import { recalculateRound } from "./recalculate-round";
 import { computedRebuildBlocker } from "./reconcile";
 
 /**
- * Scores rounds 1..afterRoundNumber with the existing scoring engine.
- * Does nothing, including to the manual checkpoint, when any round is incomplete.
+ * Scores archived rounds through the trusted baseline for a reference comparison.
+ * Does not publish production standings and does not change the checkpoint.
+ * Does nothing when any of those rounds is incomplete.
  */
 export async function rebuildComputedStandings(seasonId: string, afterRoundNumber: number): Promise<number> {
   const rounds = await prisma.round.findMany({

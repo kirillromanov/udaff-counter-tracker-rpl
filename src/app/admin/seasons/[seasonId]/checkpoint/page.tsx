@@ -38,7 +38,7 @@ export default async function CheckpointPage({
             <CrumbLink href={`/admin/seasons/${season.id}`}>{season.name}</CrumbLink>
           </>
         }
-        description="Trusted manual baseline. Parser output and computed standings are separate and do not change this table."
+        description="Trusted baseline after the archived rounds. Production standings start here. Parser review and the reference check do not replace this table."
         title="Trusted baseline"
       />
       <PageBody>
@@ -49,9 +49,8 @@ export default async function CheckpointPage({
           </Section>
         ) : (
           <>
-            <Notice label="Trusted manual baseline" tone="info">
-              {checkpoint.label}. {checkpoint.rows.length} rows, source {checkpoint.source}. This table is not calculated
-              and review actions cannot replace it. ☼ is a marker count and lines up with round wins during reconciliation.
+            <Notice label="Trusted baseline" tone="info">
+              {checkpoint.label}. {checkpoint.rows.length} rows, source {checkpoint.source}. Production standings start from these points. Review actions cannot replace this table. ☼ is a marker count from the archived rounds.
             </Notice>
             {unmatched.length > 0 ? (
               <Notice tone="warning">
@@ -68,11 +67,11 @@ export default async function CheckpointPage({
                     Reconciliation report
                   </Link>
                   <Link className="text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/standings`}>
-                    Calculated standings
+                    Production standings
                   </Link>
                 </span>
               }
-              description="Later calculated standings for this season are compared by participant on rank, points, movement direction and delta, and marker count against round wins. This table is not an input to scoring."
+              description="Rounds through this checkpoint are archived. A production round after it is added on top of these points. The reconciliation report compares a reference calculation with this table and does not replace it."
               title={`After round ${checkpoint.afterRoundNumber}`}
             >
               <div className="overflow-x-auto">

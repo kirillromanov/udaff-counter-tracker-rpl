@@ -211,7 +211,7 @@ export default async function RoundImportPage({
           <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}
             {round.forumUrl ? ` from ${round.forumUrl}` : ""}. The default list is unresolved review. Accepted slips stay out of
-            that list until you open them. This page does not write the baseline or computed standings.
+            that list until you open them. This page does not write the trusted baseline or the confirmed season total.
           </Notice>
         ) : null}
         {round.importNotes ? <Notice tone="warning">{round.importNotes}</Notice> : null}

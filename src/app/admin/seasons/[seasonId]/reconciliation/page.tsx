@@ -94,14 +94,14 @@ function DecisionControls({
           {fields()}
           <input name="action" type="hidden" value="accept_computed" />
           <SubmitButton pendingLabel="Saving…" variant="primary">
-            Accept computed result
+            Accept reference result
           </SubmitButton>
         </form>
       ) : null}
       <form action={reconciliationDecisionAction}>
         {fields()}
         <input name="action" type="hidden" value="keep_manual" />
-        <SubmitButton pendingLabel="Saving…">Keep manual baseline</SubmitButton>
+        <SubmitButton pendingLabel="Saving…">Keep trusted baseline</SubmitButton>
       </form>
       <form action={reconciliationDecisionAction} className="flex flex-wrap items-center gap-2">
         {fields()}
@@ -131,8 +131,8 @@ function ComparisonTable({
         <thead>
           <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
             <th className="py-2 pr-3 font-medium">Name</th>
-            <th className="py-2 pr-3 font-medium">Manual</th>
-            <th className="py-2 pr-3 font-medium">Computed</th>
+            <th className="py-2 pr-3 font-medium">Trusted baseline</th>
+            <th className="py-2 pr-3 font-medium">Reference calculation</th>
             <th className="py-2 pr-3 font-medium">Cause</th>
             <th className="py-2 font-medium">Review</th>
           </tr>
@@ -480,14 +480,14 @@ export default async function ReconciliationPage({
             <CrumbLink href={`/admin/seasons/${data.seasonId}/checkpoint`}>Checkpoint</CrumbLink>
           </>
         }
-        description="Calculated standings compared with the trusted manual table. Review choices stay beside the checkpoint and do not replace it."
+        description="Reference check of the archived rounds against the trusted baseline. Choices stay beside the checkpoint. They do not change production standings."
         nav={
           data.report ? (
             <form action={rebuildComputedAction}>
               <input name="seasonId" type="hidden" value={data.seasonId} />
               <input name="afterRoundNumber" type="hidden" value={data.report.afterRoundNumber} />
               <SubmitButton pendingLabel="Rebuilding…" variant="primary">
-                Rebuild computed standings
+                Check archived rounds
               </SubmitButton>
             </form>
           ) : null
@@ -497,8 +497,8 @@ export default async function ReconciliationPage({
       <PageBody>
         <SeasonLayers current="review" seasonId={data.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
-        {query.saved ? <Notice tone="success">Saved a review decision for {query.saved}. The manual checkpoint was not changed.</Notice> : null}
-        {query.rebuilt ? <Notice tone="success">Calculated {query.rebuilt} round scores. The manual checkpoint was not changed.</Notice> : null}
+        {query.saved ? <Notice tone="success">Saved a review decision for {query.saved}. The trusted baseline was left unchanged. Production standings were not changed.</Notice> : null}
+        {query.rebuilt ? <Notice tone="success">Stored a reference calculation for {query.rebuilt} archived round scores. The trusted baseline was left unchanged. Production standings were not changed.</Notice> : null}
         {!data.report || data.afterRoundNumber == null ? (
           <Section title="No checkpoint">
             <EmptyState detail="Save the manual round 11 table before reconciling." title="Nothing to compare" />
@@ -510,7 +510,7 @@ export default async function ReconciliationPage({
                 {data.checkpointLabel}. After round {data.afterRoundNumber}.
               </span>
               <Link className={buttonClass("ghost")} href={`/admin/seasons/${data.seasonId}/checkpoint`}>
-                Open the manual baseline
+                Open the trusted baseline
               </Link>
             </div>
             {reportBody(data.report, data.seasonId, roundHref, data.participants, view, query.q ?? "")}

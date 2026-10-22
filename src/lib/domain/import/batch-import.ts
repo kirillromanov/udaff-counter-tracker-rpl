@@ -4,6 +4,7 @@ import { parseFixtureSchedule } from "@/lib/domain/forum/parse-schedule";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { ensureKnownIdentities } from "@/lib/domain/participants/registry";
 import { AUTHOR_NOTE } from "@/lib/domain/participants/resolve-author";
+import { syncRoundStandingRoles } from "@/lib/domain/standings/sync-round-roles";
 import { parseStoredComments, saveForumPost } from "./persist-import";
 import { ROUND_SOURCES, type RoundSource } from "./round-sources";
 
@@ -180,5 +181,6 @@ export async function importRounds(options: {
     }
   }
 
+  await syncRoundStandingRoles(options.seasonId);
   return reports;
 }

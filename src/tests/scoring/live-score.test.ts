@@ -208,4 +208,52 @@ describe("provisional season table", () => {
       movement: "up",
     });
   });
+
+  it("leaves an archived reference round out even when its number is after the baseline", () => {
+    const table = buildLiveSeasonTable({
+      baselineAfterRound: 11,
+      baseline: [{ participantId: "a", name: "Alpha", points: 100, medals: 0 }],
+      participants: [{ id: "a", name: "Alpha" }],
+      rounds: [
+        {
+          order: 14,
+          production: false,
+          complete: true,
+          scores: [{ participantId: "a", confirmedPoints: 50, provisionalPoints: 0 }],
+        },
+        {
+          order: 12,
+          production: true,
+          complete: true,
+          scores: [{ participantId: "a", confirmedPoints: 10, provisionalPoints: 0 }],
+        },
+      ],
+    });
+
+    expect(table[0]).toMatchObject({
+      baselinePoints: 100,
+      confirmedRoundPoints: 10,
+      liveDelta: 0,
+      confirmedTotal: 110,
+      liveTotal: 110,
+    });
+  });
+
+  it("does not add a round that is already inside the trusted baseline", () => {
+    const table = buildLiveSeasonTable({
+      baselineAfterRound: 11,
+      baseline: [{ participantId: "a", name: "Alpha", points: 100, medals: 0 }],
+      participants: [{ id: "a", name: "Alpha" }],
+      rounds: [
+        {
+          order: 11,
+          production: true,
+          complete: true,
+          scores: [{ participantId: "a", confirmedPoints: 40, provisionalPoints: 0 }],
+        },
+      ],
+    });
+
+    expect(table[0]).toMatchObject({ confirmedRoundPoints: 0, confirmedTotal: 100, liveTotal: 100 });
+  });
 });

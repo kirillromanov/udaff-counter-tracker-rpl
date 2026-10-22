@@ -12,6 +12,13 @@ export const SOURCE_POLICY = {
   verification: ["understat", "footbolno"],
 } as const;
 
+export function fallbackSourceLabel(source: string | null | undefined): "Fallback source used" | null {
+  if (!source) {
+    return null;
+  }
+  return (SOURCE_POLICY.fallback as readonly string[]).includes(source) ? "Fallback source used" : null;
+}
+
 export interface SourceHealth {
   source: string;
   role: SourceRole;

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { parseBreakdown } from "@/lib/domain/export/export-audit";
 import { confidenceLabel, fixtureConfidence, type LiveConfidence } from "@/lib/domain/scoring/live-score";
 import { loadLiveRound } from "@/lib/domain/standings/load-live";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { RoundNav } from "../../../round-nav";
 import {
   Badge,
@@ -87,12 +88,27 @@ export default async function RoundResultsPage({
             </CrumbLink>
           </>
         }
-        description="Live points follow the fixtures that have a result. A stored confirmed total is separate and is written only after every fixture is verified."
+        description={
+          round.standingRole === ARCHIVED_ROUND
+            ? "Reference points for an archived round. They are not added to production standings."
+            : "Live points follow the fixtures that have a result. A stored production total is written only after every fixture is verified."
+        }
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Round results"
       />
       <PageBody>
-        {query.calculated ? <Notice tone="success">Calculated {query.calculated} participants.</Notice> : null}
+        {query.calculated ? (
+          <Notice tone="success">
+            {round.standingRole === ARCHIVED_ROUND
+              ? `Stored a reference total for ${query.calculated} participants. Production standings were left unchanged.`
+              : `Calculated ${query.calculated} participants.`}
+          </Notice>
+        ) : null}
+        {round.standingRole === ARCHIVED_ROUND ? (
+          <Notice label="Archived reference" tone="info">
+            This table is for parser and scoring checks. The season total does not include it.
+          </Notice>
+        ) : null}
         {live ? (
           <Section
             description={

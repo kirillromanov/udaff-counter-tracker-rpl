@@ -21,7 +21,7 @@ export interface AuthorIdentityGroup {
 
 const KIND_LABEL: Record<AuthorKind, string> = {
   participant: "Known participant",
-  alias: "Known alias",
+  alias: "Alias",
   ignored: OPERATOR_LABEL.ignored_author,
   uncertain: OPERATOR_LABEL.alias_suggestion,
   unknown: OPERATOR_LABEL.unmatched_participant,
@@ -100,7 +100,7 @@ export function AuthorIdentityReview({
               ) : null}
               {kind === "ignored" ? (
                 <p className="mt-1 text-xs text-zinc-600">
-                  Ignored non-participant. These comments stay stored and are left out of prediction import.
+                  Ignored user. These comments stay stored and are left out of prediction import.
                 </p>
               ) : null}
               {known ? null : (
@@ -126,7 +126,7 @@ export function AuthorIdentityReview({
                       <input name="roundId" type="hidden" value={roundId} />
                       <input name="seasonId" type="hidden" value={seasonId} />
                       <input name="authorName" type="hidden" value={group.name} />
-                      <SubmitButton pendingLabel="Updating…">Mark ignored</SubmitButton>
+                      <SubmitButton pendingLabel="Updating…">Mark ignored user</SubmitButton>
                     </form>
                   )}
                   <form action={linkAuthorAction} className="flex flex-wrap items-end gap-2">

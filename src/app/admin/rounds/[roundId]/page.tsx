@@ -6,6 +6,7 @@ import { summarizeSets, toSetToneInput } from "@/lib/domain/import/review-status
 import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { fixtureMode } from "@/lib/domain/standings/load-live";
+import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
 import { RoundNav } from "../../round-nav";
 import { SubmitButton } from "../../submit-button";
 import {
@@ -64,12 +65,18 @@ export default async function RoundPage({
     }
     return left.participant.name.localeCompare(right.participant.name, "ru");
   });
-  const snapshot = await latestSeasonSnapshot(round.seasonId);
+  const snapshot = round.standingRole === ARCHIVED_ROUND ? null : await latestSeasonSnapshot(round.seasonId);
+  const archived = round.standingRole === ARCHIVED_ROUND;
 
   return (
     <>
       <PageHeader
-        badges={<StatusBadge status={round.status} />}
+        badges={
+          <>
+            <StatusBadge status={round.status} />
+            <Badge tone={archived ? "neutral" : "info"}>{standingRoleLabel(round.standingRole)}</Badge>
+          </>
+        }
         crumbs={
           <>
             <CrumbLink href="/admin">Seasons</CrumbLink>
@@ -77,16 +84,25 @@ export default async function RoundPage({
             <CrumbLink href={`/admin/seasons/${round.seasonId}`}>{round.season.name}</CrumbLink>
           </>
         }
-        description="Import the thread, correct the parser, enter results, then calculate."
+        description={
+          archived
+            ? "Archived reference round. Use it for parser checks, source checks, and debugging. Its points stay out of production standings."
+            : "Production round. A verified calculation is added on top of the trusted baseline."
+        }
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title={`${round.number}. ${round.name ?? "Round"}`}
       />
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        {archived ? (
+          <Notice label="Archived reference" tone="info">
+            This round is part of the trusted baseline. Parser review, fixtures, and a reference calculation stay available. Calculating it does not change production standings.
+          </Notice>
+        ) : null}
         {round.status === "imported" ? (
           <Notice label="Imported parser results" tone="info">
             These slips are raw parser output{round.fetchedAt ? `, fetched ${round.fetchedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}.
-            They are not the trusted baseline and they are not computed standings.
+            They are not the trusted baseline and they are not the confirmed season total.
             {round.importNotes ? ` ${round.importNotes}` : ""}
           </Notice>
         ) : null}
@@ -230,7 +246,9 @@ export default async function RoundPage({
             </ul>
           )}
           <p className="mt-4 text-sm text-zinc-600">
-            Live points update on Round results without being stored. Calculate writes the confirmed season total only after every fixture is verified.
+            {archived
+              ? "Live points on Round results are diagnostic. Calculate stores a reference total for this round only, after every fixture is verified."
+              : "Live points update on Round results without being stored. Calculate writes this round onto the production season total only after every fixture is verified."}
           </p>
           <form action={calculateRoundAction} className="mt-4">
             <input name="roundId" type="hidden" value={round.id} />
@@ -260,17 +278,21 @@ export default async function RoundPage({
             </Link>
           }
           description={
-            snapshot
-              ? `After ${snapshot.name ?? `round ${snapshot.number}`}. Changed places are tinted.`
-              : "The season table appears after the first calculation."
+            archived
+              ? "Production standings stay on the season page. This archived round is not added to them."
+              : snapshot
+                ? `Production table after ${snapshot.name ?? `round ${snapshot.number}`}. Changed places are tinted.`
+                : "Production standings are the trusted baseline until this round is calculated."
           }
           id="standings"
-          title="Season standings"
+          title="Production standings"
         >
-          {snapshot ? (
+          {archived ? (
+            <EmptyState detail="Open the season standings page. The trusted baseline is the current production total." title="Not part of the season total" />
+          ) : snapshot ? (
             <StandingsTable rows={snapshot.standingSnapshots} />
           ) : (
-            <EmptyState detail="Calculate this round, or an earlier one, to publish the table." title="No season table yet" />
+            <EmptyState detail="Calculate this production round after every fixture is verified." title="Baseline is still the season total" />
           )}
         </Section>
       </PageBody>

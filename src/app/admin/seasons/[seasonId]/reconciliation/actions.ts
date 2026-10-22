@@ -48,7 +48,7 @@ export async function reconciliationDecisionAction(formData: FormData): Promise<
       const page = await loadReconciliation(seasonId);
       const row = page?.report?.rows.find((item) => item.displayName === subjectName);
       if (!row?.computed) {
-        throw new Error("There is no computed standing to accept. The manual baseline was left unchanged.");
+        throw new Error("There is no reference result to accept. The trusted baseline was left unchanged. Production standings were not changed.");
       }
     }
     await prisma.reconciliationDecision.upsert({
@@ -146,7 +146,7 @@ export async function rebuildComputedAction(formData: FormData): Promise<void> {
       select: { rawText: true },
     });
     if (before?.rawText !== after?.rawText) {
-      throw new Error("The manual baseline changed during calculation. Review the checkpoint before trusting the report.");
+      throw new Error("The trusted baseline changed during the reference check. Review the checkpoint before trusting the report. Production standings were not changed.");
     }
     revalidatePath(`/admin/seasons/${seasonId}`);
     revalidatePath(`/admin/seasons/${seasonId}/standings`);

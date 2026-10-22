@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { roundLayerLabel } from "@/lib/domain/review/operator-status";
+import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { SeasonLayers } from "../../layers";
 import { createRoundAction, importRoundsAction } from "../../actions";
@@ -45,10 +46,20 @@ export default async function SeasonPage({
   if (!season) {
     notFound();
   }
-  const snapshot = await latestSeasonSnapshot(season.id);
+  const [snapshot, checkpoint] = await Promise.all([
+    latestSeasonSnapshot(season.id),
+    prisma.standingsCheckpoint.findFirst({
+      where: { seasonId: season.id, source: "manual" },
+      orderBy: { afterRoundNumber: "desc" },
+      include: { rows: { orderBy: { rank: "asc" }, take: 1 } },
+    }),
+  ]);
   const nextNumber = (season.rounds.at(-1)?.number ?? 0) + 1;
-  const scoredRounds = season.rounds.filter((round) => round._count.roundScores > 0).length;
+  const productionRounds = season.rounds.filter((round) => round.standingRole !== ARCHIVED_ROUND);
+  const archivedRounds = season.rounds.filter((round) => round.standingRole === ARCHIVED_ROUND);
+  const scoredRounds = productionRounds.filter((round) => round._count.roundScores > 0).length;
   const leader = snapshot?.standingSnapshots[0];
+  const baselineLeader = checkpoint?.rows[0];
   const [activeRoster, acceptedGroups, flaggedGroups] = await Promise.all([
     prisma.seasonParticipant.count({
       where: { seasonId: season.id, status: "included", participant: { archivedAt: null } },
@@ -77,7 +88,7 @@ export default async function SeasonPage({
             <span>{season.name}</span>
           </>
         }
-        description="Check the registry, review imported slips, then compare them with the trusted baseline. Computed standings stay separate."
+        description="Production standings start from the trusted baseline. Rounds through that baseline are archived reference data. Later rounds are added on top."
         nav={
           <div className="flex flex-wrap gap-2">
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/roster`}>
@@ -108,13 +119,17 @@ export default async function SeasonPage({
         {query.imported ? <Notice tone="success">{query.imported}</Notice> : null}
         <KpiGrid
           items={[
-            { label: "Rounds", value: season.rounds.length },
-            { label: "Scored", value: scoredRounds, hint: "Rounds with a calculation" },
+            { label: "Production rounds", value: productionRounds.length, hint: `${archivedRounds.length} archived` },
+            { label: "Scored", value: scoredRounds, hint: "Production rounds with a stored total" },
             { label: "On roster", value: activeRoster, hint: `${season._count.participants} roster rows` },
             {
               label: "Leader",
-              value: leader ? leader.totalPoints : "—",
-              hint: leader ? leader.participant.name : "Calculate a round",
+              value: leader ? leader.totalPoints : baselineLeader ? baselineLeader.totalPoints : "—",
+              hint: leader
+                ? leader.participant.name
+                : baselineLeader
+                  ? `${baselineLeader.displayName} · trusted baseline`
+                  : "Add a baseline",
             },
           ]}
         />
@@ -127,16 +142,25 @@ export default async function SeasonPage({
           }
           description={
             snapshot
-              ? `Computed after ${snapshot.name ?? `round ${snapshot.number}`}. This is not the trusted baseline.`
-              : "Empty until actual scores are entered and a round is calculated. This is not the trusted baseline."
+              ? `Trusted baseline plus finalized production rounds through ${snapshot.name ?? `round ${snapshot.number}`}.`
+              : checkpoint
+                ? `Trusted baseline after round ${checkpoint.afterRoundNumber}. Archived reference rounds are not added again.`
+                : "Add a trusted baseline, then calculate production rounds from the next round onward."
           }
           id="standings"
-          title="Computed standings"
+          title="Production standings"
         >
           {snapshot ? (
             <StandingsTable rows={snapshot.standingSnapshots} />
           ) : (
-            <EmptyState detail="Enter actual scores on a round, then calculate it. The manual baseline stays separate." title="No computed table yet" />
+            <EmptyState
+              detail={
+                checkpoint
+                  ? `${baselineLeader?.displayName ?? "The leader"} has ${baselineLeader?.totalPoints ?? 0} on the trusted baseline. Open Standings for the full table.`
+                  : "Save the manual checkpoint, then calculate a production round."
+              }
+              title={checkpoint ? "Baseline is the current total" : "No production table yet"}
+            />
           )}
         </Section>
 
@@ -155,60 +179,107 @@ export default async function SeasonPage({
               </SubmitButton>
             </form>
           }
-          description="Imported raw means the parser stored slips and did not calculate points. Computed means this round already has scores."
+          description="Production rounds are added to the trusted baseline. Archived rounds stay available for parser and source checks."
           id="rounds"
-          title="Round imports"
+          title="Rounds"
         >
           {season.rounds.length === 0 ? (
             <EmptyState detail="Create the first round with the form above." title="No rounds yet" />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
-                    <th className="py-2 pr-3 font-medium">Round</th>
-                    <th className="py-2 pr-3 font-medium">Layer</th>
-                    <th className="py-2 pr-3 font-medium">Fixtures</th>
-                    <th className="py-2 pr-3 font-medium">Accepted</th>
-                    <th className="py-2 pr-3 font-medium">Flagged</th>
-                    <th className="py-2 font-medium">Review</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {season.rounds.map((round) => {
-                    const layer = roundLayerLabel(round.status, round._count.roundScores);
-                    const flagged = flaggedByRound.get(round.id) ?? 0;
-                    return (
-                      <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
-                        <td className="py-2.5 pr-3">
-                          <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
-                            {round.number}. {round.name ?? "Round"}
-                          </Link>
-                        </td>
-                        <td className="py-2.5 pr-3">
-                          <Badge tone={layer === "Computed" ? "info" : layer === "Imported raw" ? "warning" : "neutral"}>
-                            {layer}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 pr-3 tabular-nums text-zinc-600">{round._count.matches}</td>
-                        <td className="py-2.5 pr-3 tabular-nums">{acceptedByRound.get(round.id) ?? 0}</td>
-                        <td className="py-2.5 pr-3 tabular-nums">
-                          {flagged > 0 ? <Badge tone="warning">{flagged}</Badge> : "0"}
-                        </td>
-                        <td className="py-2.5">
-                          <Link className="text-zinc-700 hover:underline" href={`/admin/rounds/${round.id}/review`}>
-                            Parser review
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-6">
+              <RoundGroup
+                acceptedByRound={acceptedByRound}
+                flaggedByRound={flaggedByRound}
+                rounds={productionRounds}
+                title="Production"
+              />
+              <RoundGroup
+                acceptedByRound={acceptedByRound}
+                flaggedByRound={flaggedByRound}
+                rounds={archivedRounds}
+                title="Archived reference"
+              />
             </div>
           )}
         </Section>
       </PageBody>
     </>
+  );
+}
+
+function RoundGroup({
+  title,
+  rounds,
+  acceptedByRound,
+  flaggedByRound,
+}: {
+  title: string;
+  rounds: {
+    id: string;
+    number: number;
+    name: string | null;
+    status: string;
+    standingRole: string;
+    _count: { roundScores: number; matches: number };
+  }[];
+  acceptedByRound: Map<string, number>;
+  flaggedByRound: Map<string, number>;
+}) {
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">{title}</h3>
+      {rounds.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          {title === "Production"
+            ? "Create round 12 or later. Its finalized total is added on top of the trusted baseline."
+            : "No archived reference rounds."}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
+                <th className="py-2 pr-3 font-medium">Round</th>
+                <th className="py-2 pr-3 font-medium">Role</th>
+                <th className="py-2 pr-3 font-medium">Layer</th>
+                <th className="py-2 pr-3 font-medium">Fixtures</th>
+                <th className="py-2 pr-3 font-medium">Accepted</th>
+                <th className="py-2 pr-3 font-medium">Flagged</th>
+                <th className="py-2 font-medium">Review</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rounds.map((round) => {
+                const layer = roundLayerLabel(round.status, round._count.roundScores, round.standingRole);
+                const flagged = flaggedByRound.get(round.id) ?? 0;
+                return (
+                  <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
+                    <td className="py-2.5 pr-3">
+                      <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
+                        {round.number}. {round.name ?? "Round"}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <Badge tone={round.standingRole === ARCHIVED_ROUND ? "neutral" : "info"}>{standingRoleLabel(round.standingRole)}</Badge>
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <Badge tone={layer === "Confirmed round" || layer === "Reference total" ? "info" : layer === "Imported raw" ? "warning" : "neutral"}>{layer}</Badge>
+                    </td>
+                    <td className="py-2.5 pr-3 tabular-nums text-zinc-600">{round._count.matches}</td>
+                    <td className="py-2.5 pr-3 tabular-nums">{acceptedByRound.get(round.id) ?? 0}</td>
+                    <td className="py-2.5 pr-3 tabular-nums">{flagged > 0 ? <Badge tone="warning">{flagged}</Badge> : "0"}</td>
+                    <td className="py-2.5">
+                      <Link className="text-zinc-700 hover:underline" href={`/admin/rounds/${round.id}/review`}>
+                        Parser review
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

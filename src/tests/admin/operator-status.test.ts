@@ -38,9 +38,9 @@ describe("operator review labels", () => {
   it("names the statuses an operator scans for", () => {
     expect(OPERATOR_LABEL.accepted).toBe("Accepted");
     expect(OPERATOR_LABEL.flagged).toBe("Flagged");
-    expect(OPERATOR_LABEL.unmatched_participant).toBe("Unmatched participant");
-    expect(OPERATOR_LABEL.alias_suggestion).toBe("Alias suggestion");
-    expect(OPERATOR_LABEL.ignored_author).toBe("Ignored non-participant");
+    expect(OPERATOR_LABEL.unmatched_participant).toBe("Unknown author");
+    expect(OPERATOR_LABEL.alias_suggestion).toBe("Alias");
+    expect(OPERATOR_LABEL.ignored_author).toBe("Ignored user");
     expect(OPERATOR_LABEL.malformed_prediction).toBe("Malformed prediction");
     expect(OPERATOR_LABEL.manual_override).toBe("Manual override");
     expect(OPERATOR_LABEL.baseline_mismatch).toBe("Baseline mismatch");
@@ -77,9 +77,11 @@ describe("operator review labels", () => {
     expect(rowInReconciliationView({ status: "mismatch", cause: "scoring_logic", displayName: "Hordi Cruyff" }, "scoring", "hordi")).toBe(true);
   });
 
-  it("labels an imported round separately from a calculated one", () => {
+  it("labels an imported round separately from a production total and an archived reference total", () => {
     expect(roundLayerLabel("imported", 0)).toBe("Imported raw");
-    expect(roundLayerLabel("scored", 12)).toBe("Computed");
+    expect(roundLayerLabel("scored", 12)).toBe("Confirmed round");
     expect(roundLayerLabel("open", 0)).toBe("Draft");
+    expect(roundLayerLabel("scored", 12, "archived")).toBe("Reference total");
+    expect(roundLayerLabel("open", 0, "archived")).toBe("Archived round");
   });
 });

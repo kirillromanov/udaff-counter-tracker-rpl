@@ -85,10 +85,10 @@ export default async function ParticipantsPage({
 
         <Section
           description="These forum accounts stay in the thread and are skipped during prediction import."
-          title="Ignored forum users"
+          title="Ignored users"
         >
           {ignoredAuthors.length === 0 ? (
-            <EmptyState title="No ignored forum users" />
+            <EmptyState title="No ignored users" />
           ) : (
             <ul className="space-y-2">
               {ignoredAuthors.map((author) => (
@@ -131,7 +131,7 @@ export default async function ParticipantsPage({
                 className="text-sm text-zinc-600 hover:text-zinc-950"
                 href={showArchived ? "/admin/participants" : "/admin/participants?archived=1"}
               >
-                {showArchived ? "Hide archived" : "Show archived"}
+                {showArchived ? "Hide archived participants" : "Show archived participants"}
               </Link>
             </form>
           }
@@ -185,7 +185,7 @@ export default async function ParticipantsPage({
                           )}
                         </td>
                         <td className="py-2.5 pr-3">
-                          {participant.archivedAt ? <Badge>Archived</Badge> : <Badge tone="success">Active</Badge>}
+                          {participant.archivedAt ? <Badge>Archived participant</Badge> : <Badge tone="success">Active</Badge>}
                         </td>
                         <td className="py-2.5">
                           {!season ? (

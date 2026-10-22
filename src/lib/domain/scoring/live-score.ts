@@ -56,6 +56,8 @@ export interface LiveSeasonRoundInput {
   order: number;
   /** Every fixture is verified, so the round may enter the confirmed season total. */
   complete: boolean;
+  /** Archived reference rounds are false and never enter production standings. */
+  production?: boolean;
   scores: { participantId: string; confirmedPoints: number; provisionalPoints: number }[];
 }
 
@@ -259,8 +261,8 @@ function baselineKey(row: LiveBaselineRow): string {
 }
 
 /**
- * Confirmed season total is the trusted baseline plus later rounds whose fixtures are all verified.
- * Points from an unfinished round stay in the live delta, including that round's already verified matches.
+ * Confirmed season total is the trusted baseline plus later operational rounds whose fixtures are all verified.
+ * Archived reference rounds are omitted. Points from an unfinished operational round stay in the live delta.
  */
 export function buildLiveSeasonTable(input: {
   baselineAfterRound: number | null;
@@ -289,7 +291,7 @@ export function buildLiveSeasonTable(input: {
   const floor = input.baselineAfterRound ?? 0;
 
   for (const round of input.rounds) {
-    if (round.order <= floor) {
+    if (round.production === false || round.order <= floor) {
       continue;
     }
     if (round.complete) {

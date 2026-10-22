@@ -35,6 +35,7 @@ async function main() {
       number: 11,
       name: "11th tour",
       status: "open",
+      standingRole: "archived",
       forumUrl: "https://canadaru.net/udaff_afterlife/sport/football/rpl/2633/",
       matches: {
         create: [

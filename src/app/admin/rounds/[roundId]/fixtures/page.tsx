@@ -2,12 +2,13 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { alignToFixture, type AlignedObservation } from "@/lib/domain/results/decide";
-import { fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, type FixturePhase } from "@/lib/domain/results/poll";
-import { unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
+import { fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
+import { fallbackSourceLabel, unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { rankFixtureResult, SOURCE_RANK, type CandidateStanding } from "@/lib/domain/results/ranking";
 import { RoundNav } from "../../../round-nav";
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 
 export const instant = false;
@@ -136,6 +137,11 @@ export default async function FixturesPage({
         title="Fixtures and results"
       />
       <PageBody>
+        {round.standingRole === ARCHIVED_ROUND ? (
+          <Notice label="Archived reference" tone="info">
+            Source checks on this round stay available. A fetched score updates this reference round and does not change production standings.
+          </Notice>
+        ) : null}
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Fixtures saved.</Notice> : null}
         {query.polled === "waiting" ? (
@@ -163,7 +169,7 @@ export default async function FixturesPage({
           title="Result polling"
         >
           <p className="text-sm text-zinc-700">
-            <Badge tone={pollPlan.pollStatus === "finalized" ? "success" : pollPlan.pollStatus === "live" ? "warning" : "neutral"}>{pollPlan.pollStatus}</Badge>{" "}
+            <Badge tone={pollPlan.pollStatus === "finalized" ? "success" : pollPlan.pollStatus === "live" ? "warning" : "neutral"}>{pollStatusLabel(pollPlan.pollStatus)}</Badge>{" "}
             {pollPlan.reason}
           </p>
           <p className="mt-2 text-xs text-zinc-600">
@@ -172,6 +178,7 @@ export default async function FixturesPage({
             Next check {nextCheckLabel(round.nextPollAt, pollPlan.active, rankedAt)}
             {" · "}
             Last successful source {round.lastSuccessfulSource ?? "none"}
+            {fallbackSourceLabel(round.lastSuccessfulSource) ? ` · ${fallbackSourceLabel(round.lastSuccessfulSource)}` : ""}
           </p>
           {round.pollHealthSummary ? <p className="mt-1 text-xs text-zinc-600">{round.pollHealthSummary}</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -331,7 +338,7 @@ export default async function FixturesPage({
                       {match.resultState === "manual"
                         ? "Manual score is selected. A later fetch will not replace it."
                         : ranking.selectedSource
-                          ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}. ${ranking.selectionReason}`
+                          ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
                           : ranking.selectionReason}
                     </p>
                     <ul className="mt-2 space-y-2">

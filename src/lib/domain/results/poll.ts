@@ -80,18 +80,28 @@ export function fixturePhase(fixture: PollFixture, now: Date): FixturePhase {
 
 export function fixturePhaseLabel(phase: FixturePhase, acknowledged: boolean): string {
   if (phase === "conflict-review") {
-    return acknowledged ? "conflict acknowledged" : "conflict review needed";
+    return acknowledged ? "Source conflict acknowledged" : "Source conflict";
   }
   if (phase === "finished-verified") {
-    return "finished verified";
+    return "Source verified";
   }
   if (phase === "finished-unverified") {
-    return "finished unverified";
+    return "Finished, not source verified";
   }
   if (phase === "live") {
-    return "live";
+    return "Live round";
   }
-  return "scheduled";
+  return "Scheduled";
+}
+
+export function pollStatusLabel(status: RoundPollStatus): "Live round" | "Finalized round" | "Scheduled" {
+  if (status === "live") {
+    return "Live round";
+  }
+  if (status === "finalized") {
+    return "Finalized round";
+  }
+  return "Scheduled";
 }
 
 /** A verified fixture is final. An acknowledged conflict stays visible but no longer blocks the round. */
