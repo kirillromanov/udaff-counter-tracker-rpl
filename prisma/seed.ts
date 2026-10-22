@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as scoringDb } from "../src/lib/db/prisma";
-import { KNOWN_ALIASES, KNOWN_PARTICIPANTS } from "../src/lib/domain/participants/known-participants";
-import { createParticipant, ensureAlias, setRosterStatus } from "../src/lib/domain/participants/registry";
+import { KNOWN_PARTICIPANTS } from "../src/lib/domain/participants/known-participants";
+import { createParticipant, ensureKnownIdentities, setRosterStatus } from "../src/lib/domain/participants/registry";
 import { ROUND_11_CHECKPOINT } from "../src/lib/domain/standings/round-11-checkpoint";
 import { saveManualCheckpoint } from "../src/lib/domain/standings/save-checkpoint";
 
@@ -27,11 +27,7 @@ async function main() {
     const participant = await createParticipant(name);
     await setRosterStatus(participant.id, season.id, "include");
   }
-  for (const [name, aliases] of Object.entries(KNOWN_ALIASES)) {
-    for (const alias of aliases) {
-      await ensureAlias(name, alias);
-    }
-  }
+  await ensureKnownIdentities();
 
   await prisma.round.create({
     data: {

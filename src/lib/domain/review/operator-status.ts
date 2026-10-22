@@ -7,6 +7,7 @@ export type OperatorStatus =
   | "flagged"
   | "unmatched_participant"
   | "alias_suggestion"
+  | "ignored_author"
   | "malformed_prediction"
   | "manual_override"
   | "baseline_mismatch"
@@ -17,6 +18,7 @@ export const OPERATOR_LABEL: Record<OperatorStatus, string> = {
   flagged: "Flagged",
   unmatched_participant: "Unmatched participant",
   alias_suggestion: "Alias suggestion",
+  ignored_author: "Ignored non-participant",
   malformed_prediction: "Malformed prediction",
   manual_override: "Manual override",
   baseline_mismatch: "Baseline mismatch",

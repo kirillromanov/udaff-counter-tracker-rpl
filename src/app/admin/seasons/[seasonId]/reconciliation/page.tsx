@@ -383,7 +383,7 @@ function reportBody(
       </Section>
 
       <Section
-        description="Unknown authors stay unmatched until you mark an alias. A shorter name is not linked on its own."
+        description="Known aliases are already linked. An uncertain shorter name stays here until you link it. Ignored forum users are left out."
         id="aliases"
         title="Duplicate and alias issues"
       >

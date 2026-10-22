@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db/prisma";
 import { fetchForumPost } from "@/lib/domain/forum/fetch-post";
 import { parseFixtureSchedule } from "@/lib/domain/forum/parse-schedule";
 import type { ForumPost } from "@/lib/domain/forum/types";
-import { KNOWN_ALIASES } from "@/lib/domain/participants/known-participants";
-import { ensureAlias } from "@/lib/domain/participants/registry";
+import { ensureKnownIdentities } from "@/lib/domain/participants/registry";
+import { AUTHOR_NOTE } from "@/lib/domain/participants/resolve-author";
 import { parseStoredComments, saveForumPost } from "./persist-import";
 import { ROUND_SOURCES, type RoundSource } from "./round-sources";
 
@@ -91,7 +91,11 @@ async function importOne(
     prisma.predictionSet.count({ where: { roundId: round.id, status: "accepted" } }),
     prisma.predictionSet.count({ where: { roundId: round.id, status: "flagged" } }),
     prisma.forumComment.count({
-      where: { roundId: round.id, reviewState: "flagged", reviewNote: "Author is not in the registry" },
+      where: {
+        roundId: round.id,
+        reviewState: "flagged",
+        reviewNote: { in: [AUTHOR_NOTE.uncertain, AUTHOR_NOTE.unknown] },
+      },
     }),
   ]);
   const notes = [...fixtures.notes];
@@ -130,11 +134,7 @@ export async function importRounds(options: {
 }): Promise<RoundImportReport[]> {
   const sources = options.sources ?? ROUND_SOURCES;
   const load = options.fetchPost ?? fetchForumPost;
-  for (const [name, aliases] of Object.entries(KNOWN_ALIASES)) {
-    for (const alias of aliases) {
-      await ensureAlias(name, alias);
-    }
-  }
+  await ensureKnownIdentities();
   const reports: RoundImportReport[] = [];
   const snapshots: { number: number; text: string }[] = [];
 

@@ -104,6 +104,15 @@ model ParticipantAlias {
   @@index([participantId])
 }
 
+/// A forum nick that is not a contest participant. Import stores the comment and skips predictions.
+model IgnoredForumAuthor {
+  id         String   @id @default(cuid())
+  name       String
+  normalized String   @unique
+  note       String?
+  createdAt  DateTime @default(now())
+}
+
 model SeasonParticipant {
   id            String    @id @default(cuid())
   seasonId      String
@@ -128,9 +137,11 @@ model ForumComment {
   postedAt   DateTime?
   rawHtml    String
   rawText    String
-  /// stored, accepted, or flagged. Flagged comments stay in review.
+  /// stored, accepted, flagged, or ignored. Flagged comments stay in review.
   reviewState String   @default("stored")
   reviewNote  String?
+  /// Parse this comment even when the author is on the ignored list.
+  importAnyway Boolean @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

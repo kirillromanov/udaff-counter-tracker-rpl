@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
+import { participantKey } from "@/lib/domain/import/participant-key";
+import { KNOWN_ALIASES, KNOWN_IGNORED_AUTHORS } from "./known-participants";
 import { applyRosterAction, canPermanentlyDelete, type MembershipState } from "./roster";
 import { normalizeParticipantName } from "./identity";
+import { creationBlocker, type IdentityCatalog } from "./resolve-author";
 
 function displayName(value: string): string {
   const name = value.trim();
@@ -48,6 +51,7 @@ export async function createParticipant(value: string) {
   if (existing) {
     throw new Error("A participant with that name already exists");
   }
+  await releaseIgnoredName(name);
   return prisma.participant.create({
     data: {
       name,
@@ -109,6 +113,7 @@ export async function addParticipantAlias(participantId: string, value: string):
   if (owner) {
     throw new Error("That name already belongs to another participant");
   }
+  await releaseIgnoredName(alias);
   await prisma.participantAlias.create({
     data: { participantId, alias, normalized: key, isPrimary: false },
   });
@@ -190,6 +195,150 @@ export async function deleteParticipantPermanently(participantId: string): Promi
     throw new Error("This participant has predictions or standings. Archive them instead");
   }
   await prisma.participant.delete({ where: { id: participantId } });
+}
+
+export async function loadIdentityCatalog(): Promise<IdentityCatalog> {
+  const [participants, ignored] = await Promise.all([
+    prisma.participant.findMany({ include: { aliases: true } }),
+    prisma.ignoredForumAuthor.findMany(),
+  ]);
+  return {
+    participants: participants.map((person) => ({
+      id: person.id,
+      name: person.name,
+      normalized: person.normalizedName ?? participantKey(person.name),
+    })),
+    aliases: participants.flatMap((person) =>
+      person.aliases.map((alias) => ({
+        participantId: person.id,
+        alias: alias.alias,
+        normalized: alias.normalized,
+      })),
+    ),
+    ignored: ignored.map((author) => ({ name: author.name, normalized: author.normalized })),
+  };
+}
+
+/** Attach the built-in aliases and ignored forum users. Existing rows are left in place. */
+export async function ensureKnownIdentities(): Promise<void> {
+  for (const [name, aliases] of Object.entries(KNOWN_ALIASES)) {
+    for (const alias of aliases) {
+      await ensureAlias(name, alias);
+    }
+  }
+  for (const name of KNOWN_IGNORED_AUTHORS) {
+    const key = participantKey(name);
+    if (!key || (await findParticipantByName(name))) {
+      continue;
+    }
+    await prisma.ignoredForumAuthor.upsert({
+      where: { normalized: key },
+      create: { name, normalized: key, note: "Forum user, not a contest participant" },
+      update: {},
+    });
+  }
+}
+
+async function releaseIgnoredName(value: string): Promise<void> {
+  const key = participantKey(value);
+  if (!key) {
+    return;
+  }
+  await prisma.ignoredForumAuthor.deleteMany({ where: { normalized: key } });
+}
+
+async function commentIdsForAuthor(value: string): Promise<string[]> {
+  const key = participantKey(value);
+  if (!key) {
+    return [];
+  }
+  const comments = await prisma.forumComment.findMany({ select: { id: true, authorName: true } });
+  return comments.filter((comment) => participantKey(comment.authorName) === key).map((comment) => comment.id);
+}
+
+export async function ignoreForumAuthor(value: string): Promise<void> {
+  const name = value.trim();
+  const key = participantKey(name);
+  if (!key) {
+    throw new Error("Author name is required");
+  }
+  const owner = await findParticipantByName(name);
+  if (owner) {
+    throw new Error(`${name} belongs to ${owner.name}. Remove that alias instead of ignoring the author.`);
+  }
+  await prisma.ignoredForumAuthor.upsert({
+    where: { normalized: key },
+    create: { name, normalized: key, note: "Marked ignored in review" },
+    update: { name },
+  });
+  const ids = await commentIdsForAuthor(name);
+  if (ids.length > 0) {
+    await prisma.forumComment.updateMany({
+      where: { id: { in: ids } },
+      data: { importAnyway: false },
+    });
+  }
+}
+
+export async function stopIgnoringForumAuthor(value: string): Promise<void> {
+  const key = participantKey(value);
+  if (!key) {
+    throw new Error("Author name is required");
+  }
+  await prisma.ignoredForumAuthor.deleteMany({ where: { normalized: key } });
+}
+
+export async function linkForumAuthor(authorName: string, participantId: string): Promise<void> {
+  const name = authorName.trim();
+  const key = participantKey(name);
+  if (!key) {
+    throw new Error("Author name is required");
+  }
+  const owner = await prisma.participant.findUnique({ where: { id: participantId } });
+  if (!owner) {
+    throw new Error("That participant is not in the registry");
+  }
+  const taken = await findParticipantByName(name);
+  if (taken && taken.id !== owner.id) {
+    throw new Error(`${name} already belongs to ${taken.name}. No duplicate was created.`);
+  }
+  await releaseIgnoredName(name);
+  if (!taken) {
+    await prisma.participantAlias.create({
+      data: { participantId: owner.id, alias: name, normalized: key, isPrimary: false },
+    });
+  }
+}
+
+export async function createParticipantForAuthor(value: string, seasonId: string) {
+  const blocker = creationBlocker(value, await loadIdentityCatalog());
+  if (blocker) {
+    throw new Error(blocker);
+  }
+  const participant = await createParticipant(value);
+  if (seasonId) {
+    await setRosterStatus(participant.id, seasonId, "include");
+  }
+  return participant;
+}
+
+export async function importAuthorAnyway(roundId: string, authorName: string): Promise<void> {
+  const key = participantKey(authorName);
+  if (!key) {
+    throw new Error("Author name is required");
+  }
+  const comments = await prisma.forumComment.findMany({
+    where: { roundId },
+    select: { id: true, authorName: true },
+  });
+  const ids = comments.filter((comment) => participantKey(comment.authorName) === key).map((comment) => comment.id);
+  if (ids.length === 0) {
+    throw new Error("That author has no comments on this round");
+  }
+  await prisma.forumComment.updateMany({
+    where: { id: { in: ids } },
+    data: { importAnyway: true },
+  });
 }
 
 /** Move nickname keys onto the surviving participant before the source row is removed. */

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
+import { reparseAuthor } from "@/lib/domain/import/persist-import";
 import {
   addParticipantAlias,
   archiveParticipant,
@@ -10,6 +11,7 @@ import {
   removeParticipantAlias,
   restoreParticipant,
   setRosterStatus,
+  stopIgnoringForumAuthor,
   updateParticipantName,
 } from "@/lib/domain/participants/registry";
 
@@ -28,6 +30,19 @@ function refresh(participantId?: string, seasonId?: string): void {
   if (seasonId) {
     revalidatePath(`/admin/seasons/${seasonId}`);
     revalidatePath(`/admin/seasons/${seasonId}/roster`);
+  }
+}
+
+export async function stopIgnoringAuthorAction(formData: FormData): Promise<void> {
+  const returnTo = String(formData.get("returnTo") ?? "/admin/participants");
+  const authorName = String(formData.get("authorName") ?? "");
+  try {
+    await stopIgnoringForumAuthor(authorName);
+    await reparseAuthor(authorName);
+    refresh();
+    redirect(`${returnTo}?ignored=1`);
+  } catch (error) {
+    fail(returnTo, error);
   }
 }
 

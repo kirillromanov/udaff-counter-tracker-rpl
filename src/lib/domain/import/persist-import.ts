@@ -2,7 +2,16 @@ import { prisma } from "@/lib/db/prisma";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import type { FixtureRef } from "@/lib/domain/parser/types";
-import { createParticipant, findParticipantByName, transferIdentity, updateParticipantName } from "@/lib/domain/participants/registry";
+import { participantKey } from "@/lib/domain/import/participant-key";
+import {
+  createParticipant,
+  ensureKnownIdentities,
+  findParticipantByName,
+  loadIdentityCatalog,
+  transferIdentity,
+  updateParticipantName,
+} from "@/lib/domain/participants/registry";
+import { AUTHOR_NOTE, effectiveAuthorResolution } from "@/lib/domain/participants/resolve-author";
 import { importNeedsReview, isAcceptableImport } from "./accept-import";
 import { readLines, readWarnings } from "./review-status";
 import { resolveSelections, type SelectableSet } from "./select-sets";
@@ -76,7 +85,9 @@ function predictionData(line: ReturnType<typeof rowsForStorage>[number]) {
   };
 }
 
-export async function parseStoredComments(roundId: string): Promise<number> {
+export async function parseStoredComments(roundId: string, options?: { authorKey?: string }): Promise<number> {
+  await ensureKnownIdentities();
+  const catalog = await loadIdentityCatalog();
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { orderBy: { sortOrder: "asc" } }, forumComments: true },
@@ -89,6 +100,10 @@ export async function parseStoredComments(roundId: string): Promise<number> {
 
   let parsedCount = 0;
   for (const comment of round.forumComments) {
+    const authorKey = participantKey(comment.authorName);
+    if (options?.authorKey && authorKey !== options.authorKey) {
+      continue;
+    }
     const existing = await prisma.predictionSet.findFirst({
       where: { forumCommentId: comment.id },
     });
@@ -96,22 +111,35 @@ export async function parseStoredComments(roundId: string): Promise<number> {
       continue;
     }
 
-    const parsed = parseComment(comment.rawText, fixtures);
-    const participant = await findParticipantByName(comment.authorName);
-    if (!participant) {
+    const resolution = effectiveAuthorResolution(comment.authorName, catalog, comment.importAnyway);
+    if (resolution.kind !== "participant" && resolution.kind !== "alias") {
+      if (existing) {
+        await prisma.predictionSet.delete({ where: { id: existing.id } });
+      }
       await prisma.forumComment.update({
         where: { id: comment.id },
         data: {
-          reviewState: "flagged",
-          reviewNote: "Author is not in the registry",
+          reviewState: resolution.kind === "ignored" ? "ignored" : "flagged",
+          reviewNote:
+            resolution.kind === "ignored"
+              ? AUTHOR_NOTE.ignored
+              : resolution.kind === "uncertain"
+                ? AUTHOR_NOTE.uncertain
+                : AUTHOR_NOTE.unknown,
         },
       });
       parsedCount += 1;
       continue;
     }
+
+    const parsed = parseComment(comment.rawText, fixtures);
+    const participantId = resolution.participantId;
+    if (!participantId) {
+      continue;
+    }
     const rows = rowsForStorage(parsed).map(predictionData);
     const shared = {
-      participantId: participant.id,
+      participantId,
       rawComment: comment.rawText,
       source: "import",
       status: "parsed",
@@ -141,6 +169,18 @@ export async function parseStoredComments(roundId: string): Promise<number> {
 
   await applyAutoSelection(roundId);
   return parsedCount;
+}
+
+export async function reparseAuthor(authorName: string): Promise<void> {
+  const key = participantKey(authorName);
+  if (!key) {
+    return;
+  }
+  const comments = await prisma.forumComment.findMany({ select: { roundId: true, authorName: true } });
+  const roundIds = [...new Set(comments.filter((comment) => participantKey(comment.authorName) === key).map((comment) => comment.roundId))];
+  for (const roundId of roundIds) {
+    await parseStoredComments(roundId, { authorKey: key });
+  }
 }
 
 export async function applyAutoSelection(roundId: string): Promise<void> {

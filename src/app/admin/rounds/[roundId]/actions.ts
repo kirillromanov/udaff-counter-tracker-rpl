@@ -8,10 +8,18 @@ import {
   mergeParticipants,
   parseStoredComments,
   renameParticipant,
+  reparseAuthor,
   saveForumPost,
   selectPredictionSet,
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
+import {
+  createParticipantForAuthor,
+  ignoreForumAuthor,
+  importAuthorAnyway,
+  linkForumAuthor,
+  stopIgnoringForumAuthor,
+} from "@/lib/domain/participants/registry";
 
 function reviewPath(roundId: string): string {
   return `/admin/rounds/${roundId}/review`;
@@ -91,6 +99,70 @@ export async function mergeParticipantsAction(formData: FormData): Promise<void>
   } catch (error) {
     fail(roundId, error);
   }
+}
+
+async function applyIdentity(
+  roundId: string,
+  seasonId: string,
+  authorName: string,
+  change: () => Promise<void>,
+): Promise<void> {
+  try {
+    await change();
+    await reparseAuthor(authorName);
+    refreshRound(roundId);
+    revalidatePath("/admin/participants");
+    if (seasonId) {
+      revalidatePath(`/admin/seasons/${seasonId}`);
+      revalidatePath(`/admin/seasons/${seasonId}/reconciliation`);
+    }
+    redirect(`${reviewPath(roundId)}?identity=1`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+export async function ignoreAuthorAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const authorName = String(formData.get("authorName") ?? "");
+  await applyIdentity(roundId, seasonId, authorName, () => ignoreForumAuthor(authorName));
+}
+
+export async function stopIgnoringAuthorAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const authorName = String(formData.get("authorName") ?? "");
+  await applyIdentity(roundId, seasonId, authorName, () => stopIgnoringForumAuthor(authorName));
+}
+
+export async function importIgnoredAuthorAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const authorName = String(formData.get("authorName") ?? "");
+  await applyIdentity(roundId, seasonId, authorName, () => importAuthorAnyway(roundId, authorName));
+}
+
+export async function linkAuthorAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const authorName = String(formData.get("authorName") ?? "");
+  const participantId = String(formData.get("participantId") ?? "");
+  await applyIdentity(roundId, seasonId, authorName, async () => {
+    if (!participantId) {
+      throw new Error("Choose the participant this author belongs to");
+    }
+    await linkForumAuthor(authorName, participantId);
+  });
+}
+
+export async function createAuthorParticipantAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const authorName = String(formData.get("authorName") ?? "");
+  await applyIdentity(roundId, seasonId, authorName, async () => {
+    await createParticipantForAuthor(authorName, seasonId);
+  });
 }
 
 export async function addManualSetAction(formData: FormData): Promise<void> {

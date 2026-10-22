@@ -206,28 +206,29 @@ describe("reconciliation report", () => {
     expect(report.missingParticipants[0]?.causeDetail).toMatch(/No prediction from this participant/);
   });
 
-  it("does not link a shorter forum name to the registry", () => {
+  it("leaves an unconfirmed shorter name for review", () => {
     const report = buildReconciliationReport(
       request({
+        registry: [...registry, { participantId: "doctor", name: "Doctor Livesey" }],
         rounds: [
           round({
             number: 2,
             unknownAuthors: [
-              { name: "Павел", commentCount: 4 },
+              { name: "Doctor", commentCount: 4 },
               { name: "LAX", commentCount: 2 },
             ],
           }),
-          round({ number: 5, unknownAuthors: [{ name: "павел", commentCount: 1 }] }),
+          round({ number: 5, unknownAuthors: [{ name: "doctor", commentCount: 1 }] }),
         ],
       }),
     );
-    const pavel = report.aliasIssues.find((issue) => issue.name === "Павел");
-    expect(pavel).toMatchObject({
+    const doctor = report.aliasIssues.find((issue) => issue.name === "Doctor");
+    expect(doctor).toMatchObject({
       commentCount: 5,
       cause: "participant_matching",
-      suspects: [{ participantId: "pavel", name: "Павел Абросимов" }],
+      suspects: [{ participantId: "doctor", name: "Doctor Livesey" }],
     });
-    expect(pavel?.detail).toMatch(/was not linked/);
+    expect(doctor?.detail).toMatch(/was not linked/);
     expect(report.aliasIssues.find((issue) => issue.name === "LAX")?.suspects).toEqual([]);
     expect(report.linkedAliases.map((alias) => alias.alias)).toEqual(["Zukoblya"]);
   });

@@ -106,7 +106,10 @@ export async function loadReconciliation(seasonId: string): Promise<Reconciliati
     rounds: rounds.map((round) => {
       const unknown = new Map<string, number>();
       for (const comment of round.forumComments) {
-        const unmatched = comment.predictionSets.length === 0 && (comment.reviewNote ?? "").includes("not in the registry");
+        const note = comment.reviewNote ?? "";
+        const unmatched =
+          comment.predictionSets.length === 0 &&
+          (note.includes("not in the registry") || note === "Uncertain identity match");
         if (!unmatched) {
           continue;
         }

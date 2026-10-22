@@ -2,8 +2,8 @@
  * Identity key for a forum nick.
  *
  * Case, ё/е, extra spaces, and punctuation wrapped around the nick
- * (`Йош!`, `  XXX  `) collapse to one participant. Extra words stay,
- * so `Павел` and `Павел Абросимов` remain different people.
+ * (`Йош!`, `  XXX  `) collapse to one key. Extra words stay different keys.
+ * A known alias, not this function, maps `Павел` onto `Павел Абросимов`.
  */
 export function participantKey(value: string): string {
   return value

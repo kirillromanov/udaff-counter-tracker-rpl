@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
-    "import:rounds": "tsx scripts/import-rounds.ts"
+    "import:rounds": "tsx scripts/import-rounds.ts",
+    "identity:sync": "tsx scripts/sync-identities.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

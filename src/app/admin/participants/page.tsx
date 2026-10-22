@@ -2,7 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { isActiveInSeason, type MembershipState } from "@/lib/domain/participants/roster";
-import { createParticipantAction } from "./actions";
+import { createParticipantAction, stopIgnoringAuthorAction } from "./actions";
 import { SubmitButton } from "../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../ui";
 
@@ -18,17 +18,18 @@ function membershipOf(status: string | undefined): MembershipState {
 export default async function ParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; saved?: string; seasonId?: string; archived?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; ignored?: string; seasonId?: string; archived?: string; q?: string }>;
 }) {
   await connection();
   const query = await searchParams;
   const search = (query.q ?? "").trim().toLocaleLowerCase("ru");
-  const [participants, seasons] = await Promise.all([
+  const [participants, seasons, ignoredAuthors] = await Promise.all([
     prisma.participant.findMany({
       include: { aliases: { orderBy: { alias: "asc" } }, seasons: true },
       orderBy: { name: "asc" },
     }),
     prisma.season.findMany({ orderBy: { name: "asc" } }),
+    prisma.ignoredForumAuthor.findMany({ orderBy: { name: "asc" } }),
   ]);
   const season = seasons.find((item) => item.id === query.seasonId) ?? seasons[0] ?? null;
   const showArchived = query.archived === "1";
@@ -59,6 +60,7 @@ export default async function ParticipantsPage({
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Participant removed from the registry.</Notice> : null}
+        {query.ignored ? <Notice tone="success">Stopped ignoring that forum user. Their comments were parsed again.</Notice> : null}
 
         <Section description="New people start in the registry. Choose a season to put them on that roster immediately." title="Create participant">
           <form action={createParticipantAction} className="flex flex-wrap items-end gap-2">
@@ -79,6 +81,30 @@ export default async function ParticipantsPage({
               Create
             </SubmitButton>
           </form>
+        </Section>
+
+        <Section
+          description="These forum accounts stay in the thread and are skipped during prediction import."
+          title="Ignored forum users"
+        >
+          {ignoredAuthors.length === 0 ? (
+            <EmptyState title="No ignored forum users" />
+          ) : (
+            <ul className="space-y-2">
+              {ignoredAuthors.map((author) => (
+                <li className="flex flex-wrap items-center justify-between gap-2 text-sm" key={author.id}>
+                  <span>
+                    <span className="font-medium">{author.name}</span>
+                    {author.note ? <span className="ml-2 text-zinc-500">{author.note}</span> : null}
+                  </span>
+                  <form action={stopIgnoringAuthorAction}>
+                    <input name="authorName" type="hidden" value={author.name} />
+                    <SubmitButton pendingLabel="Updating…">Stop ignoring</SubmitButton>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
 
         <Section

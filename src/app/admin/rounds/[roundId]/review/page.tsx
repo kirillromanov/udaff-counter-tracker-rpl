@@ -9,15 +9,15 @@ import {
   toSetToneInput,
   predictionTone,
 } from "@/lib/domain/import/review-status";
+import { loadIdentityCatalog } from "@/lib/domain/participants/registry";
+import { effectiveAuthorResolution, resolveAuthor } from "@/lib/domain/participants/resolve-author";
 import {
   OPERATOR_LABEL,
-  aliasSuggestions,
   operatorTone,
   reviewQueueOf,
   setInQueue,
   setLabels,
   setNeedsReview,
-  unknownAuthorLabel,
   type ReviewSetFacts,
 } from "@/lib/domain/review/operator-status";
 import { prisma } from "@/lib/db/prisma";
@@ -37,6 +37,7 @@ import {
   cx,
   fieldClass,
 } from "../../../ui";
+import { AuthorIdentityReview } from "./author-identity";
 import {
   addManualSetAction,
   fetchCommentsAction,
@@ -67,7 +68,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; view?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; identity?: string; view?: string; q?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -101,25 +102,37 @@ export default async function RoundImportPage({
     round.predictionSets.map((set) => set.forumCommentId).filter((id): id is string => Boolean(id)),
   );
   const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
-  const waiting = round.forumComments.filter((comment) => !parsedCommentIds.has(comment.id) && comment.reviewState !== "flagged");
-  const unmatchedAuthors = round.forumComments.filter(
-    (comment) => comment.reviewState === "flagged" && !parsedCommentIds.has(comment.id),
-  );
-  const registryNames = (
-    await prisma.participant.findMany({ where: { archivedAt: null }, select: { name: true } })
-  ).map((person) => person.name);
-  const unmatchedGroups = [...unmatchedAuthors.reduce((groups, comment) => {
-    const current = groups.get(comment.authorName);
-    if (current) {
-      current.count += 1;
-    } else {
-      const suggestions = aliasSuggestions(comment.authorName, registryNames);
-      groups.set(comment.authorName, { count: 1, sample: comment.rawText || "(empty)", suggestions });
-    }
-    return groups;
-  }, new Map<string, { count: number; sample: string; suggestions: string[] }>())].sort(
-    (left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0], "ru"),
-  );
+  const [catalog, linkTargets] = await Promise.all([
+    loadIdentityCatalog(),
+    prisma.participant.findMany({
+      where: { archivedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+  const identityGroups = [
+    ...round.forumComments
+      .filter((comment) => !parsedCommentIds.has(comment.id))
+      .reduce((groups, comment) => {
+        const current = groups.get(comment.authorName);
+        if (current) {
+          current.count += 1;
+          current.overridden &&= comment.importAnyway;
+        } else {
+          groups.set(comment.authorName, {
+            count: 1,
+            sample: comment.rawText || "(empty)",
+            overridden: comment.importAnyway,
+          });
+        }
+        return groups;
+      }, new Map<string, { count: number; sample: string; overridden: boolean }>()),
+  ].map(([name, group]) => ({
+    name,
+    ...group,
+    raw: resolveAuthor(name, catalog),
+    resolution: effectiveAuthorResolution(name, catalog, group.overridden),
+  }));
   const factsById = new Map<string, ReviewSetFacts & { tone: ReviewSetFacts["tone"] }>();
   for (const set of round.predictionSets) {
     const reviewed = setTone(toSetToneInput(set));
@@ -193,6 +206,7 @@ export default async function RoundImportPage({
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.imported ? <Notice tone="success">Saved {query.imported} comments.</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
+        {query.identity ? <Notice tone="success">Author identity updated. Slips were parsed again for that nick.</Notice> : null}
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}
@@ -265,54 +279,13 @@ export default async function RoundImportPage({
             <SubmitButton pendingLabel="Parsing…">Parse predictions</SubmitButton>
             <span className="text-sm text-zinc-500">{round.forumComments.length} comments stored</span>
           </form>
-          {queue !== "accepted" && unmatchedGroups.length > 0 ? (
-            <div className="mt-5">
-              <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Authors not in the registry</h3>
-              <ul className="mt-2 space-y-2">
-                {unmatchedGroups.map(([name, group]) => {
-                  const label = unknownAuthorLabel(group.suggestions.length);
-                  return (
-                    <li className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={name}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{name}</span>
-                        <span className="text-zinc-500">{group.count} comments</span>
-                        <Badge tone={operatorTone(label)}>{OPERATOR_LABEL[label]}</Badge>
-                      </div>
-                      {group.suggestions.length > 0 ? (
-                        <p className="mt-1 text-xs text-zinc-600">
-                          Looks like {group.suggestions.join(", ")}. Mark the alias on the reconciliation report. It is not linked
-                          from here.
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-zinc-600">No roster name starts with this nick. No participant was created.</p>
-                      )}
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs text-zinc-500">Sample comment</summary>
-                        <pre className="mt-2 max-h-36 overflow-auto font-sans text-sm whitespace-pre-wrap text-zinc-800">
-                          {group.sample}
-                        </pre>
-                      </details>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-          {waiting.length > 0 ? (
-            <div className="mt-5">
-              <h3 className="text-xs font-medium tracking-wide text-zinc-500 uppercase">Fetched, not parsed yet</h3>
-              <ul className="mt-2 space-y-2">
-                {waiting.map((comment) => (
-                  <li className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3 text-sm" key={comment.id}>
-                    <span className="font-medium">{comment.authorName}</span>
-                    <span className="ml-2 text-zinc-500">{formatWhen(comment.postedAt)}</span>
-                    <pre className="mt-2 max-h-36 overflow-auto font-sans text-sm whitespace-pre-wrap text-zinc-700">
-                      {comment.rawText}
-                    </pre>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {queue !== "accepted" ? (
+            <AuthorIdentityReview
+              groups={identityGroups}
+              participants={linkTargets}
+              roundId={round.id}
+              seasonId={round.seasonId}
+            />
           ) : null}
         </Section>
 
