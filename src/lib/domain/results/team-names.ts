@@ -1,10 +1,14 @@
 import { normalizeTeamName } from "@/lib/domain/parser/normalize";
 
 /**
- * English names published by Understat and footballdata.io, mapped to the
- * club names stored on contest fixtures. Longer patterns win.
+ * Names published by external sources, mapped to the club names stored on
+ * contest fixtures. Longer patterns win.
  */
 const ENGLISH_CLUBS: readonly [string, string][] = [
+  ["спартак москва", "Спартак"],
+  ["динамо москва", "Динамо"],
+  ["динамо махачкала", "Динамо Махачкала"],
+  ["пфк цска", "ЦСКА"],
   ["dynamo makhachkala", "Динамо Махачкала"],
   ["dinamo makhachkala", "Динамо Махачкала"],
   ["krylya sovetov samara", "Крылья Советов"],

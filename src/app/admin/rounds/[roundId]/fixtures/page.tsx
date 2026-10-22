@@ -186,7 +186,11 @@ export default async function FixturesPage({
                             <input name="homeGoals" type="hidden" value={aligned.homeGoals} />
                             <input name="awayGoals" type="hidden" value={aligned.awayGoals} />
                             <span className="text-xs text-zinc-600">
-                              {observation.source} · {observation.role} · {observation.confidence} · {aligned.homeGoals}-{aligned.awayGoals}
+                              {observation.source} · {observation.role} · {observation.confidence} · {observation.matchStatus} · {observation.completeness}
+                              {" · "}
+                              {observation.homeTeam} {observation.homeGoals}-{observation.awayGoals} {observation.awayTeam}
+                              {" · aligned "}
+                              {aligned.homeGoals}-{aligned.awayGoals}
                               {" · "}
                               {observation.fetchedAt.toISOString().slice(0, 16).replace("T", " ")} UTC
                               {health.find((row) => row.source === observation.source)?.degraded ? " · not used while degraded" : ""}

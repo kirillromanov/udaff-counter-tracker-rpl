@@ -1,5 +1,5 @@
 import type { ResultDecision, AlignedObservation } from "./decide";
-import { decideFixture } from "./decide";
+import { decideFixture, isDecisiveEvidence } from "./decide";
 import type { SourceAdapter, SourceFetchResult, SourceRole } from "./types";
 
 /** Three consecutive failures mark a source degraded until the next success. */
@@ -7,8 +7,8 @@ export const DEGRADED_AFTER_FAILURES = 3;
 
 export const SOURCE_POLICY = {
   preferred: ["sport-ru"],
-  fallback: ["championat", "sportbox", "football-data"],
-  verification: ["understat"],
+  fallback: ["championat", "sportbox", "football-data", "premierliga"],
+  verification: ["understat", "footbolno"],
 } as const;
 
 export interface SourceHealth {
@@ -77,7 +77,7 @@ export function resolveFixture(
   observations: readonly AlignedObservation[],
   unavailable: ReadonlySet<string>,
 ): ResultDecision {
-  const available = observations.filter((item) => !unavailable.has(item.source));
+  const available = observations.filter((item) => !unavailable.has(item.source) && isDecisiveEvidence(item));
   const decision = decideFixture(fixtureId, available);
   const preferredDown = SOURCE_POLICY.preferred.some((source) => unavailable.has(source));
   const preferredReported = available.some((item) => item.role === "primary");

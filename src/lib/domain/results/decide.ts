@@ -19,6 +19,8 @@ export interface AlignedObservation {
   awayGoals: number;
   role: SourceRole;
   confidence: ConfidenceLevel;
+  matchStatus?: string | null;
+  completeness?: string | null;
 }
 
 export interface ResultDecision {
@@ -91,6 +93,8 @@ export function attachResults(fixtures: readonly FixtureSide[], results: readonl
       awayGoals: best.aligned.awayGoals,
       role: result.role,
       confidence: result.confidence,
+      matchStatus: result.matchStatus ?? "finished",
+      completeness: result.completeness ?? "complete",
     });
     grouped.set(best.fixture.id, list);
   }
@@ -103,6 +107,14 @@ function sameScore(left: AlignedObservation, right: AlignedObservation): boolean
 
 function canWriteScore(observation: AlignedObservation): boolean {
   return observation.role !== "verification";
+}
+
+/** A partial parse, or a match that is not finished, stays visible and does not decide the score. */
+export function isDecisiveEvidence(observation: Pick<AlignedObservation, "matchStatus" | "completeness">): boolean {
+  if (observation.completeness === "partial") {
+    return false;
+  }
+  return (observation.matchStatus ?? "finished") === "finished";
 }
 
 export function decideFixture(fixtureId: string, observations: readonly AlignedObservation[]): ResultDecision {

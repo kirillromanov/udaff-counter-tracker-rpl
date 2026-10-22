@@ -119,6 +119,10 @@ model ResultObservation {
   role        String   @default("fallback")
   /// high, medium, or low
   confidence  String   @default("medium")
+  /// finished, live, scheduled, or unknown. Older rows are finished scores.
+  matchStatus String   @default("finished")
+  /// complete rows can decide a score. partial rows stay as evidence only.
+  completeness String  @default("complete")
   matchId     String?
   fetchedAt   DateTime @default(now())
 

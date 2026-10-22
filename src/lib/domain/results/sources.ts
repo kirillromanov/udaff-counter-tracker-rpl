@@ -1,5 +1,7 @@
 import { parseChampionat } from "./parse-championat";
+import { parseFootbolno } from "./parse-footbolno";
 import { currentSeasonStart, parseFootballData } from "./parse-football-data";
+import { parsePremierliga, PREMIERLIGA_TOURNAMENT_ID } from "./parse-premierliga";
 import { parseSportbox } from "./parse-sportbox";
 import { parseSportRu } from "./parse-sport-ru";
 import { parseUnderstat } from "./parse-understat";
@@ -13,7 +15,7 @@ function stamp(adapter: SourceAdapter, results: SourceMatch[]): SourceMatch[] {
     ...result,
     source: adapter.id,
     role: adapter.role,
-    confidence: adapter.confidence,
+    confidence: result.confidence,
   }));
 }
 
@@ -58,6 +60,22 @@ export const RESULT_ADAPTERS: readonly SourceAdapter[] = [
     parse: (body) => parseFootballData(body),
     load: loadFootballData,
   },
+  {
+    id: "premierliga",
+    role: "fallback",
+    confidence: "high",
+    format: "json",
+    url: "https://premierliga.ru/matches/?tournament=724&stage=0&month=0&club=0&match=all",
+    parse: parsePremierliga,
+    load: loadPremierliga,
+  },
+  {
+    id: "footbolno",
+    role: "verification",
+    confidence: "high",
+    url: "https://footbolno.ru/turnirnaya-tablica-rossijskoj-futbolnoj-premer-ligi#rezultaty",
+    parse: parseFootbolno,
+  },
 ];
 
 export function interpretSourcePage(adapter: SourceAdapter, httpOk: boolean, body: string, error: string | null): SourceFetchResult {
@@ -65,6 +83,16 @@ export function interpretSourcePage(adapter: SourceAdapter, httpOk: boolean, bod
     return { source: adapter.id, role: adapter.role, url: adapter.url, status: "failed", results: [], error: error ?? "Request failed" };
   }
   const results = stamp(adapter, adapter.parse(body));
+  if (results.length === 0 && isAccessBlocked(body)) {
+    return {
+      source: adapter.id,
+      role: adapter.role,
+      url: adapter.url,
+      status: "failed",
+      results: [],
+      error: error ?? "Source blocked the results page",
+    };
+  }
   const trimmed = body.trim();
   const jsonShape = trimmed.startsWith("{") || trimmed.startsWith("[");
   if (adapter.format === "json" && results.length === 0 && !jsonShape) {
@@ -195,6 +223,44 @@ function russianPremierLeagueId(payload: unknown): { id: string | null; error: s
     return { id: null, error: "Russian Premier League was not in the footballdata.io league list" };
   }
   return { id: null, error: "Set FOOTBALLDATA_LEAGUE_ID. More than one Russian league matched." };
+}
+
+async function premierligaJson(path: string): Promise<{ ok: boolean; body: string; error: string | null }> {
+  const response = await fetch(`https://api.premierliga.ru/api/${path}`, {
+    method: "POST",
+    headers: { "user-agent": USER_AGENT, accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ tournament: PREMIERLIGA_TOURNAMENT_ID }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const body = await response.text();
+  return { ok: response.ok, body, error: response.ok ? null : `HTTP ${response.status}` };
+}
+
+async function loadPremierliga(): Promise<SourceFetchResult> {
+  const adapter = RESULT_ADAPTERS.find((item) => item.id === "premierliga");
+  if (!adapter) {
+    throw new Error("premierliga adapter is missing");
+  }
+  try {
+    const [clubs, stages, matches] = await Promise.all([
+      premierligaJson("getClubs"),
+      premierligaJson("getStages"),
+      premierligaJson("getMatches"),
+    ]);
+    const failedCall = [clubs, stages, matches].find((call) => !call.ok);
+    if (failedCall) {
+      return failed(adapter, adapter.url, failedCall.error ?? "Request failed");
+    }
+    const body = JSON.stringify({
+      clubs: JSON.parse(clubs.body),
+      stages: JSON.parse(stages.body),
+      matches: JSON.parse(matches.body),
+    });
+    return interpretSourcePage(adapter, true, body, null);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Request failed";
+    return failed(adapter, adapter.url, message);
+  }
 }
 
 async function loadFootballData(): Promise<SourceFetchResult> {

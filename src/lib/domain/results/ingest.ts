@@ -132,6 +132,8 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
             awayGoals: sourceRow.awayGoals,
             role: sourceRow.role,
             confidence: sourceRow.confidence,
+            matchStatus: sourceRow.matchStatus ?? "finished",
+            completeness: sourceRow.completeness ?? "complete",
             matchId,
           },
           update: {
@@ -142,6 +144,8 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
             awayGoals: sourceRow.awayGoals,
             role: sourceRow.role,
             confidence: sourceRow.confidence,
+            matchStatus: sourceRow.matchStatus ?? "finished",
+            completeness: sourceRow.completeness ?? "complete",
             matchId,
             fetchedAt: new Date(),
           },
@@ -183,6 +187,8 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
         awayGoals: score.awayGoals,
         role: sourceRole(row.role),
         confidence: confidenceLevel(row.confidence),
+        matchStatus: row.matchStatus,
+        completeness: row.completeness,
       }];
     });
     const decision = resolveFixture(fixture.id, aligned, unavailable);

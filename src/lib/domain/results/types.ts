@@ -1,6 +1,9 @@
 export type SourceRole = "primary" | "fallback" | "verification";
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+export type MatchStatus = "finished" | "live" | "scheduled" | "unknown";
+export type Completeness = "complete" | "partial";
+
 export interface SourceMatch {
   source: string;
   sourceKey: string;
@@ -11,6 +14,10 @@ export interface SourceMatch {
   awayGoals: number;
   role: SourceRole;
   confidence: ConfidenceLevel;
+  /** finished, live, scheduled, or unknown. Missing means a finished score. */
+  matchStatus?: MatchStatus;
+  /** complete rows can decide a score. partial rows are evidence only. */
+  completeness?: Completeness;
 }
 
 export interface SourceAdapter {
@@ -35,7 +42,7 @@ export interface SourceFetchResult {
 }
 
 export function isAccessBlocked(html: string): boolean {
-  return /доступ запрещен|sberid|выполняется перенаправление/i.test(html);
+  return /доступ запрещен|sberid|выполняется перенаправление|showcaptcha|are you not a robot|вы не робот|yandex captcha/i.test(html);
 }
 
 export function stripTags(value: string): string {
