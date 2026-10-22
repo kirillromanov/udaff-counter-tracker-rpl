@@ -15,7 +15,10 @@
     "identity:sync": "tsx scripts/sync-identities.ts",
     "results:ingest": "tsx scripts/ingest-results.ts",
     "results:poll": "tsx scripts/poll-results.ts",
-    "predictions:refresh": "tsx scripts/refresh-predictions.ts"
+    "predictions:refresh": "tsx scripts/refresh-predictions.ts",
+    "local:dev": "zsh scripts/dev-up.sh --dev",
+    "local:service": "zsh scripts/dev-up.sh --service",
+    "local:install": "zsh scripts/install-launch-agent.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

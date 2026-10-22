@@ -28,6 +28,7 @@ export function RoundNav({ roundId, seasonId }: { roundId: string; seasonId: str
             )}
             href={item.href}
             key={item.href}
+            prefetch={false}
           >
             {item.label}
           </Link>

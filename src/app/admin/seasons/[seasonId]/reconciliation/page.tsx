@@ -331,15 +331,15 @@ function reportBody(
           <EmptyState title="No ambiguous slips" />
         ) : (
           <ul className="divide-y divide-zinc-100 text-sm">
-            {report.parserAmbiguities.map((item) => {
+            {report.parserAmbiguities.map((item, index) => {
               const href = roundHref.get(item.roundNumber);
               return (
-                <li className="py-2" key={`${item.roundNumber}-${item.participantId}`}>
+                <li className="py-2" key={`${item.roundNumber}-${item.participantId}-${index}`}>
                   <span className="font-medium">Round {item.roundNumber}</span> · {item.participantName}
                   {item.selected ? <Badge tone="danger">Selected</Badge> : <Badge tone="neutral">Not selected</Badge>}
                   <p className="mt-1 text-xs text-zinc-500">{item.warnings.find((warning) => /duplicate|ambiguous/i.test(warning))}</p>
                   {href ? (
-                    <Link className="text-xs text-zinc-600 hover:underline" href={href}>
+                    <Link className="text-xs text-zinc-600 hover:underline" href={href} prefetch={false}>
                       Open review
                     </Link>
                   ) : null}
@@ -370,7 +370,7 @@ function reportBody(
                 <li key={round.number}>
                   <span className="font-medium">Round {round.number}</span> · {items.length} flagged
                   {href ? (
-                    <Link className="ml-2 text-zinc-600 hover:underline" href={href}>
+                    <Link className="ml-2 text-zinc-600 hover:underline" href={href} prefetch={false}>
                       Review
                     </Link>
                   ) : null}

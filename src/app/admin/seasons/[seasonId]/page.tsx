@@ -255,7 +255,7 @@ function RoundGroup({
                 return (
                   <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
                     <td className="py-2.5 pr-3">
-                      <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`}>
+                      <Link className="font-medium hover:underline" href={`/admin/rounds/${round.id}`} prefetch={false}>
                         {round.number}. {round.name ?? "Round"}
                       </Link>
                     </td>
@@ -269,7 +269,7 @@ function RoundGroup({
                     <td className="py-2.5 pr-3 tabular-nums">{acceptedByRound.get(round.id) ?? 0}</td>
                     <td className="py-2.5 pr-3 tabular-nums">{flagged > 0 ? <Badge tone="warning">{flagged}</Badge> : "0"}</td>
                     <td className="py-2.5">
-                      <Link className="text-zinc-700 hover:underline" href={`/admin/rounds/${round.id}/review`}>
+                      <Link className="text-zinc-700 hover:underline" href={`/admin/rounds/${round.id}/review`} prefetch={false}>
                         Parser review
                       </Link>
                     </td>

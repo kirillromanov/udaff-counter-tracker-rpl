@@ -187,6 +187,7 @@ export function LayerStrip({
           )}
           href={item.href}
           key={item.href}
+          prefetch={false}
         >
           <span className="block text-sm font-medium">{item.label}</span>
           <span className={cx("mt-0.5 block text-xs", item.current ? "text-zinc-300" : "text-zinc-500")}>{item.detail}</span>

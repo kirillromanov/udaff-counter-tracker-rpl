@@ -51,9 +51,23 @@ export async function loadReconciliation(seasonId: string): Promise<Reconciliati
     prisma.round.findMany({
       where: { seasonId, number: { lte: checkpoint.afterRoundNumber } },
       orderBy: { number: "asc" },
-      include: {
-        matches: true,
-        predictionSets: { include: { participant: true } },
+      select: {
+        id: true,
+        number: true,
+        name: true,
+        forumUrl: true,
+        sourceSnapshot: true,
+        importNotes: true,
+        matches: { select: { actualHomeGoals: true, actualAwayGoals: true } },
+        predictionSets: {
+          select: {
+            participantId: true,
+            status: true,
+            selected: true,
+            warningsJson: true,
+            participant: { select: { name: true } },
+          },
+        },
         forumComments: {
           select: {
             authorName: true,
