@@ -10,8 +10,9 @@ import type { ForumCommentExtract, ForumPost } from "./types";
  * - The body is the `<p>` elements before a nested `ul.children`.
  * - The live theme prints a PHP warning inside the comment container class.
  *   Extraction does not depend on that class being valid HTML.
- * - This reads only the HTML of the given URL. The sample post includes every
- *   comment on one page and has no comment pagination links.
+ * - This reads only the HTML of the given URL. When that HTML links to
+ *   `comment-page-N` or `cpage=N` on the same post, those pages are fetched too.
+ *   A post with no such links is one page.
  */
 
 const NAMED_ENTITIES: Record<string, string> = {
@@ -92,6 +93,46 @@ export function extractOpeningPost(html: string): string {
   const rest = html.slice(start);
   const end = rest.search(/<li\b[^>]*\bid="comment-\d+"/i);
   return stripTags(end >= 0 ? rest.slice(0, end) : rest.slice(0, 80_000));
+}
+
+/** WordPress comment-page links for this post, excluding the page that was already fetched. */
+export function listCommentPageUrls(html: string, sourceUrl: string): string[] {
+  let source: URL;
+  try {
+    source = new URL(sourceUrl);
+  } catch {
+    return [];
+  }
+  source.hash = "";
+  const sourcePath = source.pathname.replace(/\/comment-page-\d+\/?$/i, "/");
+  const found = new Map<number, string>();
+  for (const match of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
+    let url: URL;
+    try {
+      url = new URL(decodeHtml(match[1] ?? ""), source);
+    } catch {
+      continue;
+    }
+    if (url.origin !== source.origin) {
+      continue;
+    }
+    url.hash = "";
+    const pageFromPath = url.pathname.match(/\/comment-page-(\d+)\/?$/i)?.[1];
+    const page = pageFromPath ?? url.searchParams.get("cpage");
+    if (!page) {
+      continue;
+    }
+    const bare = url.pathname.replace(/\/comment-page-\d+\/?$/i, "/");
+    if (bare !== sourcePath) {
+      continue;
+    }
+    const pageNumber = Number(page);
+    if (!Number.isInteger(pageNumber) || pageNumber < 2 || found.has(pageNumber)) {
+      continue;
+    }
+    found.set(pageNumber, url.toString());
+  }
+  return [...found.entries()].sort((left, right) => left[0] - right[0]).map((entry) => entry[1]);
 }
 
 export function extractForumPost(html: string, sourceUrl: string): ForumPost {

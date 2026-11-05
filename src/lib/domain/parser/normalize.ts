@@ -10,7 +10,7 @@ export function normalizeCommentText(value: string): string {
     .normalize("NFKC")
     .replace(/[\u200b-\u200d\ufeff\u00ad]/g, "")
     .replace(/\p{Zs}/gu, " ")
-    .replace(/[—–―−]/g, "-")
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")

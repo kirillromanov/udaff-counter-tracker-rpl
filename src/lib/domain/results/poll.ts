@@ -167,14 +167,18 @@ export function isPollDue(plan: RoundPollPlan, nextPollAt: Date | null, now: Dat
 }
 
 export function selectDueRoundIds(
-  rounds: readonly { id: string; nextPollAt: Date | null; matches: readonly PollFixture[] }[],
+  rounds: readonly { id: string; nextPollAt: Date | null; matches: readonly PollFixture[]; standingRole?: string }[],
   now: Date,
   intervals: PollIntervals,
   forceRoundId?: string,
 ): string[] {
   return rounds.flatMap((round) => {
+    const forced = forceRoundId === round.id;
+    if (round.standingRole === "archived" && !forced) {
+      return [];
+    }
     const plan = planRoundPoll(round.matches, now, intervals);
-    return isPollDue(plan, round.nextPollAt, now, forceRoundId === round.id) ? [round.id] : [];
+    return isPollDue(plan, round.nextPollAt, now, forced) ? [round.id] : [];
   });
 }
 

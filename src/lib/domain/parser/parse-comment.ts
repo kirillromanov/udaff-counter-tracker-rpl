@@ -1,6 +1,5 @@
 import { matchFixture } from "./match-fixture";
 import { parsePredictionLine } from "./parse-prediction-line";
-import { normalizeCommentText } from "./normalize";
 import type { FixtureRef, ParsedComment, ParsedPredictionLine } from "./types";
 
 function lineConfidence(matched: number | null, hasScore: boolean, ambiguous: boolean): number {
@@ -14,10 +13,11 @@ function lineConfidence(matched: number | null, hasScore: boolean, ambiguous: bo
 }
 
 export function parseComment(raw: string, fixtures: FixtureRef[]): ParsedComment {
-  const text = normalizeCommentText(raw);
+  // Split the submitted comment first. Each line is normalized for matching,
+  // and the original text, including a long dash, stays on rawLine.
   const lines: ParsedPredictionLine[] = [];
 
-  for (const rawLine of text.split("\n")) {
+  for (const rawLine of raw.split(/\r\n|\n|\r/u)) {
     const parsed = parsePredictionLine(rawLine);
     if (!parsed) {
       continue;

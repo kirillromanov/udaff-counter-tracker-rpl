@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { ingestSeasonResults, type IngestReport } from "./ingest";
 import {
   planRoundPoll,
@@ -32,15 +33,24 @@ function toPollFixture(match: {
 }
 
 /** Refresh the schedule after a multi-source fetch. A finalized round gets no next check. */
-export async function syncSeasonPollState(seasonId: string, checkedAt: Date, sources: IngestReport["sources"]): Promise<void> {
+export async function syncSeasonPollState(
+  seasonId: string,
+  checkedAt: Date,
+  sources: IngestReport["sources"],
+  options?: { includeArchivedRoundIds?: readonly string[] },
+): Promise<void> {
   const rounds = await prisma.round.findMany({
     where: { seasonId },
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
   });
+  const extra = new Set(options?.includeArchivedRoundIds ?? []);
   const intervals = pollIntervals();
   const summary = sourceHealthSummary(sources);
   const lastSuccessfulSource = strongestSuccessfulSource(sources);
   for (const round of rounds) {
+    if (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id)) {
+      continue;
+    }
     const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
     await prisma.round.update({
       where: { id: round.id },
@@ -55,9 +65,12 @@ export async function syncSeasonPollState(seasonId: string, checkedAt: Date, sou
   }
 }
 
-export async function ingestAndTrack(seasonId: string): Promise<IngestReport> {
-  const report = await ingestSeasonResults(seasonId);
-  await syncSeasonPollState(seasonId, new Date(), report.sources);
+export async function ingestAndTrack(
+  seasonId: string,
+  options?: { includeArchivedRoundIds?: readonly string[] },
+): Promise<IngestReport> {
+  const report = await ingestSeasonResults(seasonId, options);
+  await syncSeasonPollState(seasonId, new Date(), report.sources, options);
   return report;
 }
 
@@ -79,6 +92,9 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
   });
   for (const round of rounds) {
+    if (round.standingRole === ARCHIVED_ROUND && round.id !== options?.forceRoundId) {
+      continue;
+    }
     const plan = planRoundPoll(round.matches.map(toPollFixture), now, intervals);
     if (!plan.active && (round.pollStatus !== "finalized" || round.nextPollAt != null)) {
       await prisma.round.update({
@@ -92,6 +108,7 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
       rounds.map((round) => ({
         id: round.id,
         nextPollAt: round.nextPollAt,
+        standingRole: round.standingRole,
         matches: round.matches.map(toPollFixture),
       })),
       now,
@@ -105,7 +122,9 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
   }
   const seasons = [];
   for (const seasonId of seasonIds) {
-    const report = await ingestAndTrack(seasonId);
+    const report = await ingestAndTrack(seasonId, {
+      includeArchivedRoundIds: options?.forceRoundId ? [options.forceRoundId] : [],
+    });
     seasons.push({ seasonId, report });
   }
   return { checked: true, roundIds: [...dueIds], seasons };

@@ -85,6 +85,9 @@ describe("round finalization", () => {
     expect(selectDueRoundIds(rounds, now, intervals)).toEqual(["due"]);
     expect(selectDueRoundIds(rounds, now, intervals, "later")).toEqual(["due", "later"]);
     expect(selectDueRoundIds(rounds, now, intervals, "done")).toEqual(["due"]);
+    const archived = { id: "old", nextPollAt: new Date("2026-10-22T17:00:00Z"), standingRole: "archived", matches: [unverified] };
+    expect(selectDueRoundIds([...rounds, archived], now, intervals)).toEqual(["due"]);
+    expect(selectDueRoundIds([...rounds, archived], now, intervals, "old")).toEqual(["due", "old"]);
     expect(isPollDue(planRoundPoll([verified], now, intervals), null, now, true)).toBe(false);
   });
 

@@ -136,7 +136,14 @@ export default async function SeasonStandingsPage({
         </Section>
         {!snapshot ? (
           <Section id="standings" title="Stored production calculation">
-            <EmptyState detail="The table above is the trusted baseline. Calculate a production round, from round 12 onward, to store a total on top of it." title="No production round stored" />
+            <EmptyState
+              detail={
+                live.baselineAfterRound != null
+                  ? `The table above is the trusted baseline. Calculate a production round, from round ${live.baselineAfterRound + 1} onward, to store a total on top of it.`
+                  : "The table above has no trusted baseline yet. Calculate a production round to store a total."
+              }
+              title="No production round stored"
+            />
           </Section>
         ) : (
           <>

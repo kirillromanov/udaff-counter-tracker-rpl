@@ -1,4 +1,4 @@
-import { normalizeTeamName } from "@/lib/domain/parser/normalize";
+import { normalizeCommentText, normalizeTeamName } from "@/lib/domain/parser/normalize";
 
 export interface ScheduledFixture {
   kickoffAt: Date | null;
@@ -40,7 +40,7 @@ export function parseFixtureSchedule(text: string, defaultYear = 2026): FixtureS
   const byPair = new Map<string, ScheduledFixture>();
 
   for (const raw of text.split("\n")) {
-    const line = raw.replace(/[—–―−]/gu, "-").trim();
+    const line = normalizeCommentText(raw);
     const match = line.match(
       /^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\s+(\d{1,2}):(\d{2})\s*-?\s*(.+?)\s+-\s+(.+?)\s*$/u,
     );

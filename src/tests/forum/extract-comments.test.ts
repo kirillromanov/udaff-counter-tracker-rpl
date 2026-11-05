@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractForumPost, parseForumTimestamp } from "@/lib/domain/forum/extract-comments";
+import { extractForumPost, listCommentPageUrls, parseForumTimestamp } from "@/lib/domain/forum/extract-comments";
 
 const html = `<html><head><title>11й тур РПЛ &#171; Удаффком</title></head><body>
 <div class="post-headline"><h1>Сяду на коня &#8212; 11й тур РПЛ</h1></div>
@@ -48,6 +48,15 @@ describe("extractForumPost", () => {
       authorName: "Камидиант",
       rawText: "это не прогноз, а ответ",
     });
+  });
+
+  it("follows comment pages on the same post and ignores other links", () => {
+    const source = "https://canadaru.net/udaff_afterlife/sport/football/rpl/2763/";
+    const pages = listCommentPageUrls(
+      `<a href="${source}">1</a><a href="${source}comment-page-2/#comments">2</a><a href="https://example.test/other/comment-page-3/">3</a>`,
+      source,
+    );
+    expect(pages).toEqual(["https://canadaru.net/udaff_afterlife/sport/football/rpl/2763/comment-page-2/"]);
   });
 
   it("parses the forum timestamp", () => {

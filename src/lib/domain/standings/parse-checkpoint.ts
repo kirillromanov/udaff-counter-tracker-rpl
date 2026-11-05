@@ -58,7 +58,7 @@ export function parseStandingsCheckpoint(text: string): ParsedCheckpointRow[] {
   const rows: ParsedCheckpointRow[] = [];
   for (const rawLine of text.split(/\n/u)) {
     const line = rawLine.trim();
-    if (!line) {
+    if (!line || /^note\s*:/iu.test(line)) {
       continue;
     }
     const match = LINE.exec(line);

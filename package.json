@@ -12,10 +12,13 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "import:rounds": "tsx scripts/import-rounds.ts",
+    "import:rounds-12-13": "tsx scripts/import-rounds-12-13.ts",
     "identity:sync": "tsx scripts/sync-identities.ts",
     "results:ingest": "tsx scripts/ingest-results.ts",
     "results:poll": "tsx scripts/poll-results.ts",
     "predictions:refresh": "tsx scripts/refresh-predictions.ts",
+    "baseline:round13": "tsx scripts/install-baseline-round-13.ts",
+    "diagnostics:replay-1-13": "tsx scripts/replay-rounds-1-13.ts",
     "local:dev": "zsh scripts/dev-up.sh --dev",
     "local:service": "zsh scripts/dev-up.sh --service",
     "local:install": "zsh scripts/install-launch-agent.sh"

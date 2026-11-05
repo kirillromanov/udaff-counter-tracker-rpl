@@ -7,6 +7,7 @@ import {
   parseStandingsCheckpoint,
 } from "@/lib/domain/standings/parse-checkpoint";
 import { ROUND_11_CHECKPOINT } from "@/lib/domain/standings/round-11-checkpoint";
+import { ROUND_13_CHECKPOINT } from "@/lib/domain/standings/round-13-checkpoint";
 
 const identities = KNOWN_PARTICIPANTS.map((name) => ({
   participantId: name,
@@ -68,6 +69,27 @@ describe("round 11 standings checkpoint", () => {
 
   it("rejects a line that is not a standings row", () => {
     expect(() => parseStandingsCheckpoint("hello forum")).toThrow(/Could not read standings line/);
+  });
+
+  it("reads the accepted round 13 baseline without turning the note into points", () => {
+    const accepted = parseStandingsCheckpoint(ROUND_13_CHECKPOINT);
+    expect(accepted).toHaveLength(25);
+    expect(accepted.reduce((total, row) => total + row.totalPoints, 0)).toBe(4986);
+    expect(accepted.map((row) => row.rank)).toEqual(Array.from({ length: 25 }, (_, index) => index + 1));
+    expect(accepted[0]).toMatchObject({ displayName: "Hordi Cruyff", movement: "same", totalPoints: 310, markerCount: 2 });
+    expect(accepted[6]).toMatchObject({ displayName: "Doctor Livesey", movement: "up", movementDelta: 3, totalPoints: 224, markerCount: 2 });
+    expect(accepted[7]).toMatchObject({ displayName: "Мычман", movement: "down", movementDelta: 2, totalPoints: 224, markerCount: 1 });
+    expect(accepted.slice(10, 13).map((row) => [row.rank, row.displayName, row.totalPoints])).toEqual([
+      [11, "Chiger", 203],
+      [12, "Schmelzer", 203],
+      [13, "Йош!", 203],
+    ]);
+    expect(accepted[16]).toMatchObject({ displayName: "Vinnie Jones", movement: "down", movementDelta: 5, totalPoints: 178, markerCount: 1 });
+    expect(accepted[20]).toMatchObject({ displayName: "Ли Харви Освальд", totalPoints: 144, markerCount: 1 });
+    expect(accepted[21]).toMatchObject({ displayName: "Лысая_ Башка", totalPoints: 144, markerCount: 0 });
+    expect(accepted.some((row) => row.displayName.includes("долг"))).toBe(false);
+    const matched = matchCheckpointRows(accepted, identities);
+    expect(matched.every((row) => row.participantId === row.displayName)).toBe(true);
   });
 
   it("compares a later calculated table by rank, points, movement, and round wins", () => {

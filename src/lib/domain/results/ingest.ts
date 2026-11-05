@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { alignToFixture, applyResultDecision, attachResults, type AlignedObservation, type FixtureSide } from "./decide";
 import { collectSourceFetches, nextSourceHealth, resolveFixture, unavailableSources, type SourceHealth } from "./policy";
 import { RESULT_ADAPTERS, interpretSourcePage } from "./sources";
@@ -43,11 +44,36 @@ async function readSource(adapter: (typeof RESULT_ADAPTERS)[number]): Promise<So
   }
 }
 
-export async function ingestSeasonResults(seasonId: string): Promise<IngestReport> {
+/** Automatic result writes stay on production rounds. A forced archived round can be named explicitly. */
+export function roundsWritableByIngest<T extends { id: string; standingRole: string }>(
+  rounds: readonly T[],
+  includeArchivedRoundIds: readonly string[] = [],
+): T[] {
+  const extra = new Set(includeArchivedRoundIds);
+  return rounds.filter((round) => round.standingRole !== ARCHIVED_ROUND || extra.has(round.id));
+}
+
+/** Limit a fetch to named rounds. Historical imports use this so current pages are not written onto older fixtures. */
+export function roundsSelectedForIngest<T extends { id: string; standingRole: string }>(
+  rounds: readonly T[],
+  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[] },
+): T[] {
+  if (options?.onlyRoundIds) {
+    const ids = new Set(options.onlyRoundIds);
+    return rounds.filter((round) => ids.has(round.id));
+  }
+  return roundsWritableByIngest(rounds, options?.includeArchivedRoundIds ?? []);
+}
+
+export async function ingestSeasonResults(
+  seasonId: string,
+  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[]; skipUndated?: boolean },
+): Promise<IngestReport> {
   const rounds = await prisma.round.findMany({
     where: { seasonId },
     include: { matches: true },
   });
+  const writable = roundsSelectedForIngest(rounds, options);
   const fetches = await collectSourceFetches(RESULT_ADAPTERS, readSource);
   const previousHealth = await prisma.resultSourceHealth.findMany();
   const previousBySource = new Map(previousHealth.map((row) => [row.source, row]));
@@ -95,7 +121,7 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
   }
   const unavailable = unavailableSources(fetches, health);
 
-  const fixtures = rounds.flatMap((round) =>
+  const fixtures = writable.flatMap((round) =>
     round.matches.map((match) => ({
       id: match.id,
       homeTeam: match.homeTeam,
@@ -163,7 +189,9 @@ export async function ingestSeasonResults(seasonId: string): Promise<IngestRepor
     for (const [roundNumber, roundFixtures] of byRound) {
       await storeAttached(roundFixtures, dated.filter((result) => result.roundNumber === roundNumber));
     }
-    await storeAttached(fixtures, undated);
+    if (!options?.skipUndated) {
+      await storeAttached(fixtures, undated);
+    }
   }
 
   const stored = await prisma.resultObservation.findMany({

@@ -94,7 +94,7 @@ export interface LiveSeasonView {
 export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> {
   const [checkpoint, memberships, rounds] = await Promise.all([
     prisma.standingsCheckpoint.findFirst({
-      where: { seasonId },
+      where: { seasonId, source: "manual" },
       orderBy: { afterRoundNumber: "desc" },
       include: { rows: { orderBy: { rank: "asc" } } },
     }),

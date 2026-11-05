@@ -12,6 +12,8 @@ describe("round standing roles", () => {
     expect(standingRoleForRound(1, 11)).toBe(ARCHIVED_ROUND);
     expect(standingRoleForRound(11, 11)).toBe(ARCHIVED_ROUND);
     expect(standingRoleForRound(12, 11)).toBe(OPERATIONAL_ROUND);
+    expect(standingRoleForRound(13, 13)).toBe(ARCHIVED_ROUND);
+    expect(standingRoleForRound(14, 13)).toBe(OPERATIONAL_ROUND);
     expect(standingRoleLabel(ARCHIVED_ROUND)).toBe("Archived reference");
     expect(standingRoleLabel(OPERATIONAL_ROUND)).toBe("Production");
   });
@@ -26,5 +28,7 @@ describe("round standing roles", () => {
     expect(countsTowardProduction(ARCHIVED_ROUND, 14, 11)).toBe(false);
     expect(countsTowardProduction(OPERATIONAL_ROUND, 11, 11)).toBe(false);
     expect(countsTowardProduction(OPERATIONAL_ROUND, 12, 11)).toBe(true);
+    expect(countsTowardProduction(OPERATIONAL_ROUND, 13, 13)).toBe(false);
+    expect(countsTowardProduction(OPERATIONAL_ROUND, 14, 13)).toBe(true);
   });
 });

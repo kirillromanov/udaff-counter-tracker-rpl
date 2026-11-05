@@ -256,4 +256,40 @@ describe("provisional season table", () => {
 
     expect(table[0]).toMatchObject({ confirmedRoundPoints: 0, confirmedTotal: 100, liveTotal: 100 });
   });
+
+  it("keeps rounds through 13 inside the baseline and adds round 14 once", () => {
+    const table = buildLiveSeasonTable({
+      baselineAfterRound: 13,
+      baseline: [{ participantId: "h", name: "Hordi Cruyff", points: 310, medals: 2 }],
+      participants: [{ id: "h", name: "Hordi Cruyff" }],
+      rounds: [
+        {
+          order: 13,
+          production: true,
+          complete: true,
+          scores: [{ participantId: "h", confirmedPoints: 40, provisionalPoints: 0 }],
+        },
+        {
+          order: 14,
+          production: true,
+          complete: true,
+          scores: [{ participantId: "h", confirmedPoints: 15, provisionalPoints: 0 }],
+        },
+        {
+          order: 15,
+          production: true,
+          complete: false,
+          scores: [{ participantId: "h", confirmedPoints: 0, provisionalPoints: 4 }],
+        },
+      ],
+    });
+
+    expect(table[0]).toMatchObject({
+      baselinePoints: 310,
+      confirmedRoundPoints: 15,
+      liveDelta: 4,
+      confirmedTotal: 325,
+      liveTotal: 329,
+    });
+  });
 });
