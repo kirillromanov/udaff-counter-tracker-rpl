@@ -19,6 +19,7 @@
     "predictions:refresh": "tsx scripts/refresh-predictions.ts",
     "baseline:round13": "tsx scripts/install-baseline-round-13.ts",
     "diagnostics:replay-1-13": "tsx scripts/replay-rounds-1-13.ts",
+    "scores:recalculate-1-13": "tsx scripts/recalculate-rounds-1-13.ts",
     "local:dev": "zsh scripts/dev-up.sh --dev",
     "local:service": "zsh scripts/dev-up.sh --service",
     "local:install": "zsh scripts/install-launch-agent.sh"

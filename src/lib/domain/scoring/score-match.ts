@@ -118,35 +118,37 @@ function matchBonuses(
   actual: Scoreline,
   config: ScoringConfig,
 ): { points: number; explanations: string[] } {
-  const explanations: string[] = [];
-  let points = 0;
-  const actualTotal = actual.home + actual.away;
-  const actualDiff = Math.abs(goalDifference(actual));
-
-  // 0-0 is the only non-negative scoreline with zero total goals, so +2 replaces +1.
-  if (actual.home === 0 && actual.away === 0) {
-    points += config.bonuses.nilNil;
-    explanations.push(`Bonus: 0-0 (+${config.bonuses.nilNil})`);
-  } else if (actualTotal === 0) {
-    points += config.bonuses.zeroTotalGoals;
-    explanations.push(`Bonus: zero total goals (+${config.bonuses.zeroTotalGoals})`);
+  if (!predicted) {
+    return { points: 0, explanations: [] };
   }
 
-  if (actualDiff >= config.bonuses.bigGoalDiffMin) {
+  const explanations: string[] = [];
+  let points = 0;
+  // One point for each side whose zero was predicted for that same team.
+  // An exact 0-0 is +2 from these two sides. The old match-total and 0-0 bonuses are not added as well.
+  const zeroSides =
+    (predicted.home === 0 && actual.home === 0 ? 1 : 0) +
+    (predicted.away === 0 && actual.away === 0 ? 1 : 0);
+  if (zeroSides > 0) {
+    const zeroBonus = zeroSides * config.bonuses.zeroTotalGoals;
+    points += zeroBonus;
+    explanations.push(`Bonus: correctly predicted zero goals (+${zeroBonus})`);
+  }
+
+  const predictedDiff = Math.abs(predicted.home - predicted.away);
+  if (predictedDiff >= config.bonuses.bigGoalDiffMin) {
     points += config.bonuses.bigGoalDiff;
     explanations.push(
-      `Bonus: goal difference ${actualDiff} >= ${config.bonuses.bigGoalDiffMin} (+${config.bonuses.bigGoalDiff})`,
+      `Bonus: predicted goal difference ${predictedDiff} >= ${config.bonuses.bigGoalDiffMin} (+${config.bonuses.bigGoalDiff})`,
     );
   }
 
-  if (predicted && actualTotal >= config.bonuses.highTotalMin) {
-    const predictedTotal = predicted.home + predicted.away;
-    if (predictedTotal === actualTotal) {
-      points += config.bonuses.highTotalExact;
-      explanations.push(
-        `Bonus: predicted total goals ${predictedTotal} matches actual total ${actualTotal} (+${config.bonuses.highTotalExact})`,
-      );
-    }
+  const predictedTotal = predicted.home + predicted.away;
+  if (predictedTotal >= config.bonuses.highTotalMin) {
+    points += config.bonuses.highTotalExact;
+    explanations.push(
+      `Bonus: predicted total goals ${predictedTotal} >= ${config.bonuses.highTotalMin} (+${config.bonuses.highTotalExact})`,
+    );
   }
 
   return { points, explanations };

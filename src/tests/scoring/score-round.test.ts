@@ -67,7 +67,7 @@ describe("scoreRound", () => {
     expect(result.roundTotalGoalsBonus).toBe(0);
     expect(result.summary.exactCount).toBe(1);
     expect(result.summary.missCount).toBe(1);
-    expect(result.matchPointsTotal).toBe(9);
+    expect(result.matchPointsTotal).toBe(10);
   });
 
   it("counts every base category and includes the Match of the Round multiplier", () => {
@@ -91,7 +91,7 @@ describe("scoreRound", () => {
       missCount: 1,
     });
     expect(result.matches[0]?.finalMatchPoints).toBe(20);
-    expect(result.matchPointsTotal).toBe(20 + 6 + 4 + 6 + -1);
+    expect(result.matchPointsTotal).toBe(20 + 6 + 4 + 4 + -1);
     expect(result.roundTotalGoalsBonus).toBe(0);
     expect(result.roundTotal).toBe(result.matchPointsTotal);
   });

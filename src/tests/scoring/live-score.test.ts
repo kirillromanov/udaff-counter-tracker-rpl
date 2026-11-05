@@ -55,9 +55,9 @@ describe("partial live rounds", () => {
       { matchId: "waiting", home: 3, away: 3 },
     ]);
 
-    expect(score.confirmedPoints).toBe(10);
-    expect(score.provisionalPoints).toBe(10);
-    expect(score.livePoints).toBe(20);
+    expect(score.confirmedPoints).toBe(11);
+    expect(score.provisionalPoints).toBe(11);
+    expect(score.livePoints).toBe(22);
     expect(score.pendingCount).toBe(1);
     expect(score.conflictCount).toBe(0);
     expect(score.roundBonus).toBe(0);
@@ -78,7 +78,7 @@ describe("partial live rounds", () => {
       { ...leader, name: "Leader" },
     ]);
     expect(ranked.map((row) => [row.name, row.rank, row.livePoints])).toEqual([
-      ["Leader", 1, 20],
+      ["Leader", 1, 22],
       ["Trailer", 2, -2],
     ]);
   });
@@ -96,10 +96,10 @@ describe("partial live rounds", () => {
       { matchId: "confirmed", home: 2, away: 0 },
       { matchId: "fight", home: 1, away: 0 },
     ]);
-    expect(blocked.confirmedPoints).toBe(10);
+    expect(blocked.confirmedPoints).toBe(11);
     expect(blocked.provisionalPoints).toBe(0);
     expect(blocked.conflictCount).toBe(1);
-    expect(blocked.livePoints).toBe(10);
+    expect(blocked.livePoints).toBe(11);
 
     const acknowledged = scoreLiveParticipant(
       "p1",
@@ -109,8 +109,8 @@ describe("partial live rounds", () => {
         { matchId: "fight", home: 1, away: 0 },
       ],
     );
-    expect(acknowledged.provisionalPoints).toBe(10);
-    expect(acknowledged.confirmedPoints).toBe(10);
+    expect(acknowledged.provisionalPoints).toBe(11);
+    expect(acknowledged.confirmedPoints).toBe(11);
     expect(acknowledged.conflictCount).toBe(0);
     expect(acknowledged.matches.find((match) => match.matchId === "fight")?.acknowledgedConflict).toBe(true);
   });
@@ -141,7 +141,7 @@ describe("partial live rounds", () => {
     expect(after.provisionalPoints).toBe(0);
     expect(after.confirmedPoints).toBe(stored.roundTotal);
     expect(after.roundBonus).toBe(stored.roundTotalGoalsBonus);
-    expect(after.confirmedPoints).toBe(23);
+    expect(after.confirmedPoints).toBe(25);
   });
 });
 
