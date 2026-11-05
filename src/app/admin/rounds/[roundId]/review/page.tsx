@@ -41,6 +41,7 @@ import { ingestionStatusLabel, planPredictionRefresh } from "@/lib/domain/import
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import type { PollFixture } from "@/lib/domain/results/poll";
 import { AuthorIdentityReview } from "./author-identity";
+import { CleanMatrix } from "./clean-matrix";
 import {
   addManualSetAction,
   fetchCommentsAction,
@@ -72,7 +73,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; saved?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -233,6 +234,9 @@ export default async function RoundImportPage({
         {query.fetched ? <Notice tone="success">Prediction refresh: {query.fetched}</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
         {query.identity ? <Notice tone="success">Author identity updated. Slips were parsed again for that nick.</Notice> : null}
+        {query.saved === "1" ? <Notice tone="success">Clean matrix saved.</Notice> : null}
+        {query.saved === "results" ? <Notice tone="success">Actual results saved. They apply to every participant.</Notice> : null}
+        <CleanMatrix roundId={round.id} />
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}

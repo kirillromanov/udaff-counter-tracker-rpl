@@ -50,6 +50,19 @@ describe("resolveSelections", () => {
     expect(chosen).toEqual(["chosen"]);
   });
 
+  it("uses an incomplete slip only when the participant has no complete one", () => {
+    const chosen = resolveSelections([
+      set({ id: "partial", postedAt: new Date("2026-10-16T18:00:00Z"), valid: false, provisional: true }),
+      set({ id: "complete", postedAt: new Date("2026-10-16T10:00:00Z"), valid: true, provisional: true }),
+    ]);
+    const onlyPartial = resolveSelections([
+      set({ id: "partial", postedAt: new Date("2026-10-16T18:00:00Z"), valid: false, provisional: true }),
+    ]);
+
+    expect(chosen).toEqual(["complete"]);
+    expect(onlyPartial).toEqual(["partial"]);
+  });
+
   it("selects nobody when every comment is invalid and none was chosen by hand", () => {
     expect(
       resolveSelections([

@@ -252,6 +252,16 @@ model PredictionSet {
   warningsJson    String   @default("[]")
   parsedJson      String   @default("[]")
   manuallyEdited  Boolean  @default(false)
+  /// author, explicit-marker, commentary-heuristic, or manual.
+  attributionMethod   String @default("author")
+  attributionEvidence String @default("")
+  /// clear, probable, or review. review is not auto-selected.
+  attributionReview   String @default("clear")
+  /// Stable identity of one block inside a comment, so a reparse updates the same row.
+  blockKey            String @default("")
+  sourceExcerpt       String @default("")
+  /// JSON list of {at, field, oldValue, newValue}.
+  correctionLog       String @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

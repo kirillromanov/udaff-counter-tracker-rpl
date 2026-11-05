@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import type { ForumPost } from "@/lib/domain/forum/types";
+import { attributeComment } from "@/lib/domain/parser/attribute-blocks";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import type { FixtureRef } from "@/lib/domain/parser/types";
 import { participantKey } from "@/lib/domain/import/participant-key";
@@ -148,19 +149,23 @@ export async function saveForumPost(roundId: string, post: ForumPost): Promise<F
   return { saved, classes };
 }
 
+function sqliteText(value: string): string {
+  return value.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
+}
+
 function predictionData(line: ReturnType<typeof rowsForStorage>[number]) {
   return {
     matchId: line.fixtureId as string,
     homeGoals: line.homeGoals,
     awayGoals: line.awayGoals,
     markedAsMt: line.markedAsMt,
-    rawLine: line.rawLine,
+    rawLine: sqliteText(line.rawLine),
     confidence: line.confidence,
     warning: line.warnings.length > 0 ? line.warnings.join("; ") : null,
   };
 }
 
-export async function parseStoredComments(roundId: string, options?: { authorKey?: string }): Promise<number> {
+export async function parseStoredComments(roundId: string, options?: { authorKey?: string; force?: boolean }): Promise<number> {
   await ensureKnownIdentities();
   const catalog = await loadIdentityCatalog();
   const round = await prisma.round.findUniqueOrThrow({
@@ -179,13 +184,15 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
     if (options?.authorKey && authorKey !== options.authorKey) {
       continue;
     }
-    const existing = await prisma.predictionSet.findFirst({
+    const existingSets = await prisma.predictionSet.findMany({
       where: { forumCommentId: comment.id },
     });
-    const content: ContentClass = isContentClass(comment.ingestionStatus) ? comment.ingestionStatus : existing ? "unchanged" : "new";
+    const content: ContentClass = isContentClass(comment.ingestionStatus) ? comment.ingestionStatus : existingSets.length > 0 ? "unchanged" : "new";
+    const manualSets = existingSets.filter((set) => set.manuallyEdited || set.selection === "manual");
+    const autoSets = existingSets.filter((set) => !set.manuallyEdited && set.selection !== "manual");
     if (content === "duplicate") {
-      if (existing && !existing.manuallyEdited && existing.selection !== "manual") {
-        await prisma.predictionSet.delete({ where: { id: existing.id } });
+      if (autoSets.length > 0) {
+        await prisma.predictionSet.deleteMany({ where: { id: { in: autoSets.map((set) => set.id) } } });
       }
       await prisma.forumComment.update({
         where: { id: comment.id },
@@ -197,7 +204,10 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
       });
       continue;
     }
-    if (existing?.manuallyEdited) {
+    if (!options?.force && !shouldReplaceStoredSlip(content, false, existingSets.length > 0)) {
+      continue;
+    }
+    if (!options?.force && autoSets.length === 0 && manualSets.length > 0) {
       if (content === "updated") {
         await prisma.forumComment.update({
           where: { id: comment.id },
@@ -210,14 +220,11 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
       }
       continue;
     }
-    if (!shouldReplaceStoredSlip(content, false, Boolean(existing))) {
-      continue;
-    }
 
     const resolution = effectiveAuthorResolution(comment.authorName, catalog, comment.importAnyway);
     if (resolution.kind !== "participant" && resolution.kind !== "alias") {
-      if (existing) {
-        await prisma.predictionSet.delete({ where: { id: existing.id } });
+      if (autoSets.length > 0) {
+        await prisma.predictionSet.deleteMany({ where: { id: { in: autoSets.map((set) => set.id) } } });
       }
       await prisma.forumComment.update({
         where: { id: comment.id },
@@ -236,41 +243,74 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
       continue;
     }
 
-    const parsed = parseComment(comment.rawText, fixtures);
-    const participantId = resolution.participantId;
-    if (!participantId) {
-      continue;
+    const blocks = attributeComment({
+      raw: comment.rawText,
+      authorName: resolution.canonicalName ?? comment.authorName,
+      roundNumber: round.number,
+    });
+    const keptIds = new Set<string>();
+    for (const block of blocks) {
+      const owner = block.ownerName === resolution.canonicalName
+        ? resolution
+        : effectiveAuthorResolution(block.ownerName, catalog, false);
+      if (!owner.participantId || (owner.kind !== "participant" && owner.kind !== "alias")) {
+        continue;
+      }
+      if (manualSets.some((set) => set.participantId === owner.participantId)) {
+        continue;
+      }
+      const parsed = parseComment(block.text, fixtures);
+      const warnings = [...block.warnings, ...parsed.warnings];
+      const rows = rowsForStorage(parsed).map(predictionData);
+      if (rows.length === 0) {
+        continue;
+      }
+      const shared = {
+        participantId: owner.participantId,
+        rawComment: sqliteText(comment.rawText),
+        source: "import",
+        status: "parsed",
+        confidence: block.confidence,
+        warningsJson: sqliteText(JSON.stringify(warnings)),
+        parsedJson: sqliteText(JSON.stringify(parsed.lines)),
+        attributionMethod: block.method,
+        attributionEvidence: sqliteText(block.evidence),
+        attributionReview: block.review,
+        blockKey: sqliteText(block.blockKey),
+        sourceExcerpt: sqliteText(block.excerpt),
+      };
+      const current = autoSets.find((set) => set.blockKey === block.blockKey);
+      if (current) {
+        await prisma.prediction.deleteMany({ where: { predictionSetId: current.id } });
+        await prisma.predictionSet.update({
+          where: { id: current.id },
+          data: { ...shared, predictions: { create: rows } },
+        });
+        keptIds.add(current.id);
+      } else {
+        const created = await prisma.predictionSet.create({
+          data: {
+            roundId,
+            forumCommentId: comment.id,
+            ...shared,
+            predictions: { create: rows },
+          },
+        });
+        keptIds.add(created.id);
+      }
     }
-    const rows = rowsForStorage(parsed).map(predictionData);
-    const shared = {
-      participantId,
-      rawComment: comment.rawText,
-      source: "import",
-      status: "parsed",
-      confidence: parsed.confidence,
-      warningsJson: JSON.stringify(parsed.warnings),
-      parsedJson: JSON.stringify(parsed.lines),
-    };
-
-    if (existing) {
-      await prisma.prediction.deleteMany({ where: { predictionSetId: existing.id } });
-      await prisma.predictionSet.update({
-        where: { id: existing.id },
-        data: { ...shared, predictions: { create: rows } },
-      });
-    } else {
-      await prisma.predictionSet.create({
-        data: {
-          roundId,
-          forumCommentId: comment.id,
-          ...shared,
-          predictions: { create: rows },
-        },
-      });
+    const stale = autoSets.filter((set) => !keptIds.has(set.id));
+    if (stale.length > 0) {
+      await prisma.predictionSet.deleteMany({ where: { id: { in: stale.map((set) => set.id) } } });
     }
     await prisma.forumComment.update({
       where: { id: comment.id },
-      data: { ingestionStatus: resolveIngestionStatus(content, resolution.kind, false) },
+      data: {
+        ingestionStatus: resolveIngestionStatus(content, resolution.kind, manualSets.length > 0),
+        reviewNote: blocks.some((block) => block.review === "review")
+          ? "A prediction block needs an owner check"
+          : null,
+      },
     });
     parsedCount += 1;
   }
@@ -297,19 +337,25 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
     include: { predictions: true, forumComment: true },
   });
   const fixtureCount = await prisma.match.count({ where: { roundId } });
-  const selectable: SelectableSet[] = sets.map((set) => ({
-    id: set.id,
-    participantId: set.participantId,
-    postedAt: set.forumComment?.postedAt ?? set.createdAt,
-    valid: isAcceptableImport({
+  const selectable: SelectableSet[] = sets.map((set) => {
+    const shape = {
       warnings: readWarnings(set.warningsJson),
       unmatchedLines: readLines(set.parsedJson).filter((line) => !line.fixtureId).length,
       fixtureCount,
       predictions: set.predictions,
-    }),
-    selection: set.selection === "manual" ? "manual" : "auto",
-    selected: set.selected,
-  }));
+    };
+    const acceptable = isAcceptableImport(shape);
+    const scored = set.predictions.filter((row) => !row.ignored && row.homeGoals != null && row.awayGoals != null).length;
+    return {
+      id: set.id,
+      participantId: set.participantId,
+      postedAt: set.forumComment?.postedAt ?? set.createdAt,
+      valid: acceptable,
+      provisional: set.attributionReview !== "review" && scored > 0 && !acceptable,
+      selection: set.selection === "manual" ? "manual" : "auto",
+      selected: set.selected,
+    };
+  });
   const chosen = new Set(resolveSelections(selectable));
 
   for (const set of sets) {
@@ -320,11 +366,14 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
       fixtureCount,
       predictions: set.predictions,
     };
+    const ownerReview = set.attributionReview === "probable" || set.attributionReview === "review";
     const status = set.manuallyEdited
       ? set.status
       : selected
-        ? "accepted"
-        : importNeedsReview(shape)
+        ? ownerReview || importNeedsReview(shape)
+          ? "flagged"
+          : "accepted"
+        : importNeedsReview(shape) || ownerReview
           ? "flagged"
           : "parsed";
     if (set.selected !== selected || set.status !== status) {

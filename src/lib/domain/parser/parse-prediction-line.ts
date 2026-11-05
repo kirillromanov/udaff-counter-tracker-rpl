@@ -12,7 +12,7 @@ export interface RawPredictionLine {
 
 const DATETIME_PREFIX =
   /^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?(?:\s+(?:at|в))?(?:\s+\d{1,2}:\d{2})?\s*/i;
-const MT_MARKER = /\(\s*(?:мт|mt)\s*\)|\*\s*2(?!\d)/i;
+const MT_MARKER = /\(\s*(?:мт|mt)\s*\)|\*\s*2(?!\d)|матч\s+тура/i;
 const SCORE = /(?<!\d)(\d{1,2})(?!\d)\s*([-:])\s*(?<!\d)(\d{1,2})(?!\d)(?![.,]\d)/g;
 const UNRECOGNIZED_SCORE = /^(.*?)\s+-\d+\s*\*+\s*$/;
 const MAX_GOALS = 12;
@@ -66,6 +66,14 @@ function looksLikeTeamPair(home: string, away: string): boolean {
     return !words.some((word) => PROSE_WORDS.has(word.toLocaleLowerCase("ru")));
   };
   return side(home) && side(away);
+}
+
+function cleanTeamSide(value: string): string {
+  return value
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, " ")
+    .replace(/[™☼👇★*]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function splitTeams(value: string): { home: string; away: string } | null {
@@ -147,9 +155,9 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
     };
   }
 
-  const before = line.slice(0, score.index).trim();
+  const before = cleanTeamSide(line.slice(0, score.index));
   const after = line.slice(score.index + score[0].length).trim();
-  const teams = splitTeams(before) ?? (before && after ? { home: before, away: after } : null);
+  const teams = splitTeams(before) ?? (before && after ? { home: before, away: cleanTeamSide(after) } : null);
   const homeGoals = Number(score[1]);
   const awayGoals = Number(score[3]);
 
@@ -172,6 +180,8 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
     homeGoals,
     awayGoals,
     markedAsMt,
-    warnings: [],
+    warnings: /матч\s+тура/i.test(original)
+      ? ["Comment text mentions Match of the Round. The fixture setting is not changed."]
+      : [],
   };
 }

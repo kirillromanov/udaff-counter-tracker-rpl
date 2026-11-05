@@ -5,6 +5,7 @@ import { scoreRound } from "@/lib/domain/scoring/score-round";
 import type { RoundScoreResult } from "@/lib/domain/scoring/types";
 import type { StoredBreakdown } from "@/lib/domain/export/export-audit";
 import { rebuildSeasonSnapshots } from "./build-season-standings";
+import { rosterIdsToScore } from "./roster-scores";
 
 interface SelectedSet {
   participantId: string;
@@ -70,10 +71,17 @@ export async function recalculateRound(roundId: string): Promise<number> {
     where: { id: roundId },
     include: {
       matches: { orderBy: { sortOrder: "asc" } },
-      season: { include: { scoringConfig: true } },
       predictionSets: {
-        where: { selected: true },
         include: { predictions: true },
+      },
+      season: {
+        include: {
+          scoringConfig: true,
+          participants: {
+            where: { status: "included", participant: { archivedAt: null } },
+            select: { participantId: true },
+          },
+        },
       },
     },
   });
@@ -101,14 +109,34 @@ export async function recalculateRound(roundId: string): Promise<number> {
       `This round is still live: ${unconfirmed.join(", ")}. Provisional points stay on the results page. A confirmed total is stored only after every fixture is verified.`,
     );
   }
-  if (round.predictionSets.length === 0) {
-    throw new Error("No selected prediction set to score");
-  }
-
   const config = round.season.scoringConfig
     ? scoringConfigFromRecord(round.season.scoringConfig)
     : defaultScoringConfig;
-  const sets = oneSelectedSetPerParticipant(round.predictionSets);
+  const selectedSets = oneSelectedSetPerParticipant(round.predictionSets.filter((set) => set.selected));
+  const selectedIds = selectedSets.map((set) => set.participantId);
+  const selectedIdSet = new Set(selectedIds);
+  const unresolvedIds = [
+    ...new Set(
+      round.predictionSets
+        .filter((set) => set.attributionReview === "review" && !selectedIdSet.has(set.participantId))
+        .map((set) => set.participantId),
+    ),
+  ];
+  const scoreIds = rosterIdsToScore({
+    rosterIds: round.season.participants.map((membership) => membership.participantId),
+    selectedIds,
+    unresolvedIds,
+  });
+  if (scoreIds.length === 0) {
+    throw new Error("No selected prediction set to score");
+  }
+  const sets = scoreIds.map((participantId) => {
+    return selectedSets.find((set) => set.participantId === participantId) ?? {
+      participantId,
+      updatedAt: new Date(0),
+      predictions: [],
+    };
+  });
   const labels = new Map(round.matches.map((match) => [match.id, `${match.homeTeam} — ${match.awayTeam}`]));
   const actuals = new Map(
     round.matches.map((match) => [

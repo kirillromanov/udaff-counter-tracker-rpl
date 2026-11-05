@@ -36,7 +36,7 @@ export function readLines(value: string): ParsedPredictionLine[] {
 
 export function isConflictWarning(warning: string): boolean {
   const text = warning.toLowerCase();
-  return text.includes("duplicate") || text.includes("ambiguous");
+  return text.includes("duplicate") || text.includes("ambiguous") || text.includes("round marker");
 }
 
 export function isCorrectionWarning(warning: string): boolean {

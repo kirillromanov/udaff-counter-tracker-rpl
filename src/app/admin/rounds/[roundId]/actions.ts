@@ -13,6 +13,7 @@ import {
   selectPredictionSet,
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
+import { saveCleanMatrix, saveMatrixResults } from "@/lib/domain/import/save-matrix";
 import {
   createParticipantForAuthor,
   ignoreForumAuthor,
@@ -74,10 +75,32 @@ export async function refreshDuePredictionsAction(formData: FormData): Promise<v
   }
 }
 
+export async function saveMatrixAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    await saveCleanMatrix(roundId, formData, String(formData.get("intent") ?? "") === "recalculate");
+    refreshRound(roundId);
+    redirect(`${reviewPath(roundId)}?saved=1`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+export async function saveMatrixResultsAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    await saveMatrixResults(roundId, formData);
+    refreshRound(roundId);
+    redirect(`${reviewPath(roundId)}?saved=results`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
 export async function parseCommentsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    const parsed = await parseStoredComments(roundId);
+    const parsed = await parseStoredComments(roundId, { force: true });
     const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
     refreshRound(roundId, round?.seasonId);
     redirect(`${reviewPath(roundId)}?parsed=${parsed}`);

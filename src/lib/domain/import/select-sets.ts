@@ -3,6 +3,11 @@ export interface SelectableSet {
   participantId: string;
   postedAt: Date | null;
   valid: boolean;
+  /**
+   * An incomplete slip that still has scored lines. Used only when the
+   * participant has no complete valid set and no manual selection.
+   */
+  provisional?: boolean;
   selection: "auto" | "manual";
   selected: boolean;
 }
@@ -41,6 +46,11 @@ export function resolveSelections(sets: SelectableSet[]): string[] {
     const valid = group.filter((set) => set.valid);
     if (valid.length > 0) {
       chosen.push(latest(valid).id);
+      continue;
+    }
+    const provisional = group.filter((set) => set.provisional);
+    if (provisional.length > 0) {
+      chosen.push(latest(provisional).id);
     }
   }
   return chosen;
