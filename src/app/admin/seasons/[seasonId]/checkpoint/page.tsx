@@ -67,7 +67,7 @@ export default async function CheckpointPage({
                     Reconciliation report
                   </Link>
                   <Link className="text-zinc-600 hover:text-zinc-950" href={`/admin/seasons/${season.id}/standings`}>
-                    Production standings
+                    Season standings
                   </Link>
                 </span>
               }

@@ -6,12 +6,18 @@ export function SeasonLayers({
   reviewHref,
 }: {
   seasonId: string;
-  current?: "baseline" | "import" | "computed" | "review";
+  current?: "season" | "baseline" | "import" | "computed" | "review";
   reviewHref?: string;
 }) {
   return (
     <LayerStrip
       items={[
+        {
+          href: `/admin/seasons/${seasonId}/standings`,
+          label: "Season standings",
+          detail: "Итоговая таблица. Baseline plus confirmed rounds after it.",
+          current: current === "season" || current === "computed",
+        },
         {
           href: `/admin/seasons/${seasonId}/checkpoint`,
           label: "Trusted baseline",
@@ -23,12 +29,6 @@ export function SeasonLayers({
           label: "Imported parser results",
           detail: "Raw slips from the forum. Not scored yet.",
           current: current === "import",
-        },
-        {
-          href: `/admin/seasons/${seasonId}/standings`,
-          label: "Production standings",
-          detail: "Baseline plus finalized rounds after it.",
-          current: current === "computed",
         },
         {
           href: `/admin/seasons/${seasonId}/reconciliation`,

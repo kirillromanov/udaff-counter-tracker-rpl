@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { exportAudit, parseBreakdown } from "@/lib/domain/export/export-audit";
 import { exportRoundStandings } from "@/lib/domain/export/export-round-standings";
 import { exportSeasonStandings } from "@/lib/domain/export/export-season-standings";
-import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { confirmedCutoffLabel } from "@/lib/domain/standings/clean-season";
+import { loadCleanSeason } from "@/lib/domain/standings/load-clean-season";
 import { CopyButton } from "../../../copy-button";
 import { CrumbLink, EmptyState, PageBody, PageHeader, Section } from "../../../ui";
 import { RoundNav } from "../../../round-nav";
@@ -39,17 +40,29 @@ export default async function ExportPage({ params }: { params: Promise<{ roundId
       isWinner: score.isRoundWinner,
     })),
   );
-  const snapshot = await latestSeasonSnapshot(round.seasonId);
+  const clean = await loadCleanSeason(round.seasonId);
   const seasonText = exportSeasonStandings(
-    (snapshot?.standingSnapshots ?? []).map((row) => ({
+    (clean?.rows ?? []).map((row) => ({
       rank: row.rank,
-      name: row.participant.name,
+      name: row.name,
       totalPoints: row.totalPoints,
-      medals: row.roundWins,
+      medals: row.medals,
       movement: row.movement,
       previousRank: row.previousRank,
     })),
   );
+  const liveText = clean?.liveRows
+    ? exportSeasonStandings(
+        clean.liveRows.map((row) => ({
+          rank: row.rank,
+          name: row.name,
+          totalPoints: row.totalPoints,
+          medals: row.medals,
+          movement: row.movement,
+          previousRank: row.previousRank,
+        })),
+      )
+    : null;
   const auditText = exportAudit(
     round.roundScores.flatMap((score) => {
       const breakdown = parseBreakdown(score.breakdownJson);
@@ -86,15 +99,24 @@ export default async function ExportPage({ params }: { params: Promise<{ roundId
             <ExportBlock description="Per-match categories, bonuses, and the Match of the Round multiplier." text={auditText} title="Audit" />
           </>
         )}
-        {snapshot ? (
-          <ExportBlock
-            description={`After ${snapshot.name ?? `round ${snapshot.number}`}.`}
-            text={seasonText}
-            title="Season standings"
-          />
+        {clean && clean.rows.length > 0 ? (
+          <>
+            <ExportBlock
+              description={`${confirmedCutoffLabel(clean)} Confirmed totals only.`}
+              text={seasonText}
+              title="Season standings"
+            />
+            {liveText ? (
+              <ExportBlock
+                description="Provisional. This includes the open round and is separate from the confirmed export."
+                text={liveText}
+                title="Provisional live standings"
+              />
+            ) : null}
+          </>
         ) : (
           <Section id="standings" title="Season standings">
-            <EmptyState detail="The season table appears after the first calculation." title="No season table yet" />
+            <EmptyState detail="The season table appears after a trusted baseline or a confirmed round." title="No season table yet" />
           </Section>
         )}
       </PageBody>

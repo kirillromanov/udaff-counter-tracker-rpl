@@ -1,13 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { exportSeasonStandings } from "@/lib/domain/export/export-season-standings";
-import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { confirmedCutoffLabel, movementContextLabel } from "@/lib/domain/standings/clean-season";
+import { loadCleanSeason } from "@/lib/domain/standings/load-clean-season";
 import { loadLiveSeason } from "@/lib/domain/standings/load-live";
 import { SeasonLayers } from "../../../layers";
 import { CopyButton } from "../../../copy-button";
-import { CrumbLink, DataTable, EmptyState, MovementCell, Notice, PageBody, PageHeader, Section, StandingsTable, Th, buttonClass } from "../../../ui";
+import { CrumbLink, DataTable, EmptyState, MovementCell, Notice, PageBody, PageHeader, Section, StandingsTable, Th } from "../../../ui";
 
 export const instant = false;
 
@@ -38,18 +38,30 @@ export default async function SeasonStandingsPage({
   if (!season) {
     notFound();
   }
-  const [snapshot, live] = await Promise.all([latestSeasonSnapshot(season.id), loadLiveSeason(season.id)]);
-  const rows = snapshot?.standingSnapshots ?? [];
+  const [clean, live] = await Promise.all([loadCleanSeason(season.id), loadLiveSeason(season.id)]);
+  const rows = clean?.rows ?? [];
   const text = exportSeasonStandings(
     rows.map((row) => ({
       rank: row.rank,
-      name: row.participant.name,
+      name: row.name,
       totalPoints: row.totalPoints,
-      medals: row.roundWins,
+      medals: row.medals,
       movement: row.movement,
       previousRank: row.previousRank,
     })),
   );
+  const liveText = clean?.liveRows
+    ? exportSeasonStandings(
+        clean.liveRows.map((row) => ({
+          rank: row.rank,
+          name: row.name,
+          totalPoints: row.totalPoints,
+          medals: row.medals,
+          movement: row.movement,
+          previousRank: row.previousRank,
+        })),
+      )
+    : null;
 
   return (
     <>
@@ -61,18 +73,57 @@ export default async function SeasonStandingsPage({
             <CrumbLink href={`/admin/seasons/${season.id}`}>{season.name}</CrumbLink>
           </>
         }
-        description="Production standings start from the trusted baseline. Finalized production rounds are added next. The live delta is only the current production round."
-        nav={
-          snapshot ? (
-            <Link className={buttonClass("secondary")} href={`/admin/rounds/${snapshot.id}`}>
-              Open {snapshot.name ?? `round ${snapshot.number}`}
-            </Link>
-          ) : null
-        }
-        title="Production standings"
+        description="Итоговая таблица. The confirmed total is the trusted baseline plus finalized rounds after it. A live round stays in its own provisional table."
+        title="Season standings"
       />
       <PageBody>
-        <SeasonLayers current="computed" seasonId={season.id} />
+        <SeasonLayers current="season" seasonId={season.id} />
+        {clean ? (
+          <>
+            <Notice label="Confirmed cutoff" tone="info">
+              {confirmedCutoffLabel(clean)} {movementContextLabel(clean)}
+            </Notice>
+            <Section
+              description="One row per roster participant. Medals are the baseline sun markers plus round wins earned after the baseline."
+              id="standings"
+              title="Итоговая таблица"
+            >
+              <StandingsTable
+                rows={rows.map((row) => ({
+                  id: row.participantId,
+                  rank: row.rank,
+                  previousRank: row.previousRank,
+                  movement: row.movement,
+                  totalPoints: row.totalPoints,
+                  roundWins: row.medals,
+                  participant: { name: row.name },
+                }))}
+              />
+            </Section>
+            <Section
+              action={<CopyButton text={text} />}
+              description={`${confirmedCutoffLabel(clean)} Plain forum text. This is the confirmed table.`}
+              id="export"
+              title="Season standings"
+            >
+              <pre className="overflow-auto rounded-lg bg-zinc-50 p-4 font-mono text-sm whitespace-pre text-zinc-800">{text}</pre>
+            </Section>
+            {liveText ? (
+              <Section
+                action={<CopyButton text={liveText} />}
+                description="Provisional. This includes the open round and is not the confirmed total."
+                id="live-export"
+                title="Provisional live standings"
+              >
+                <pre className="overflow-auto rounded-lg bg-zinc-50 p-4 font-mono text-sm whitespace-pre text-zinc-800">{liveText}</pre>
+              </Section>
+            ) : null}
+          </>
+        ) : (
+          <Section id="standings" title="Итоговая таблица">
+            <EmptyState detail="The season was not found." title="No season table" />
+          </Section>
+        )}
         <Section
           description={
             live.baselineLabel
@@ -80,7 +131,7 @@ export default async function SeasonStandingsPage({
               : "No trusted baseline is stored, so the confirmed total starts at zero."
           }
           id="live-season"
-          title="Production season"
+          title="How the total is built"
         >
           {live.archivedRounds.length > 0 ? (
             <p className="mb-3 text-sm text-zinc-600">
@@ -134,34 +185,6 @@ export default async function SeasonStandingsPage({
             </DataTable>
           )}
         </Section>
-        {!snapshot ? (
-          <Section id="standings" title="Stored production calculation">
-            <EmptyState
-              detail={
-                live.baselineAfterRound != null
-                  ? `The table above is the trusted baseline. Calculate a production round, from round ${live.baselineAfterRound + 1} onward, to store a total on top of it.`
-                  : "The table above has no trusted baseline yet. Calculate a production round to store a total."
-              }
-              title="No production round stored"
-            />
-          </Section>
-        ) : (
-          <>
-            <Notice label="Stored production calculation" tone="info">
-              After {snapshot.name ?? `round ${snapshot.number}`}. This is the trusted baseline plus finalized production rounds.
-            </Notice>
-            <Section id="stored" title="Stored table">
-              <StandingsTable rows={rows} />
-            </Section>
-            <Section
-              action={<CopyButton text={text} />}
-              description="Plain text for the forum. Copy it and paste it as-is."
-              title="Forum text"
-            >
-              <pre className="overflow-auto rounded-lg bg-zinc-50 p-4 font-mono text-sm whitespace-pre text-zinc-800">{text}</pre>
-            </Section>
-          </>
-        )}
       </PageBody>
     </>
   );

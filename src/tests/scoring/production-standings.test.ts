@@ -48,6 +48,22 @@ describe("production standings", () => {
     ]);
   });
 
+  it("keeps the accepted baseline order when points and medals are equal", () => {
+    const table = buildProductionStandings({
+      baseline: [
+        { participantId: "zed", name: "Zed", points: 10, medals: 0, rank: 2 },
+        { participantId: "amy", name: "Amy", points: 10, medals: 0, rank: 3 },
+      ],
+      participants: [
+        { id: "zed", name: "Zed" },
+        { id: "amy", name: "Amy" },
+      ],
+      rounds: [],
+    });
+
+    expect(table.map((row) => row.participantName)).toEqual(["Zed", "Amy"]);
+  });
+
   it("moves the next production round from the previous production table", () => {
     const table = buildProductionStandings({
       baseline,

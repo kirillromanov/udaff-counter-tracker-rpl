@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db/prisma";
 import { roundLayerLabel } from "@/lib/domain/review/operator-status";
 import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
+import { confirmedCutoffLabel } from "@/lib/domain/standings/clean-season";
+import { loadCleanSeason } from "@/lib/domain/standings/load-clean-season";
 import { SeasonLayers } from "../../layers";
 import { createRoundAction, importRoundsAction } from "../../actions";
 import { SubmitButton } from "../../submit-button";
@@ -46,8 +48,9 @@ export default async function SeasonPage({
   if (!season) {
     notFound();
   }
-  const [snapshot, checkpoint] = await Promise.all([
+  const [snapshot, clean, checkpoint] = await Promise.all([
     latestSeasonSnapshot(season.id),
+    loadCleanSeason(season.id),
     prisma.standingsCheckpoint.findFirst({
       where: { seasonId: season.id, source: "manual" },
       orderBy: { afterRoundNumber: "desc" },
@@ -95,7 +98,7 @@ export default async function SeasonPage({
               Roster
             </Link>
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/standings`}>
-              Standings
+              Season standings
             </Link>
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${season.id}/checkpoint`}>
               Round 11 checkpoint
@@ -140,27 +143,24 @@ export default async function SeasonPage({
               Full table
             </Link>
           }
-          description={
-            snapshot
-              ? `Trusted baseline plus finalized production rounds through ${snapshot.name ?? `round ${snapshot.number}`}.`
-              : checkpoint
-                ? `Trusted baseline after round ${checkpoint.afterRoundNumber}. Archived reference rounds are not added again.`
-                : "Add a trusted baseline, then calculate production rounds from the next round onward."
-          }
+          description={clean ? confirmedCutoffLabel(clean) : "Add a trusted baseline, then calculate production rounds from the next round onward."}
           id="standings"
-          title="Production standings"
+          title="Season standings"
         >
-          {snapshot ? (
-            <StandingsTable rows={snapshot.standingSnapshots} />
-          ) : (
-            <EmptyState
-              detail={
-                checkpoint
-                  ? `${baselineLeader?.displayName ?? "The leader"} has ${baselineLeader?.totalPoints ?? 0} on the trusted baseline. Open Standings for the full table.`
-                  : "Save the manual checkpoint, then calculate a production round."
-              }
-              title={checkpoint ? "Baseline is the current total" : "No production table yet"}
+          {clean && clean.rows.length > 0 ? (
+            <StandingsTable
+              rows={clean.rows.map((row) => ({
+                id: row.participantId,
+                rank: row.rank,
+                previousRank: row.previousRank,
+                movement: row.movement,
+                totalPoints: row.totalPoints,
+                roundWins: row.medals,
+                participant: { name: row.name },
+              }))}
             />
+          ) : (
+            <EmptyState detail="Save the manual checkpoint, then calculate a production round." title="No season table yet" />
           )}
         </Section>
 

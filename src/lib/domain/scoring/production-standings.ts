@@ -30,7 +30,12 @@ function compare(left: Accumulated, right: Accumulated): number {
   if (right.roundWins !== left.roundWins) {
     return right.roundWins - left.roundWins;
   }
-  const byName = left.name.localeCompare(right.name);
+  const leftOrder = left.baselineRank ?? Number.MAX_SAFE_INTEGER;
+  const rightOrder = right.baselineRank ?? Number.MAX_SAFE_INTEGER;
+  if (leftOrder !== rightOrder) {
+    return leftOrder - rightOrder;
+  }
+  const byName = left.name.localeCompare(right.name, "ru");
   if (byName !== 0) {
     return byName;
   }

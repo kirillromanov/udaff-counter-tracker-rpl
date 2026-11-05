@@ -75,6 +75,16 @@ async function main() {
     fail("Baseline rows do not map to 25 distinct participants. Nothing was written.");
   }
 
+  const currentRound13 = await prisma.standingsCheckpoint.findFirst({
+    where: { seasonId: season.id, source: "manual", afterRoundNumber: 13 },
+    include: { rows: true },
+  });
+  const storedMonoklon = currentRound13?.rows.find((row) => normalizeParticipantName(row.displayName) === normalizeParticipantName("моноклон"));
+  if (storedMonoklon?.totalPoints === 189) {
+    console.log("моноклон baseline is already 189. The original round 13 text was not restored.");
+    return;
+  }
+
   const saved = await saveManualCheckpoint({
     seasonId: season.id,
     afterRoundNumber: 13,
