@@ -144,10 +144,11 @@ function matchBonuses(
   }
 
   const predictedTotal = predicted.home + predicted.away;
-  if (predictedTotal >= config.bonuses.highTotalMin) {
+  const actualTotal = actual.home + actual.away;
+  if (predictedTotal >= config.bonuses.highTotalMin && predictedTotal === actualTotal) {
     points += config.bonuses.highTotalExact;
     explanations.push(
-      `Bonus: predicted total goals ${predictedTotal} >= ${config.bonuses.highTotalMin} (+${config.bonuses.highTotalExact})`,
+      `Bonus: predicted total goals ${predictedTotal} matches actual total and is >= ${config.bonuses.highTotalMin} (+${config.bonuses.highTotalExact})`,
     );
   }
 

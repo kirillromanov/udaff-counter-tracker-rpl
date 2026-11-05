@@ -141,24 +141,74 @@ describe("scoreMatch bonuses", () => {
     expect(away).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
   });
 
-  it("awards the total bonus from the prediction, including the exact threshold", () => {
-    const qualifies = scoreMatch(match({ home: 2, away: 1 }, { home: 3, away: 2 }));
-    const below = scoreMatch(match({ home: 5, away: 1 }, { home: 3, away: 1 }));
+  it("awards the high-total bonus only when the matching total is at least 5", () => {
+    const predictedFiveActualThree = scoreMatch(match({ home: 2, away: 1 }, { home: 3, away: 2 }));
+    const predictedThreeActualFive = scoreMatch(match({ home: 3, away: 2 }, { home: 2, away: 1 }));
+    const predictedFiveActualSix = scoreMatch(match({ home: 4, away: 2 }, { home: 3, away: 2 }));
+    const matchedFive = scoreMatch(match({ home: 4, away: 1 }, { home: 3, away: 2 }));
+    const matchedSix = scoreMatch(match({ home: 5, away: 1 }, { home: 4, away: 2 }));
+    const matchedFour = scoreMatch(match({ home: 3, away: 1 }, { home: 3, away: 1 }));
 
-    expect(qualifies).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 4, finalMatchPoints: 10 });
-    expect(qualifies.explanations).toContain("Bonus: predicted total goals 5 >= 5 (+4)");
-    expect(below).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
+    expect(predictedFiveActualThree).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 0, finalMatchPoints: 6 });
+    expect(predictedThreeActualFive).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 0, finalMatchPoints: 6 });
+    expect(predictedFiveActualSix).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 0, finalMatchPoints: 3 });
+    expect(matchedFive).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
+    expect(matchedFive.explanations).toContain("Bonus: predicted total goals 5 matches actual total and is >= 5 (+4)");
+    expect(matchedSix).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
+    expect(matchedSix.explanations).toContain("Bonus: predicted total goals 6 matches actual total and is >= 5 (+4)");
+    expect(matchedFour).toMatchObject({ baseCategory: "exact", basePoints: 10, bonusPoints: 0, finalMatchPoints: 10 });
   });
 
-  it("stacks both prediction bonuses when each qualifies", () => {
-    const result = scoreMatch(match({ home: 1, away: 0 }, { home: 5, away: 0 }));
+  it("stacks the predicted-difference bonus with a matching high total", () => {
+    const result = scoreMatch(match({ home: 5, away: 0 }, { home: 4, away: 1 }));
 
-    expect(result).toMatchObject({ basePoints: 3, bonusPoints: 8, finalMatchPoints: 11 });
+    expect(result).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 7, finalMatchPoints: 10 });
     expect(result.explanations).toEqual([
       "Correct outcome only (home win)",
-      "Bonus: correctly predicted zero goals (+1)",
-      "Bonus: predicted goal difference 5 >= 3 (+3)",
-      "Bonus: predicted total goals 5 >= 5 (+4)",
+      "Bonus: predicted goal difference 3 >= 3 (+3)",
+      "Bonus: predicted total goals 5 matches actual total and is >= 5 (+4)",
+    ]);
+  });
+
+  it("withholds a matching high total on a wrong outcome unless the configured policy allows it", () => {
+    const withheld = scoreMatch(match({ home: 5, away: 0 }, { home: 0, away: 5 }));
+    const applied = scoreMatch(
+      match({ home: 5, away: 0 }, { home: 0, away: 5 }),
+      withConfig({ bonusesRequireRewardedBase: false }),
+    );
+
+    expect(defaultScoringConfig.bonusesRequireRewardedBase).toBe(true);
+    expect(withheld).toMatchObject({ baseCategory: "miss", bonusPoints: 0, finalMatchPoints: -1 });
+    expect(applied).toMatchObject({ bonusPoints: 7, finalMatchPoints: 6 });
+    expect(applied.explanations).toContain("Bonus: predicted total goals 5 matches actual total and is >= 5 (+4)");
+  });
+
+  it("doubles a matching high-total subtotal once for Match of the Round", () => {
+    const result = scoreMatch(match({ home: 4, away: 1 }, { home: 3, away: 2 }, true));
+
+    expect(result).toMatchObject({
+      basePoints: 3,
+      bonusPoints: 4,
+      mtApplied: true,
+      mtMultiplier: 2,
+      finalMatchPoints: 14,
+    });
+  });
+
+  it("scores Yosh's round 13 Krylia Sovetov slip as 9 without a high-total bonus", () => {
+    const result = scoreMatch(match({ home: 0, away: 3 }, { home: 1, away: 4 }));
+
+    expect(result).toMatchObject({
+      baseCategory: "neighbor",
+      basePoints: 6,
+      bonusPoints: 3,
+      mtApplied: false,
+      mtMultiplier: 1,
+      finalMatchPoints: 9,
+    });
+    expect(result.explanations).toEqual([
+      "Neighbor result: both sides shifted by -1 (1-4 → 0-3)",
+      "Bonus: predicted goal difference 3 >= 3 (+3)",
     ]);
   });
 
