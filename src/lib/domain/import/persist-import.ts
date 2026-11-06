@@ -165,7 +165,10 @@ function predictionData(line: ReturnType<typeof rowsForStorage>[number]) {
   };
 }
 
-export async function parseStoredComments(roundId: string, options?: { authorKey?: string; force?: boolean }): Promise<number> {
+export async function parseStoredComments(
+  roundId: string,
+  options?: { authorKey?: string; force?: boolean; commentId?: string },
+): Promise<number> {
   await ensureKnownIdentities();
   const catalog = await loadIdentityCatalog();
   const round = await prisma.round.findUniqueOrThrow({
@@ -179,7 +182,11 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
   }));
 
   let parsedCount = 0;
+  const touchedParticipants = new Set<string>();
   for (const comment of round.forumComments) {
+    if (options?.commentId && comment.id !== options.commentId) {
+      continue;
+    }
     const authorKey = participantKey(comment.authorName);
     if (options?.authorKey && authorKey !== options.authorKey) {
       continue;
@@ -256,6 +263,7 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
       if (!owner.participantId || (owner.kind !== "participant" && owner.kind !== "alias")) {
         continue;
       }
+      touchedParticipants.add(owner.participantId);
       if (manualSets.some((set) => set.participantId === owner.participantId)) {
         continue;
       }
@@ -315,7 +323,11 @@ export async function parseStoredComments(roundId: string, options?: { authorKey
     parsedCount += 1;
   }
 
-  await applyAutoSelection(roundId);
+  if (options?.commentId) {
+    await applyAutoSelection(roundId, { participantIds: [...touchedParticipants], commentId: options.commentId });
+  } else {
+    await applyAutoSelection(roundId);
+  }
   return parsedCount;
 }
 
@@ -331,7 +343,10 @@ export async function reparseAuthor(authorName: string): Promise<void> {
   }
 }
 
-export async function applyAutoSelection(roundId: string): Promise<void> {
+export async function applyAutoSelection(
+  roundId: string,
+  options?: { participantIds?: string[]; commentId?: string },
+): Promise<void> {
   const sets = await prisma.predictionSet.findMany({
     where: { roundId },
     include: { predictions: true, forumComment: true },
@@ -357,8 +372,12 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
     };
   });
   const chosen = new Set(resolveSelections(selectable));
+  const limit = options?.participantIds ? new Set(options.participantIds) : null;
 
   for (const set of sets) {
+    if (limit && !limit.has(set.participantId)) {
+      continue;
+    }
     const selected = chosen.has(set.id);
     const shape = {
       warnings: readWarnings(set.warningsJson),
@@ -382,7 +401,7 @@ export async function applyAutoSelection(roundId: string): Promise<void> {
         data: { selected, status },
       });
     }
-    if (set.forumCommentId && !set.manuallyEdited) {
+    if (set.forumCommentId && !set.manuallyEdited && (!options?.commentId || set.forumCommentId === options.commentId)) {
       await prisma.forumComment.update({
         where: { id: set.forumCommentId },
         data: {

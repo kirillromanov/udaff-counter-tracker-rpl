@@ -63,6 +63,22 @@ describe("resolveSelections", () => {
     expect(onlyPartial).toEqual(["partial"]);
   });
 
+  it("keeps both owners of one comment, and a manual override does not absorb the other owner", () => {
+    const chosen = resolveSelections([
+      set({ id: "balbes-auto", participantId: "balbes", postedAt: new Date("2026-11-06T12:00:00Z"), valid: true }),
+      set({
+        id: "neofit-manual",
+        participantId: "neofit",
+        postedAt: new Date("2026-11-06T12:00:00Z"),
+        selection: "manual",
+        selected: true,
+      }),
+      set({ id: "neofit-auto", participantId: "neofit", postedAt: new Date("2026-11-06T13:00:00Z"), valid: true }),
+    ]);
+
+    expect(chosen).toEqual(["balbes-auto", "neofit-manual"]);
+  });
+
   it("selects nobody when every comment is invalid and none was chosen by hand", () => {
     expect(
       resolveSelections([

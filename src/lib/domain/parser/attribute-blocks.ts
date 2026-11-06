@@ -8,7 +8,7 @@ import { parsePredictionLine } from "./parse-prediction-line";
 export const BALBES_STYLIZED_ALIAS = "𝟲𝗮𝗝𝗜𝟲𝗲𝗰";
 
 const BALBES_ASCII = /(?:^|[^\p{L}\p{N}])6aji6ec(?:$|[^\p{L}\p{N}])/iu;
-const ROUND_MARK = /\[\s*#\s*(\d+)\s*\]|#\s*(\d+)/;
+const ROUND_MARK = /\[\s*#\s*(\d+)\s*\]|#\s*(\d+)/u;
 const PHRASES: RegExp[] = [
   /от\s+сашко\s*бубна/iu,
   /от\s+сашки\s*бубна/iu,
@@ -71,10 +71,27 @@ function leadInPhrase(raw: string): boolean {
   return /^\s*от\s+/iu.test(raw.normalize("NFKC"));
 }
 
-function roundOn(raw: string): number | null {
-  const match = ROUND_MARK.exec(raw);
+function isSelfMarker(raw: string): boolean {
+  if (isBalbesMarker(raw)) {
+    return false;
+  }
+  const compact = raw.replace(/[^\p{L}\p{N}]+/gu, "");
+  return compact.toLocaleLowerCase("ru") === "мну";
+}
+
+/**
+ * Round headers use a normalized copy so mathematical-bold digits (`𝟭𝟰`)
+ * compare with the imported round. The season banner `𝟐𝟔’𝟐𝟳` has no `#`
+ * and is not a round header. The original line is left unchanged.
+ */
+export function roundHeaderNumber(raw: string): number | null {
+  const match = ROUND_MARK.exec(raw.normalize("NFKC"));
   const value = match?.[1] ?? match?.[2];
-  return value ? Number(value) : null;
+  if (!value || !/^\d+$/u.test(value)) {
+    return null;
+  }
+  const round = Number(value);
+  return Number.isInteger(round) ? round : null;
 }
 
 function commentaryWeight(raw: string): boolean {
@@ -129,32 +146,75 @@ function blockFrom(
   };
 }
 
+interface OwnerSegment {
+  ownerName: string;
+  method: AttributionBlock["method"];
+  evidence: string;
+  rows: RawLine[];
+  rounds: number[];
+}
+
+/**
+ * Walk neofit's comment once. The stylized alias switches the owner to БалБес.
+ * A marker line whose only word is "мну" switches it back to neofit.
+ * Headers, banners, underscores, and tilde rules stay with the current owner.
+ * The owner starts as neofit for every comment and is not remembered after it.
+ */
 function balbesBlocks(input: AttributeCommentInput, rows: RawLine[]): AttributionBlock[] {
-  const marker = rows.find((row) => isBalbesMarker(row.raw));
-  if (!marker) {
-    const only = blockFrom(input.authorName, "author", "Comment author", "clear", 0.9, rows, [], 0);
-    return only ? [only] : [];
+  const segments: OwnerSegment[] = [];
+  let ownerName = input.authorName;
+  let method: AttributionBlock["method"] = "author";
+  let evidence = "Comment author";
+  let currentRows: RawLine[] = [];
+  let rounds: number[] = [];
+
+  const flush = () => {
+    if (currentRows.some((row) => isPrediction(row.raw))) {
+      segments.push({ ownerName, method, evidence, rows: currentRows, rounds });
+    }
+    currentRows = [];
+    rounds = [];
+  };
+
+  for (const row of rows) {
+    if (isBalbesMarker(row.raw)) {
+      flush();
+      ownerName = "БалБес";
+      method = "explicit-marker";
+      evidence = `Stylized alias ${BALBES_STYLIZED_ALIAS} in a comment by ${input.authorName}`;
+      continue;
+    }
+    if (isSelfMarker(row.raw)) {
+      flush();
+      ownerName = input.authorName;
+      method = "explicit-marker";
+      evidence = `Self marker “мну” returns the following predictions to ${input.authorName}`;
+      continue;
+    }
+    const round = roundHeaderNumber(row.raw);
+    if (round != null) {
+      rounds.push(round);
+    }
+    currentRows.push(row);
   }
-  const following = rows.filter((row) => row.index > marker.index);
-  const roundLine = [marker, ...following.slice(0, 2)].map((row) => roundOn(row.raw)).find((value) => value != null) ?? null;
-  const mismatch = roundLine != null && input.roundNumber != null && roundLine !== input.roundNumber;
-  const before = rows.filter((row) => row.index < marker.index && !isSeparator(row.raw));
-  const after = following.filter((row) => !isBalbesMarker(row.raw) && !isSeparator(row.raw));
-  const warnings = mismatch
-    ? [`Round marker #${roundLine} does not match imported round ${input.roundNumber}`]
-    : [];
-  const author = blockFrom(input.authorName, "author", "Predictions before the delegated marker", "clear", 0.9, before, [], 0);
-  const delegated = blockFrom(
-    "БалБес",
-    "explicit-marker",
-    `Stylized alias ${BALBES_STYLIZED_ALIAS} in a comment by ${input.authorName}`,
-    mismatch ? "review" : "clear",
-    mismatch ? 0.4 : 0.95,
-    after,
-    warnings,
-    1,
-  );
-  return [author, delegated].filter((block): block is AttributionBlock => block != null);
+  flush();
+
+  return segments.flatMap((segment, ordinal) => {
+    const distinct = [...new Set(segment.rounds)];
+    const contradicted = input.roundNumber == null ? null : distinct.find((round) => round !== input.roundNumber);
+    const warnings = contradicted == null ? [] : [`Round marker #${contradicted} does not match imported round ${input.roundNumber}`];
+    const block = blockFrom(
+      segment.ownerName,
+      segment.method,
+      segment.evidence,
+      contradicted == null ? "clear" : "review",
+      contradicted == null ? (segment.method === "explicit-marker" ? 0.95 : 0.9) : 0.4,
+      segment.rows,
+      warnings,
+      ordinal,
+    );
+    return block ? [block] : [];
+  });
 }
 
 interface Segment {
@@ -257,8 +317,10 @@ function pavelBlocks(input: AttributeCommentInput, rows: RawLine[]): Attribution
 
 /**
  * Split one forum comment into prediction blocks.
- * The comment author stays the author. БалБес and СашкоБубен are owners of
- * later blocks only, and their names are never written back as aliases.
+ * The comment author stays the author. Inside a neofit comment, the stylized
+ * БалБес alias and the self marker "мну" switch the owner of the following
+ * lines. СашкоБубен is the owner of marked blocks in Pavel's comments.
+ * Neither name is written back as an alias.
  *
  * The СашкоБубен commentary rule is a deterministic heuristic: at least three
  * prediction lines in one blank-line block must each have a real sentence
