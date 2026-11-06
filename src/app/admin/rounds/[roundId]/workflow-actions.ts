@@ -5,7 +5,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
-import { ingestAndTrack, pollDueRounds } from "@/lib/domain/results/poll-run";
+import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 
 function hubPath(roundId: string): string {
@@ -37,8 +37,33 @@ function goals(value: FormDataEntryValue | null): number | null {
 function refresh(roundId: string): void {
   revalidatePath(hubPath(roundId));
   revalidatePath(fixturesPath(roundId));
+  revalidatePath(`/admin/rounds/${roundId}/review`);
   revalidatePath(`/admin/rounds/${roundId}/results`);
   revalidatePath(`/admin/rounds/${roundId}/export`);
+}
+
+function reviewPath(roundId: string): string {
+  return `/admin/rounds/${roundId}/review`;
+}
+
+export async function refreshMatchResultsAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const returnTo = String(formData.get("returnTo") ?? "fixtures");
+  const path = returnTo === "review" ? reviewPath(roundId) : fixturesPath(roundId);
+  try {
+    const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
+    const report = await refreshRoundResults(roundId);
+    refresh(roundId);
+    revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
+    if (report.busy) {
+      redirect(`${path}?busy=1`);
+    }
+    const failed = report.sources.filter((source) => source.status === "failed").length;
+    const sourceOk = report.sources.filter((source) => source.status === "ok").length;
+    redirect(`${path}?refreshed=1&updated=${report.updated}&conflicts=${report.conflicts}&failed=${failed}&sourceOk=${sourceOk}`);
+  } catch (error) {
+    fail(path, error);
+  }
 }
 
 export async function saveFixturesAction(formData: FormData): Promise<void> {

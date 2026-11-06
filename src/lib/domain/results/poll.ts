@@ -12,11 +12,26 @@ export interface PollFixture {
   resultConflict: boolean;
   conflictAcknowledgedAt: Date | null;
   liveReported?: boolean;
+  /** A provider finish time, when one was actually recorded. Never inferred from the clock. */
+  finishedAt?: Date | null;
+  providerStatus?: "finished" | "live" | "scheduled" | "postponed" | "cancelled" | "suspended" | "unknown" | null;
 }
 
 export interface PollIntervals {
   regularMinutes: number;
   liveMinutes: number;
+  matchDurationMinutes?: number;
+}
+
+/** Two hours after finish. This is not kickoff plus two hours. */
+export const RESULT_CHECK_DELAY_MINUTES = 120;
+export const DEFAULT_MATCH_DURATION_MINUTES = 120;
+
+export type ResultCheckBasis = "finished" | "estimated" | "retry";
+
+export interface ResultCheck {
+  at: Date;
+  basis: ResultCheckBasis;
 }
 
 export interface RoundPollPlan {
@@ -36,12 +51,65 @@ function clampMinutes(value: string | undefined, fallback: number): number {
   return Math.min(Math.round(parsed), DAY_MINUTES);
 }
 
-/** Hourly by default. A live or disputed round uses the shorter gap. Both come from the environment. */
+/** Hourly by default. A retry after the finish window uses the shorter gap. Both come from the environment. */
 export function pollIntervals(env: NodeJS.ProcessEnv = process.env): PollIntervals {
   return {
     regularMinutes: clampMinutes(env.RESULT_POLL_INTERVAL_MINUTES, 60),
     liveMinutes: clampMinutes(env.RESULT_POLL_LIVE_INTERVAL_MINUTES, 15),
+    matchDurationMinutes: clampMinutes(env.MATCH_DURATION_MINUTES, DEFAULT_MATCH_DURATION_MINUTES),
   };
+}
+
+function addMinutes(value: Date, minutes: number): Date {
+  return new Date(value.getTime() + minutes * 60_000);
+}
+
+/**
+ * When to check one fixture.
+ * A recorded finish schedules finishedAt + 2 hours.
+ * Otherwise kickoff + expected duration is the estimated finish, and the check is 2 hours after that.
+ * The clock alone never marks the match finished. A postponed or still-live provider status is a retry.
+ */
+export function resultCheckAt(fixture: PollFixture, now: Date, durationMinutes: number, retryMinutes: number): ResultCheck | null {
+  if (!fixtureBlocksPolling(fixture, now)) {
+    return null;
+  }
+  const status = fixture.providerStatus;
+  if (status === "postponed" || status === "cancelled" || status === "suspended") {
+    return { at: addMinutes(now, retryMinutes), basis: "retry" };
+  }
+  if (fixture.finishedAt) {
+    return { at: addMinutes(fixture.finishedAt, RESULT_CHECK_DELAY_MINUTES), basis: "finished" };
+  }
+  if (fixture.kickoffAt) {
+    return { at: addMinutes(addMinutes(fixture.kickoffAt, durationMinutes), RESULT_CHECK_DELAY_MINUTES), basis: "estimated" };
+  }
+  return { at: addMinutes(now, retryMinutes), basis: "retry" };
+}
+
+/** The next time a check may run. A future kickoff estimate wins. An overdue fixture waits out a stored retry. */
+export function effectiveNextCheck(plan: RoundPollPlan, stored: Date | null, now: Date): Date | null {
+  if (!plan.active) {
+    return null;
+  }
+  const target = plan.nextPollAt;
+  if (target && target.getTime() > now.getTime()) {
+    return target;
+  }
+  if (stored && stored.getTime() > now.getTime()) {
+    return stored;
+  }
+  return target ?? stored;
+}
+
+export function nextPollAfterCheck(plan: RoundPollPlan, checkedAt: Date, retryMinutes: number): Date | null {
+  if (!plan.active || !plan.nextPollAt) {
+    return null;
+  }
+  if (plan.nextPollAt.getTime() > checkedAt.getTime()) {
+    return plan.nextPollAt;
+  }
+  return addMinutes(checkedAt, retryMinutes);
 }
 
 function hasScore(fixture: PollFixture): boolean {
@@ -126,30 +194,32 @@ export function planRoundPoll(fixtures: readonly PollFixture[], now: Date, inter
       reason: "All fixtures are final. Unresolved conflicts are absent or acknowledged.",
     };
   }
+  const duration = intervals.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES;
+  const checks = blocking.flatMap((fixture) => {
+    const check = resultCheckAt(fixture, now, duration, intervals.liveMinutes);
+    return check ? [check] : [];
+  });
+  const earliest = checks.sort((left, right) => left.at.getTime() - right.at.getTime())[0];
+  const nextPollAt = earliest?.at ?? addMinutes(now, intervals.liveMinutes);
   const phases = fixtures.map((fixture) => fixturePhase(fixture, now));
   const pollStatus: RoundPollStatus = phases.includes("live") ? "live" : "scheduled";
-  const urgent = blocking.some((fixture) => {
-    const phase = fixturePhase(fixture, now);
-    return phase === "live" || phase === "finished-unverified" || phase === "conflict-review";
-  });
-  const minutes = urgent ? intervals.liveMinutes : intervals.regularMinutes;
-  let nextPollAt = new Date(now.getTime() + minutes * 60_000);
-  const nextKickoff = fixtures
-    .filter((fixture) => fixturePhase(fixture, now) === "scheduled" && fixture.kickoffAt && fixture.kickoffAt.getTime() > now.getTime())
-    .map((fixture) => fixture.kickoffAt as Date)
-    .sort((left, right) => left.getTime() - right.getTime())[0];
-  if (nextKickoff && nextKickoff.getTime() < nextPollAt.getTime()) {
-    nextPollAt = nextKickoff;
-  }
   const unacknowledged = blocking.some((fixture) => fixturePhase(fixture, now) === "conflict-review");
-  const unverified = blocking.some((fixture) => fixturePhase(fixture, now) === "finished-unverified");
-  const reason = unacknowledged
-    ? "Polling continues until the source conflict is resolved or acknowledged."
-    : unverified
-      ? "Polling continues until finished scores are verified."
-      : phases.includes("live")
-        ? "A match is in progress, so the next check is sooner."
-        : "Polling continues until the remaining matches finish.";
+  const held = blocking.some((fixture) => {
+    const status = fixture.providerStatus;
+    return status === "postponed" || status === "cancelled" || status === "suspended" || status === "live";
+  });
+  const windowPassed = Boolean(earliest && earliest.basis !== "retry" && earliest.at.getTime() <= now.getTime());
+  const reason = held
+    ? "The provider has not finished the match, so elapsed time does not finalize it. The next check uses the retry interval."
+    : unacknowledged
+      ? "Polling continues until the source conflict is resolved or acknowledged."
+      : windowPassed
+        ? `The finish window has passed and the result is still open, so the next check waits ${intervals.liveMinutes} minutes.`
+        : earliest?.basis === "finished"
+          ? "Next check is 2 hours after the recorded finish."
+          : earliest?.basis === "estimated"
+            ? `Next check is 2 hours after the estimated finish (kickoff plus ${duration} minutes).`
+            : `The finish window has passed and the result is still open, so the next check waits ${intervals.liveMinutes} minutes.`;
   return { pollStatus, active: true, nextPollAt, reason };
 }
 
@@ -160,10 +230,11 @@ export function isPollDue(plan: RoundPollPlan, nextPollAt: Date | null, now: Dat
   if (force) {
     return true;
   }
-  if (!nextPollAt) {
+  const due = effectiveNextCheck(plan, nextPollAt, now);
+  if (!due) {
     return true;
   }
-  return nextPollAt.getTime() <= now.getTime();
+  return due.getTime() <= now.getTime();
 }
 
 export function selectDueRoundIds(

@@ -73,7 +73,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; saved?: string; refreshed?: string; busy?: string; updated?: string; conflicts?: string; failed?: string; sourceOk?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -236,7 +236,7 @@ export default async function RoundImportPage({
         {query.identity ? <Notice tone="success">Author identity updated. Slips were parsed again for that nick.</Notice> : null}
         {query.saved === "1" ? <Notice tone="success">Clean matrix saved.</Notice> : null}
         {query.saved === "results" ? <Notice tone="success">Actual results saved. They apply to every participant.</Notice> : null}
-        <CleanMatrix roundId={round.id} />
+        <CleanMatrix refreshQuery={query} roundId={round.id} />
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}

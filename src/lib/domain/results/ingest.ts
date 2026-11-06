@@ -24,6 +24,8 @@ export interface IngestReport {
   verified: number;
   conflicts: number;
   insufficient: number;
+  /** Fixtures whose stored score changed. An unchanged valid score stays zero. */
+  updated: number;
   sources: { source: string; role: string; status: string; matchCount: number; error: string | null }[];
 }
 
@@ -201,6 +203,7 @@ export async function ingestSeasonResults(
   let verified = 0;
   let conflicts = 0;
   let insufficient = 0;
+  let updated = 0;
   for (const fixture of fixtures) {
     const aligned: AlignedObservation[] = stored.flatMap((row) => {
       if (row.matchId !== fixture.id) {
@@ -238,6 +241,9 @@ export async function ingestSeasonResults(
     } else if (write.resultState === "confirmed") {
       confirmed += 1;
     }
+    if (write.changedGoals) {
+      updated += 1;
+    }
     await prisma.match.update({
       where: { id: fixture.id },
       data: {
@@ -257,6 +263,7 @@ export async function ingestSeasonResults(
     verified,
     conflicts,
     insufficient,
+    updated,
     sources: fetches.map((fetchResult) => ({
       source: fetchResult.source,
       role: fetchResult.role,
@@ -268,6 +275,12 @@ export async function ingestSeasonResults(
 }
 
 export async function ingestRoundResults(roundId: string): Promise<IngestReport> {
-  const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
-  return ingestSeasonResults(round.seasonId);
+  const round = await prisma.round.findUniqueOrThrow({
+    where: { id: roundId },
+    select: { seasonId: true, standingRole: true },
+  });
+  return ingestSeasonResults(round.seasonId, {
+    onlyRoundIds: [roundId],
+    includeArchivedRoundIds: round.standingRole === ARCHIVED_ROUND ? [roundId] : [],
+  });
 }

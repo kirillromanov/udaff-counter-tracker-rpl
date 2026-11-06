@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
-import { ingestSeasonResults, type IngestReport } from "./ingest";
+import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
+import { ingestRoundResults, ingestSeasonResults, type IngestReport } from "./ingest";
 import {
+  nextPollAfterCheck,
   planRoundPoll,
   pollIntervals,
   selectDueRoundIds,
@@ -29,7 +31,88 @@ function toPollFixture(match: {
     resultConflict: match.resultConflict,
     conflictAcknowledgedAt: match.conflictAcknowledgedAt,
     liveReported: match.resultObservations?.some((observation) => observation.matchStatus === "live") ?? false,
+    providerStatus: providerStatusOf(match.resultObservations),
   };
+}
+
+function providerStatusOf(
+  observations: readonly { matchStatus: string }[] | undefined,
+): PollFixture["providerStatus"] {
+  const statuses = new Set(observations?.map((observation) => observation.matchStatus) ?? []);
+  for (const status of ["postponed", "cancelled", "suspended", "live"] as const) {
+    if (statuses.has(status)) {
+      return status;
+    }
+  }
+  return null;
+}
+
+const roundRefreshLocks = new Set<string>();
+
+/** One ingestion at a time for a round. A second caller leaves the stored scores alone. */
+export function beginRoundRefresh(roundId: string): boolean {
+  if (roundRefreshLocks.has(roundId)) {
+    return false;
+  }
+  roundRefreshLocks.add(roundId);
+  return true;
+}
+
+export function finishRoundRefresh(roundId: string): void {
+  roundRefreshLocks.delete(roundId);
+}
+
+export interface RoundRefreshReport extends IngestReport {
+  busy: boolean;
+  recalculated: boolean;
+}
+
+/**
+ * Fetch and apply actual results for one round.
+ * Manual buttons and the due-round poll use this same ingestion path.
+ * A busy lock does not fetch again and does not change stored scores.
+ */
+export async function refreshRoundResults(roundId: string): Promise<RoundRefreshReport> {
+  if (!beginRoundRefresh(roundId)) {
+    return { busy: true, recalculated: false, confirmed: 0, verified: 0, conflicts: 0, insufficient: 0, updated: 0, sources: [] };
+  }
+  try {
+    const report = await ingestRoundResults(roundId);
+    await syncRoundPollState(roundId, new Date(), report.sources);
+    const round = await prisma.round.findUniqueOrThrow({
+      where: { id: roundId },
+      include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+    });
+    const plan = planRoundPoll(round.matches.map(toPollFixture), new Date(), pollIntervals());
+    let recalculated = false;
+    if (round.standingRole !== ARCHIVED_ROUND && !plan.active) {
+      await recalculateRound(roundId);
+      recalculated = true;
+    }
+    return { ...report, busy: false, recalculated };
+  } finally {
+    finishRoundRefresh(roundId);
+  }
+}
+
+async function syncRoundPollState(roundId: string, checkedAt: Date, sources: IngestReport["sources"]): Promise<void> {
+  const round = await prisma.round.findUniqueOrThrow({
+    where: { id: roundId },
+    include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+  });
+  const intervals = pollIntervals();
+  const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
+  const lastSuccessfulSource = strongestSuccessfulSource(sources);
+  await prisma.round.update({
+    where: { id: round.id },
+    data: {
+      pollStatus: plan.pollStatus,
+      lastPolledAt: checkedAt,
+      nextPollAt: nextPollAfterCheck(plan, checkedAt, intervals.liveMinutes),
+      lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
+      pollHealthSummary: sourceHealthSummary(sources),
+    },
+  });
 }
 
 /** Refresh the schedule after a multi-source fetch. A finalized round gets no next check. */
@@ -57,7 +140,7 @@ export async function syncSeasonPollState(
       data: {
         pollStatus: plan.pollStatus,
         lastPolledAt: checkedAt,
-        nextPollAt: plan.nextPollAt,
+        nextPollAt: nextPollAfterCheck(plan, checkedAt, intervals.liveMinutes),
         lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
         pollHealthSummary: summary,
       },
@@ -116,16 +199,33 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
       options?.forceRoundId,
     ),
   );
-  const seasonIds = [...new Set(rounds.filter((round) => dueIds.has(round.id)).map((round) => round.seasonId))];
-  if (seasonIds.length === 0) {
+  if (dueIds.size === 0) {
     return { checked: false, roundIds: [], seasons: [] };
   }
-  const seasons = [];
-  for (const seasonId of seasonIds) {
-    const report = await ingestAndTrack(seasonId, {
-      includeArchivedRoundIds: options?.forceRoundId ? [options.forceRoundId] : [],
-    });
-    seasons.push({ seasonId, report });
+  const grouped = new Map<string, IngestReport>();
+  for (const roundId of dueIds) {
+    const round = rounds.find((item) => item.id === roundId);
+    if (!round) {
+      continue;
+    }
+    const report = await refreshRoundResults(roundId);
+    const current = grouped.get(round.seasonId);
+    grouped.set(round.seasonId, current ? combineReports(current, report) : report);
   }
-  return { checked: true, roundIds: [...dueIds], seasons };
+  return {
+    checked: true,
+    roundIds: [...dueIds],
+    seasons: [...grouped.entries()].map(([seasonId, report]) => ({ seasonId, report })),
+  };
+}
+
+function combineReports(left: IngestReport, right: IngestReport): IngestReport {
+  return {
+    confirmed: left.confirmed + right.confirmed,
+    verified: left.verified + right.verified,
+    conflicts: left.conflicts + right.conflicts,
+    insufficient: left.insufficient + right.insufficient,
+    updated: left.updated + right.updated,
+    sources: [...left.sources, ...right.sources],
+  };
 }

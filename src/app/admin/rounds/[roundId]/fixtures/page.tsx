@@ -2,13 +2,14 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { alignToFixture, type AlignedObservation } from "@/lib/domain/results/decide";
-import { fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
+import { effectiveNextCheck, fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
 import { fallbackSourceLabel, unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { rankFixtureResult, SOURCE_RANK, type CandidateStanding } from "@/lib/domain/results/ranking";
 import { RoundNav } from "../../../round-nav";
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
+import { MatchResultsRefresh } from "../match-results-refresh";
 import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 
 export const instant = false;
@@ -58,7 +59,7 @@ export default async function FixturesPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; polled?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; polled?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string; refreshed?: string; busy?: string; updated?: string; sourceOk?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -113,6 +114,9 @@ export default async function FixturesPage({
       resultConflict: match.resultConflict,
       conflictAcknowledgedAt: match.conflictAcknowledgedAt,
       liveReported: match.resultObservations.some((observation) => observation.matchStatus === "live"),
+      providerStatus: (["postponed", "cancelled", "suspended", "live"] as const).find((status) =>
+        match.resultObservations.some((observation) => observation.matchStatus === status),
+      ) ?? null,
     })),
     rankedAt,
     pollIntervals(),
@@ -175,7 +179,7 @@ export default async function FixturesPage({
           <p className="mt-2 text-xs text-zinc-600">
             Last check {round.lastPolledAt ? formatUtc(round.lastPolledAt) : "not recorded"}
             {" · "}
-            Next check {nextCheckLabel(round.nextPollAt, pollPlan.active, rankedAt)}
+            Next check {nextCheckLabel(effectiveNextCheck(pollPlan, round.nextPollAt, rankedAt), pollPlan.active, rankedAt)}
             {" · "}
             Last successful source {round.lastSuccessfulSource ?? "none"}
             {fallbackSourceLabel(round.lastSuccessfulSource) ? ` · ${fallbackSourceLabel(round.lastSuccessfulSource)}` : ""}
@@ -246,6 +250,17 @@ export default async function FixturesPage({
         </Section>
 
         <Section description="Order, clubs, actual score, and the official MT flag." id="results" title="Round results">
+          <MatchResultsRefresh
+            lastPolledAt={round.lastPolledAt}
+            lastSuccessfulSource={round.lastSuccessfulSource}
+            nextPollAt={round.nextPollAt}
+            now={rankedAt}
+            plan={pollPlan}
+            pollHealthSummary={round.pollHealthSummary}
+            query={query}
+            returnTo="fixtures"
+            roundId={round.id}
+          />
           {round.matches.length === 0 ? (
             <EmptyState detail="Add the first fixture below." title="No fixtures yet" />
           ) : (

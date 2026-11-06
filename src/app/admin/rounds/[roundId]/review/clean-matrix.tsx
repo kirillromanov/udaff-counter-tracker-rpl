@@ -3,10 +3,13 @@ import { revisionToken } from "@/lib/domain/import/matrix-edits";
 import { cellText } from "@/lib/domain/import/save-matrix";
 import { scoreMatch } from "@/lib/domain/scoring/score-match";
 import { fixtureConfidence, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
+import { planRoundPoll, pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
+import type { RefreshQuery } from "@/lib/domain/results/refresh-status";
 import { prisma } from "@/lib/db/prisma";
 import { SubmitButton } from "../../../submit-button";
 import { saveMatrixAction, saveMatrixResultsAction } from "../actions";
 import { fieldClass, Section } from "../../../ui";
+import { MatchResultsRefresh } from "../match-results-refresh";
 
 function liveFixture(match: {
   id: string;
@@ -33,11 +36,11 @@ function liveFixture(match: {
   };
 }
 
-export async function CleanMatrix({ roundId }: { roundId: string }) {
+export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; refreshQuery: RefreshQuery }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
-      matches: { orderBy: { sortOrder: "asc" } },
+      matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } },
       forumComments: { select: { id: true } },
       season: {
         include: {
@@ -67,12 +70,36 @@ export async function CleanMatrix({ roundId }: { roundId: string }) {
     .sort((left, right) => (order.get(left.name) ?? 100) - (order.get(right.name) ?? 100) || left.name.localeCompare(right.name, "ru"));
   const fixtures = round.matches.map((match) => ({ ...match, confidence: fixtureConfidence(liveFixture(match)) }));
   const confirmed = fixtures.length > 0 && fixtures.every((match) => match.confidence === "verified");
+  const now = new Date();
+  const pollFixtures: PollFixture[] = round.matches.map((match) => ({
+    kickoffAt: match.kickoffAt,
+    actualHomeGoals: match.actualHomeGoals,
+    actualAwayGoals: match.actualAwayGoals,
+    resultState: match.resultState,
+    resultResolution: match.resultResolution,
+    resultConflict: match.resultConflict,
+    conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+    liveReported: match.resultObservations.some((observation) => observation.matchStatus === "live"),
+    providerStatus: match.resultObservations.some((observation) => observation.matchStatus === "live") ? "live" : null,
+  }));
+  const pollPlan = planRoundPoll(pollFixtures, now, pollIntervals());
 
   return (
     <Section
       title="Чистовая таблица / Прогнозы и расчёт"
       description="One cell per roster participant and fixture. An empty cell is a missing prediction, not 0-0. Saving writes these cells as the effective slips and keeps them ahead of a later parse."
     >
+      <MatchResultsRefresh
+        lastPolledAt={round.lastPolledAt}
+        lastSuccessfulSource={round.lastSuccessfulSource}
+        nextPollAt={round.nextPollAt}
+        now={now}
+        plan={pollPlan}
+        pollHealthSummary={round.pollHealthSummary}
+        query={refreshQuery}
+        returnTo="review"
+        roundId={round.id}
+      />
       {round.forumComments.length === 0 ? (
         <p className="mb-3 text-sm text-amber-800">
           No source comments are stored for this round. Empty cells are not proof that a participant submitted nothing.
