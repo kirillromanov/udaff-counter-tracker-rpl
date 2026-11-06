@@ -9,12 +9,24 @@ export const BALBES_STYLIZED_ALIAS = "𝟲𝗮𝗝𝗜𝟲𝗲𝗰";
 
 const BALBES_ASCII = /(?:^|[^\p{L}\p{N}])6aji6ec(?:$|[^\p{L}\p{N}])/iu;
 const ROUND_MARK = /\[\s*#\s*(\d+)\s*\]|#\s*(\d+)/u;
-const PHRASES: RegExp[] = [
-  /от\s+сашко\s*бубна/iu,
-  /от\s+сашки\s*бубна/iu,
-  /от\s+бубна/iu,
-  /комментари[йи]\s+бубна/iu,
-  /(?:^|[^\p{L}\p{N}])бубнов(?:$|[^\p{L}\p{N}])/iu,
+const COMMENTARY_DECORATION = /\(\s*(?:мт|mt)\s*\)|\*\s*2(?!\d)|матч\s+тура!?|[\p{Extended_Pictographic}\uFE0F]/giu;
+/**
+ * A disclaimer line is the whole line, not a name mentioned inside a sentence.
+ * Compact equality keeps "Бубен" from matching "бубновский" or match commentary.
+ */
+const SASHKO_DISCLAIMERS: ReadonlyArray<readonly [string, string]> = [
+  ["отсашкобубна", "от СашкоБубна"],
+  ["отсашкобубен", "от СашкоБубен"],
+  ["отсашкибубна", "от Сашки Бубна"],
+  ["отсашкибубен", "от Сашки Бубен"],
+  ["отбубна", "от Бубна"],
+  ["комментариибубна", "комментарии Бубна"],
+  ["комментарийбубна", "комментарий Бубна"],
+  ["комментариибубен", "комментарии Бубен"],
+  ["сашкобубен", "СашкоБубен"],
+  ["сашкобубна", "СашкоБубна"],
+  ["бубнов", "Бубнов"],
+  ["бубен", "Бубен"],
 ];
 
 export interface AttributionBlock {
@@ -62,13 +74,16 @@ function isSeparator(raw: string): boolean {
   return compact.length >= 6 && /^=+/.test(compact) && /=+$/.test(compact);
 }
 
-function phraseIn(raw: string): boolean {
-  const plain = raw.normalize("NFKC");
-  return PHRASES.some((pattern) => pattern.test(plain));
-}
-
-function leadInPhrase(raw: string): boolean {
-  return /^\s*от\s+/iu.test(raw.normalize("NFKC"));
+function disclaimerOf(raw: string): string | null {
+  if (isPrediction(raw)) {
+    return null;
+  }
+  const compact = raw
+    .normalize("NFKC")
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .toLocaleLowerCase("ru");
+  return SASHKO_DISCLAIMERS.find(([key]) => key === compact)?.[1] ?? null;
 }
 
 function isSelfMarker(raw: string): boolean {
@@ -106,7 +121,7 @@ function commentaryWeight(raw: string): boolean {
   if (!last || last.index == null) {
     return false;
   }
-  const after = normalized.slice(last.index + last[0].length);
+  const after = normalized.slice(last.index + last[0].length).replace(COMMENTARY_DECORATION, " ");
   const words = after.split(/\s+/).filter((word) => /[\p{L}]{3,}/u.test(word));
   const letters = after.match(/\p{L}/gu)?.length ?? 0;
   return words.length >= 3 && letters >= 15;
@@ -217,116 +232,194 @@ function balbesBlocks(input: AttributeCommentInput, rows: RawLine[]): Attributio
   });
 }
 
-interface Segment {
-  rows: RawLine[];
-  kind: "prediction" | "phrase" | "other";
+interface DisclaimerLine {
+  row: RawLine;
+  leadIn: boolean;
+  label: string;
 }
 
-function segmentsOf(rows: RawLine[]): Segment[] {
-  const groups: RawLine[][] = [];
-  let current: RawLine[] = [];
+interface PavelDraft {
+  rows: RawLine[];
+  predictions: RawLine[];
+  keys: Set<string>;
+  before: DisclaimerLine[];
+  after: DisclaimerLine[];
+  ambiguous: boolean;
+}
+
+function isDecoration(raw: string): boolean {
+  if (isSeparator(raw) || roundHeaderNumber(raw) != null) {
+    return true;
+  }
+  const compact = raw.replace(/\s/g, "");
+  return compact.length >= 5 && /^[_=~\\|. *-]+$/u.test(compact);
+}
+
+function fixtureKey(raw: string): string | null {
+  const parsed = parsePredictionLine(raw);
+  if (!parsed?.homeName || !parsed.awayName || parsed.homeGoals == null) {
+    return null;
+  }
+  return `${parsed.homeName.toLocaleLowerCase("ru")}|${parsed.awayName.toLocaleLowerCase("ru")}`;
+}
+
+function attachHeld(previous: PavelDraft | undefined, next: PavelDraft, held: DisclaimerLine[]): void {
+  if (held.length === 0) {
+    return;
+  }
+  const lead = held.filter((item) => item.leadIn);
+  const trailing = held.filter((item) => !item.leadIn);
+  if (!previous) {
+    next.before.push(...held);
+    return;
+  }
+  if (lead.length > 0 && trailing.length === 0) {
+    next.before.push(...lead);
+    return;
+  }
+  previous.ambiguous = true;
+  next.ambiguous = true;
+  previous.after.push(...trailing, ...lead);
+  next.before.push(...trailing, ...lead);
+}
+
+/**
+ * Pavel's own slip is the plain fixture template. СашкоБубен is either named
+ * by a standalone disclaimer or written as one slip where every prediction
+ * line continues with match commentary. Blank lines stay inside the slip.
+ * A repeated fixture starts another slip. A name inside a sentence does not.
+ */
+function pavelBlocks(input: AttributeCommentInput, rows: RawLine[]): AttributionBlock[] {
+  const drafts: PavelDraft[] = [];
+  let current: PavelDraft | null = null;
+  let held: DisclaimerLine[] = [];
+  let preface: RawLine[] = [];
+
+  const close = () => {
+    if (current && current.predictions.length > 0) {
+      drafts.push(current);
+    }
+    current = null;
+  };
+
   for (const row of rows) {
     if (!row.raw.trim()) {
-      if (current.length > 0) {
-        groups.push(current);
-        current = [];
+      if (current) {
+        current.rows.push(row);
+      } else {
+        preface.push(row);
       }
       continue;
     }
-    current.push(row);
-  }
-  if (current.length > 0) {
-    groups.push(current);
-  }
-  return groups.map((group) => {
-    const phraseLines = group.filter((row) => phraseIn(row.raw));
-    const predictionLines = group.filter((row) => isPrediction(row.raw));
-    if (predictionLines.length > 0) {
-      return { rows: group, kind: "prediction" as const };
-    }
-    const phraseOnly =
-      phraseLines.length > 0 &&
-      group.every((row) => isSeparator(row.raw) || (phraseIn(row.raw) && row.raw.trim().length < 80));
-    return { rows: group, kind: phraseOnly ? "phrase" as const : "other" as const };
-  });
-}
-
-function pavelBlocks(input: AttributeCommentInput, rows: RawLine[]): AttributionBlock[] {
-  const segments = segmentsOf(rows);
-  const owner = new Map<Segment, { name: string; method: AttributionBlock["method"]; review: AttributionBlock["review"]; evidence: string }>();
-  segments.forEach((segment, index) => {
-    if (segment.kind !== "phrase") {
-      return;
-    }
-    const evidence = segment.rows.map((row) => row.raw.trim()).join(" ").slice(0, 180);
-    const next = segments[index + 1];
-    const previous = segments[index - 1];
-    const target = leadInPhrase(segment.rows[0]?.raw ?? "") && next?.kind === "prediction"
-      ? next
-      : previous?.kind === "prediction"
-        ? previous
-        : next?.kind === "prediction"
-          ? next
-          : null;
-    if (!target || owner.has(target)) {
-      return;
-    }
-    owner.set(target, {
-      name: "СашкоБубен",
-      method: "explicit-marker",
-      review: "clear",
-      evidence: `Attribution phrase “${evidence}” in a comment by ${input.authorName}`,
-    });
-  });
-
-  const blocks: AttributionBlock[] = [];
-  let ordinal = 0;
-  for (const segment of segments) {
-    if (segment.kind !== "prediction") {
+    const label = disclaimerOf(row.raw);
+    if (label) {
+      close();
+      held.push({ row, label, leadIn: /^от(?:\s|$)/iu.test(label) });
       continue;
     }
-    const explicitInside = segment.rows.some((row) => phraseIn(row.raw));
-    const assigned = owner.get(segment);
-    const commentaryLines = segment.rows.filter((row) => commentaryWeight(row.raw)).length;
+    if (isDecoration(row.raw)) {
+      if (current) {
+        current.rows.push(row);
+      } else {
+        preface.push(row);
+      }
+      continue;
+    }
+    const key = fixtureKey(row.raw);
+    if (!key) {
+      close();
+      if (held.length > 0) {
+        const previous = drafts.at(-1);
+        if (previous) {
+          previous.after.push(...held);
+        }
+        held = [];
+      }
+      preface = [];
+      continue;
+    }
+    if (current?.keys.has(key)) {
+      close();
+    }
+    if (!current) {
+      current = { rows: [...preface], predictions: [], keys: new Set(), before: [], after: [], ambiguous: false };
+      preface = [];
+      attachHeld(drafts.at(-1), current, held);
+      held = [];
+    }
+    current.rows.push(row);
+    current.predictions.push(row);
+    current.keys.add(key);
+  }
+  close();
+  if (held.length > 0) {
+    drafts.at(-1)?.after.push(...held);
+  }
+
+  return drafts.flatMap((draft, ordinal) => {
+    const commentary = draft.predictions.filter((row) => commentaryWeight(row.raw)).length;
+    const total = draft.predictions.length;
+    const labels = [...draft.before, ...draft.after].map((item) => item.label);
     let name = input.authorName;
     let method: AttributionBlock["method"] = "author";
     let review: AttributionBlock["review"] = "clear";
     let evidence = "Comment author";
     let confidence = 0.9;
-    if (assigned || explicitInside) {
+    const warnings: string[] = [];
+    if (draft.ambiguous) {
+      method = "explicit-marker";
+      review = "review";
+      confidence = 0.4;
+      evidence = `Disclaimer “${labels.join(", ")}” has ambiguous scope between prediction blocks in a comment by ${input.authorName}`;
+      warnings.push(evidence);
+    } else if (labels.length > 0) {
       name = "СашкоБубен";
       method = "explicit-marker";
       review = "clear";
-      evidence = assigned?.evidence ?? `Attribution phrase inside the prediction block by ${input.authorName}`;
       confidence = 0.93;
-    } else if (commentaryLines >= 3) {
+      evidence = `Attribution phrase “${labels.join(", ")}” in a comment by ${input.authorName}`;
+    } else if (total >= 2 && commentary === total) {
       name = "СашкоБубен";
       method = "commentary-heuristic";
-      review = "probable";
-      evidence = `${commentaryLines} prediction lines in ${input.authorName}'s comment each have match commentary after the score`;
-      confidence = 0.62;
+      review = "clear";
+      confidence = 0.9;
+      evidence = `${commentary} of ${total} prediction lines in ${input.authorName}'s comment each have match commentary after the score`;
+    } else if (commentary >= 2 && commentary < total) {
+      method = "commentary-heuristic";
+      review = "review";
+      confidence = 0.45;
+      evidence = `${commentary} of ${total} prediction lines have match commentary, so the block is not a consistent СашкоБубен slip`;
+      warnings.push(evidence);
     }
-    const built = blockFrom(name, method, evidence, review, confidence, segment.rows, review === "probable" ? [evidence] : [], ordinal);
-    ordinal += 1;
-    if (built) {
-      blocks.push(built);
+    const contradicted = input.roundNumber == null
+      ? null
+      : draft.rows.map((row) => roundHeaderNumber(row.raw)).find((round) => round != null && round !== input.roundNumber);
+    if (contradicted != null) {
+      review = "review";
+      confidence = Math.min(confidence, 0.4);
+      warnings.push(`Round marker #${contradicted} does not match imported round ${input.roundNumber}`);
     }
-  }
-  return blocks;
+    const built = blockFrom(
+      name,
+      method,
+      evidence,
+      review,
+      confidence,
+      [...draft.before.map((item) => item.row), ...draft.rows, ...draft.after.map((item) => item.row)],
+      warnings,
+      ordinal,
+    );
+    return built ? [built] : [];
+  });
 }
 
 /**
  * Split one forum comment into prediction blocks.
  * The comment author stays the author. Inside a neofit comment, the stylized
  * БалБес alias and the self marker "мну" switch the owner of the following
- * lines. СашкоБубен is the owner of marked blocks in Pavel's comments.
- * Neither name is written back as an alias.
- *
- * The СашкоБубен commentary rule is a deterministic heuristic: at least three
- * prediction lines in one blank-line block must each have a real sentence
- * after the score. One trailing remark does not move the block. Explicit
- * phrases outrank the heuristic. A phrase in a long discussion does not
- * attach to a neighboring block.
+ * lines. Inside a Павел Абросимов comment, a standalone СашкоБубен disclaimer
+ * or a slip whose every line has match commentary selects СашкоБубен.
+ * Neither name is written back as an alias. Owner state ends with the comment.
  */
 export function attributeComment(input: AttributeCommentInput): AttributionBlock[] {
   const rows = linesOf(input.raw);

@@ -96,12 +96,13 @@ describe("delegated prediction blocks", () => {
 
   it("lets an attribution phrase after the scores apply to the preceding block only", () => {
     const blocks = attributeComment({
-      raw: `Рубин - Факел 1-0\nДинамо - Ахмат 2-1\n\nРодина - Краснодар 0-1\n\nот Бубна`,
+      raw: `Рубин - Факел 1-0\nДинамо - Ахмат 2-1\n\nРубин - Факел 0-1\nДинамо - Ахмат 1-1\n\nот Бубна`,
       authorName: "Павел Абросимов",
       roundNumber: 13,
     });
 
     expect(blocks.map((block) => block.ownerName)).toEqual(["Павел Абросимов", "СашкоБубен"]);
+    expect(blocks[1]?.evidence).toContain("от Бубна");
   });
 
   it("leaves Pavel's ordinary score lines with Pavel", () => {
@@ -116,7 +117,7 @@ describe("delegated prediction blocks", () => {
     ]);
   });
 
-  it("treats several commentary lines as a probable СашкоБубен block", () => {
+  it("treats a consistent commentary slip as СашкоБубен", () => {
     const raw = `31.10.2026 15:15 Рубин — Факел 0:0 Врубаем тотальный сушняк! Автобус на автобус.
 31.10.2026 17:30 Динамо Москва — Ахмат 2:1 Бело-голубые дома обязаны реабилитироваться.
 31.10.2026 19:45 Родина — Краснодар 0:3 Лидер чемпионата против аутсайдера.`;
@@ -125,7 +126,7 @@ describe("delegated prediction blocks", () => {
     expect(blocks[0]).toMatchObject({
       ownerName: "СашкоБубен",
       method: "commentary-heuristic",
-      review: "probable",
+      review: "clear",
     });
   });
 
