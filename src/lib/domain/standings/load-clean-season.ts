@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { defaultScoringConfig, scoringConfigFromRecord } from "@/lib/config/scoring";
-import { roundIsComplete, scoreLiveParticipant, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
+import { scoreLiveParticipant, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
 import { buildCleanSeasonStandings, type CleanSeasonTable } from "./clean-season";
+import { countsAsConfirmedRound } from "./intermediate";
 import { oneSelectedSetPerParticipant } from "./recalculate-round";
 import { countsTowardProduction } from "./round-role";
 
@@ -65,7 +66,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
       continue;
     }
     const fixtures = round.matches.map(toFixture);
-    if (roundIsComplete(fixtures) && round.roundScores.length > 0) {
+    if (countsAsConfirmedRound(round.status) && round.roundScores.length > 0) {
       confirmedRounds.push({
         roundId: round.id,
         order: round.number,

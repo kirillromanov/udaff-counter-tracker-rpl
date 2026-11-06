@@ -10,6 +10,7 @@ import {
   type LiveSeasonRow,
   type RankedLiveScore,
 } from "@/lib/domain/scoring/live-score";
+import { countsAsConfirmedRound } from "./intermediate";
 import { oneSelectedSetPerParticipant } from "./recalculate-round";
 import { countsTowardProduction } from "./round-role";
 
@@ -121,8 +122,8 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
       return [];
     }
     const fixtures = round.matches.map(toFixture);
-    const complete = roundIsComplete(fixtures);
-    if (!complete) {
+    const complete = countsAsConfirmedRound(round.status) && round.roundScores.length > 0;
+    if (!complete && !(roundIsComplete(fixtures) && round.roundScores.length === 0)) {
       unverifiedRounds.push({ number: round.number, name: round.name });
       const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
       const sets = oneSelectedSetPerParticipant(round.predictionSets);

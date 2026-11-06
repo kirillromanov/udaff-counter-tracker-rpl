@@ -35,6 +35,15 @@ export function MatchResultsRefresh({
   return (
     <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
       {outcome ? <Notice tone={outcome.tone}>{outcome.text}</Notice> : null}
+      {query.calc === "stale" ? (
+        <Notice tone="error">Results were saved. Standings calculation failed, so the export is stale.</Notice>
+      ) : query.calc === "partial" || query.calc === "complete" || query.calc === "empty" ? (
+        <Notice tone={query.calc === "empty" ? "info" : "success"}>
+          {query.calc === "empty"
+            ? "No verified completed matches yet. Pending fixtures were skipped."
+            : `Рассчитано по ${query.included ?? "0"} из ${query.fixtureCount ?? "0"} матчей.`}
+        </Notice>
+      ) : null}
       <p className="mt-2 text-xs text-zinc-600">
         Last refresh attempt {lastPolledAt ? formatUtc(lastPolledAt) : "not recorded"}
         {" · "}

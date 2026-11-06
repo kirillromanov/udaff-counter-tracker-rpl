@@ -14,6 +14,7 @@ import {
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
 import { saveCleanMatrix, saveMatrixResults } from "@/lib/domain/import/save-matrix";
+import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import {
   createParticipantForAuthor,
   ignoreForumAuthor,
@@ -30,6 +31,7 @@ function refreshRound(roundId: string, seasonId?: string): void {
   revalidatePath(reviewPath(roundId));
   revalidatePath(`/admin/rounds/${roundId}`);
   revalidatePath(`/admin/rounds/${roundId}/results`);
+  revalidatePath(`/admin/rounds/${roundId}/export`);
   if (seasonId) {
     revalidatePath(`/admin/seasons/${seasonId}`);
     revalidatePath(`/admin/seasons/${seasonId}/standings`);
@@ -77,10 +79,25 @@ export async function refreshDuePredictionsAction(formData: FormData): Promise<v
 
 export async function saveMatrixAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
+  const recalculate = String(formData.get("intent") ?? "") === "recalculate";
   try {
-    await saveCleanMatrix(roundId, formData, String(formData.get("intent") ?? "") === "recalculate");
-    refreshRound(roundId);
-    redirect(`${reviewPath(roundId)}?saved=1`);
+    await saveCleanMatrix(roundId, formData, recalculate);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    refreshRound(roundId, round?.seasonId);
+    redirect(`${reviewPath(roundId)}?saved=${recalculate ? "calculated" : "1"}`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+/** Recalculate from stored predictions and actual results. Does not fetch sources or edit those records. */
+export async function calculateIntermediateAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const calculation = await recalculateRound(roundId);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    refreshRound(roundId, round?.seasonId);
+    redirect(`${reviewPath(roundId)}?intermediate=1&included=${calculation.included}&fixtureCount=${calculation.total}&calc=${calculation.status}`);
   } catch (error) {
     fail(roundId, error);
   }

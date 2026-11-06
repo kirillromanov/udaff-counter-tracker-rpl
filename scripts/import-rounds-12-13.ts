@@ -142,7 +142,7 @@ async function main() {
       console.log(`Round ${source.number}: calculation incomplete. ${round.matches.length === 0 ? "No fixtures." : blockers.join("; ")}`);
       continue;
     }
-    const scored = await recalculateRound(round.id);
+    const scored = (await recalculateRound(round.id)).participants;
     const stored = await prisma.round.findUnique({
       where: { id: round.id },
       select: { standingRole: true, status: true, _count: { select: { roundScores: true } } },

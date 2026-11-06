@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { buildProductionStandings } from "@/lib/domain/scoring/production-standings";
 import { buildSeasonStandings } from "@/lib/domain/scoring/score-season";
 import type { SeasonStanding } from "@/lib/domain/scoring/types";
+import { countsAsConfirmedRound } from "./intermediate";
 import { ARCHIVED_ROUND, OPERATIONAL_ROUND } from "./round-role";
 
 /** Latest stored production table. Archived reference snapshots are left out. */
@@ -98,7 +99,9 @@ export async function rebuildSeasonSnapshots(seasonId: string, throughRoundNumbe
     orderBy: { afterRoundNumber: "desc" },
     include: { rows: true },
   });
-  const operational = rounds.filter((round) => round.standingRole === OPERATIONAL_ROUND && round.roundScores.length > 0);
+  const operational = rounds.filter(
+    (round) => round.standingRole === OPERATIONAL_ROUND && countsAsConfirmedRound(round.status) && round.roundScores.length > 0,
+  );
   const affected = operational.filter((round) => round.number >= throughRoundNumber);
   const participants = [...names.entries()].map(([id, name]) => ({ id, name }));
   for (const round of affected) {

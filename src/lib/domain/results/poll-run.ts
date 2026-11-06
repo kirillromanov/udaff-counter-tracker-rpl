@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
-import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
+import { recalculateRound, type RoundCalculationReport } from "@/lib/domain/standings/recalculate-round";
+import { ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 import { ingestRoundResults, ingestSeasonResults, type IngestReport } from "./ingest";
 import {
   nextPollAfterCheck,
@@ -65,6 +66,9 @@ export function finishRoundRefresh(roundId: string): void {
 export interface RoundRefreshReport extends IngestReport {
   busy: boolean;
   recalculated: boolean;
+  calculation: RoundCalculationReport["status"] | "skipped" | "stale";
+  included: number;
+  total: number;
 }
 
 /**
@@ -74,22 +78,45 @@ export interface RoundRefreshReport extends IngestReport {
  */
 export async function refreshRoundResults(roundId: string): Promise<RoundRefreshReport> {
   if (!beginRoundRefresh(roundId)) {
-    return { busy: true, recalculated: false, confirmed: 0, verified: 0, conflicts: 0, insufficient: 0, updated: 0, sources: [] };
+    return {
+      busy: true,
+      recalculated: false,
+      calculation: "skipped",
+      included: 0,
+      total: 0,
+      confirmed: 0,
+      verified: 0,
+      conflicts: 0,
+      insufficient: 0,
+      updated: 0,
+      sources: [],
+    };
   }
   try {
     const report = await ingestRoundResults(roundId);
     await syncRoundPollState(roundId, new Date(), report.sources);
     const round = await prisma.round.findUniqueOrThrow({
       where: { id: roundId },
-      include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+      select: { standingRole: true },
     });
-    const plan = planRoundPoll(round.matches.map(toPollFixture), new Date(), pollIntervals());
-    let recalculated = false;
-    if (round.standingRole !== ARCHIVED_ROUND && !plan.active) {
-      await recalculateRound(roundId);
-      recalculated = true;
+    if (round.standingRole === ARCHIVED_ROUND) {
+      return { ...report, busy: false, recalculated: false, calculation: "skipped", included: 0, total: 0 };
     }
-    return { ...report, busy: false, recalculated };
+    try {
+      const calculation = await recalculateRound(roundId);
+      return {
+        ...report,
+        busy: false,
+        recalculated: true,
+        calculation: calculation.status,
+        included: calculation.included,
+        total: calculation.total,
+      };
+    } catch (error) {
+      await prisma.round.update({ where: { id: roundId }, data: { status: ROUND_STATUS_STALE } });
+      console.error(error);
+      return { ...report, busy: false, recalculated: false, calculation: "stale", included: 0, total: 0 };
+    }
   } finally {
     finishRoundRefresh(roundId);
   }

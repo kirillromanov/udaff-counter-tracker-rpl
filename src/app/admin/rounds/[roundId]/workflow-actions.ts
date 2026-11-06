@@ -60,7 +60,9 @@ export async function refreshMatchResultsAction(formData: FormData): Promise<voi
     }
     const failed = report.sources.filter((source) => source.status === "failed").length;
     const sourceOk = report.sources.filter((source) => source.status === "ok").length;
-    redirect(`${path}?refreshed=1&updated=${report.updated}&conflicts=${report.conflicts}&failed=${failed}&sourceOk=${sourceOk}`);
+    redirect(
+      `${path}?refreshed=1&updated=${report.updated}&conflicts=${report.conflicts}&failed=${failed}&sourceOk=${sourceOk}&calc=${report.calculation}&included=${report.included}&fixtureCount=${report.total}`,
+    );
   } catch (error) {
     fail(path, error);
   }
@@ -323,12 +325,12 @@ export async function acceptSourceScoreAction(formData: FormData): Promise<void>
 export async function calculateRoundAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    const count = await recalculateRound(roundId);
+    const calculation = await recalculateRound(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId } });
     refresh(roundId);
     revalidatePath(`/admin/seasons/${round.seasonId}`);
     revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
-    redirect(`/admin/rounds/${roundId}/results?calculated=${count}`);
+    redirect(`/admin/rounds/${roundId}/results?calculated=${calculation.participants}&included=${calculation.included}&fixtureCount=${calculation.total}`);
   } catch (error) {
     fail(hubPath(roundId), error);
   }

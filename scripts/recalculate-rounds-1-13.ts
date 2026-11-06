@@ -93,7 +93,7 @@ async function main() {
       continue;
     }
     try {
-      const stored = await recalculateRound(round.id);
+      const stored = (await recalculateRound(round.id)).participants;
       const scores = await prisma.roundScore.findMany({ where: { roundId: round.id }, select: { totalPoints: true } });
       const nextTotal = scores.reduce((sum, score) => sum + score.totalPoints, 0);
       console.log(

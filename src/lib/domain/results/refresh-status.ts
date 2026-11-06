@@ -5,6 +5,10 @@ export interface RefreshQuery {
   conflicts?: string;
   failed?: string;
   sourceOk?: string;
+  calc?: string;
+  included?: string;
+  fixtureCount?: string;
+  intermediate?: string;
 }
 
 export interface FieldSnapshot {

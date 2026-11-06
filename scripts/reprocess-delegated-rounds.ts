@@ -31,7 +31,7 @@ async function main() {
       continue;
     }
     try {
-      const stored = await recalculateRound(round.id);
+      const stored = (await recalculateRound(round.id)).participants;
       console.log(`Round ${round.number}: complete. scored ${stored} roster rows.`);
     } catch (error) {
       console.log(`Round ${round.number}: partial — ${error instanceof Error ? error.message : "not scored"}`);

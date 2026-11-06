@@ -1,10 +1,15 @@
 import { prisma } from "@/lib/db/prisma";
 import { defaultScoringConfig, scoringConfigFromRecord } from "@/lib/config/scoring";
-import { fixtureConfidence, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
-import { scoreRound } from "@/lib/domain/scoring/score-round";
 import type { RoundScoreResult } from "@/lib/domain/scoring/types";
 import type { StoredBreakdown } from "@/lib/domain/export/export-audit";
+import { ARCHIVED_ROUND } from "./round-role";
 import { rebuildSeasonSnapshots } from "./build-season-standings";
+import {
+  ROUND_STATUS_PARTIAL,
+  ROUND_STATUS_SCORED,
+  scoreIntermediateRound,
+  type IntermediateFixture,
+} from "./intermediate";
 import { rosterIdsToScore } from "./roster-scores";
 
 interface SelectedSet {
@@ -66,11 +71,18 @@ function breakdownOf(
   };
 }
 
-export async function recalculateRound(roundId: string): Promise<number> {
+export interface RoundCalculationReport {
+  participants: number;
+  status: "empty" | "partial" | "complete";
+  included: number;
+  total: number;
+}
+
+export async function recalculateRound(roundId: string): Promise<RoundCalculationReport> {
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: {
-      matches: { orderBy: { sortOrder: "asc" } },
+      matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } },
       predictionSets: {
         include: { predictions: true },
       },
@@ -89,26 +101,17 @@ export async function recalculateRound(roundId: string): Promise<number> {
   if (round.matches.length === 0) {
     throw new Error("Add fixtures before calculating this round");
   }
-  const unconfirmed = round.matches.flatMap((match) => {
-    const fixture: LiveFixtureInput = {
-      matchId: match.id,
-      label: `${match.homeTeam} — ${match.awayTeam}`,
-      actualHomeGoals: match.actualHomeGoals,
-      actualAwayGoals: match.actualAwayGoals,
-      resultState: match.resultState,
-      resultResolution: match.resultResolution,
-      resultConflict: match.resultConflict,
-      conflictAcknowledged: match.conflictAcknowledgedAt != null,
-      isMatchOfTheRound: match.isMatchOfTheRound,
-    };
-    const confidence = fixtureConfidence(fixture);
-    return confidence === "verified" ? [] : [`${fixture.label} (${confidence})`];
-  });
-  if (unconfirmed.length > 0) {
-    throw new Error(
-      `This round is still live: ${unconfirmed.join(", ")}. Provisional points stay on the results page. A confirmed total is stored only after every fixture is verified.`,
-    );
-  }
+  const fixtures: IntermediateFixture[] = round.matches.map((match) => ({
+    matchId: match.id,
+    label: `${match.homeTeam} — ${match.awayTeam}`,
+    actualHomeGoals: match.actualHomeGoals,
+    actualAwayGoals: match.actualAwayGoals,
+    resultState: match.resultState,
+    resultResolution: match.resultResolution,
+    resultConflict: match.resultConflict,
+    isMatchOfTheRound: match.isMatchOfTheRound,
+    observationStatuses: match.resultObservations.map((observation) => observation.matchStatus),
+  }));
   const config = round.season.scoringConfig
     ? scoringConfigFromRecord(round.season.scoringConfig)
     : defaultScoringConfig;
@@ -137,60 +140,78 @@ export async function recalculateRound(roundId: string): Promise<number> {
       predictions: [],
     };
   });
+  const calculation = scoreIntermediateRound(
+    {
+      roundId,
+      fixtures,
+      participants: sets.map((set) => ({
+        participantId: set.participantId,
+        predictions: set.predictions.map((prediction) => ({
+          matchId: prediction.matchId,
+          home: prediction.homeGoals,
+          away: prediction.awayGoals,
+          ignored: prediction.ignored,
+        })),
+      })),
+    },
+    config,
+  );
+  if (round.standingRole === ARCHIVED_ROUND && calculation.status !== "complete") {
+    const waiting = calculation.excluded.map((fixture) => `${fixture.label} (${fixture.reason})`);
+    throw new Error(
+      `This round is still live: ${waiting.join(", ")}. Provisional points stay on the results page. A confirmed total is stored only after every fixture is verified.`,
+    );
+  }
+
   const labels = new Map(round.matches.map((match) => [match.id, `${match.homeTeam} — ${match.awayTeam}`]));
   const actuals = new Map(
-    round.matches.map((match) => [
-      match.id,
-      { home: match.actualHomeGoals as number, away: match.actualAwayGoals as number },
-    ]),
+    round.matches.flatMap((match) =>
+      match.actualHomeGoals == null || match.actualAwayGoals == null
+        ? []
+        : [[match.id, { home: match.actualHomeGoals, away: match.actualAwayGoals }] as const],
+    ),
   );
-
-  const scored = sets.map((set) => {
-    const predictedByMatch = new Map<string, { home: number; away: number } | null>();
-    const matches = round.matches.map((match) => {
-      const prediction = set.predictions.find((item) => item.matchId === match.id);
-      const predicted =
-        prediction && !prediction.ignored && prediction.homeGoals != null && prediction.awayGoals != null
-          ? { home: prediction.homeGoals, away: prediction.awayGoals }
-          : null;
-      predictedByMatch.set(match.id, predicted);
-      return {
-        matchId: match.id,
-        actual: actuals.get(match.id) as { home: number; away: number },
-        predicted,
-        isMatchOfTheRound: match.isMatchOfTheRound,
-      };
-    });
-    const result = scoreRound({ roundId, participantId: set.participantId, matches }, config);
-    return { result, predictedByMatch };
-  });
-
-  const winners = winnerIds(scored.map((item) => ({ participantId: item.result.participantId, total: item.result.roundTotal })));
+  const winners =
+    calculation.status === "complete"
+      ? winnerIds(calculation.scores.map((item) => ({ participantId: item.participantId, total: item.result.roundTotal })))
+      : new Set<string>();
 
   await prisma.$transaction(async (tx) => {
     await tx.roundScore.deleteMany({ where: { roundId } });
-    await tx.roundScore.createMany({
-      data: scored.map(({ result, predictedByMatch }) => ({
-        roundId,
-        participantId: result.participantId,
-        totalPoints: result.roundTotal,
-        matchPoints: result.matchPointsTotal,
-        roundBonusPoints: result.roundTotalGoalsBonus,
-        exactCount: result.summary.exactCount,
-        neighborCount: result.summary.neighborCount,
-        diffCount: result.summary.diffCount,
-        outcomeCount: result.summary.outcomeCount,
-        missCount: result.summary.missCount,
-        isRoundWinner: winners.has(result.participantId),
-        breakdownJson: JSON.stringify(breakdownOf(result, labels, actuals, predictedByMatch)),
-      })),
-    });
+    if (calculation.scores.length > 0) {
+      await tx.roundScore.createMany({
+        data: calculation.scores.map(({ result, predictedByMatch }) => ({
+          roundId,
+          participantId: result.participantId,
+          totalPoints: result.roundTotal,
+          matchPoints: result.matchPointsTotal,
+          roundBonusPoints: result.roundTotalGoalsBonus,
+          exactCount: result.summary.exactCount,
+          neighborCount: result.summary.neighborCount,
+          diffCount: result.summary.diffCount,
+          outcomeCount: result.summary.outcomeCount,
+          missCount: result.summary.missCount,
+          isRoundWinner: winners.has(result.participantId),
+          breakdownJson: JSON.stringify(breakdownOf(result, labels, actuals, predictedByMatch)),
+        })),
+      });
+    }
+    if (calculation.status !== "complete") {
+      await tx.standingSnapshot.deleteMany({ where: { roundId } });
+    }
     await tx.round.update({
       where: { id: roundId },
-      data: { status: "scored" },
+      data: { status: calculation.status === "complete" ? ROUND_STATUS_SCORED : calculation.status === "partial" ? ROUND_STATUS_PARTIAL : "open" },
     });
   });
 
-  await rebuildSeasonSnapshots(round.seasonId, round.number);
-  return scored.length;
+  if (calculation.status === "complete") {
+    await rebuildSeasonSnapshots(round.seasonId, round.number);
+  }
+  return {
+    participants: calculation.scores.length,
+    status: calculation.status,
+    included: calculation.includedCount,
+    total: calculation.fixtureCount,
+  };
 }

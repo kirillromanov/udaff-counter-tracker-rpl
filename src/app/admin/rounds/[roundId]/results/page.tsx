@@ -162,11 +162,15 @@ export default async function RoundResultsPage({
         ) : null}
         {scores.length === 0 ? (
           <Section id="results" title="Stored confirmed results">
-            <EmptyState detail="Calculate the round after every fixture is verified. Until then, the live table above is the current view." title="No confirmed total stored" />
+            <EmptyState detail="A verified finished match can be stored before the round is complete. Pending fixtures are skipped." title="No verified completed matches yet" />
           </Section>
         ) : (
           <>
-            <Section id="results" title="Stored confirmed ranking">
+            <Section
+              description={round.status === "partial" ? "Verified finished fixtures only. The round bonus and winner medal wait until every fixture is final." : undefined}
+              id="results"
+              title={round.status === "scored" ? "Stored confirmed ranking" : "Intermediate standings"}
+            >
               <RoundScoreTable rows={scores} />
             </Section>
             <div className="space-y-4">

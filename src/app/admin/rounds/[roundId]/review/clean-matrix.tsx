@@ -9,7 +9,9 @@ import { prisma } from "@/lib/db/prisma";
 import { SubmitButton } from "../../../submit-button";
 import { saveMatrixAction, saveMatrixResultsAction } from "../actions";
 import { fieldClass, Section } from "../../../ui";
+import { CalculateIntermediateButton } from "../calculate-intermediate-button";
 import { MatchResultsRefresh } from "../match-results-refresh";
+import { classifyIntermediateFixture, exclusionLabel, isFixtureExclusion, ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 
 function liveFixture(match: {
   id: string;
@@ -57,7 +59,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
           predictions: true,
         },
       },
-      roundScores: { select: { participantId: true, totalPoints: true } },
+      roundScores: { select: { participantId: true, totalPoints: true, calculatedAt: true } },
     },
   });
   if (!round) {
@@ -83,6 +85,26 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
     providerStatus: match.resultObservations.some((observation) => observation.matchStatus === "live") ? "live" : null,
   }));
   const pollPlan = planRoundPoll(pollFixtures, now, pollIntervals());
+  const intermediate = round.matches.map((match) => ({
+    label: `${match.homeTeam} — ${match.awayTeam}`,
+    klass: classifyIntermediateFixture({
+      matchId: match.id,
+      label: `${match.homeTeam} — ${match.awayTeam}`,
+      actualHomeGoals: match.actualHomeGoals,
+      actualAwayGoals: match.actualAwayGoals,
+      resultState: match.resultState,
+      resultResolution: match.resultResolution,
+      resultConflict: match.resultConflict,
+      isMatchOfTheRound: match.isMatchOfTheRound,
+      observationStatuses: match.resultObservations.map((observation) => observation.matchStatus),
+    }),
+  }));
+  const includedCount = intermediate.filter((fixture) => fixture.klass === "included").length;
+  const calculatedAt = round.roundScores.reduce<Date | null>(
+    (latest, score) => (!latest || score.calculatedAt > latest ? score.calculatedAt : latest),
+    null,
+  );
+  const excluded = intermediate.filter((fixture) => fixture.klass !== "included");
 
   return (
     <Section
@@ -252,6 +274,25 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
           A missing ordinary fixture is −1. A missing Match of the Round is −2, already multiplied once. Eight missing fixtures with one Match of the Round are −9. Open fixtures stay prospective until they are verified.
         </p>
       </form>
+      <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+        {round.status === ROUND_STATUS_STALE ? (
+          <p className="text-red-700">Расчёт устарел. Экспорт не является текущим.</p>
+        ) : includedCount === 0 ? (
+          <p>Пока нет подтверждённых завершённых матчей.</p>
+        ) : (
+          <p>
+            Рассчитано по {includedCount} из {round.matches.length} матчей
+            {calculatedAt ? ` · ${calculatedAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}.
+            {includedCount < round.matches.length ? " Бонус тура ждёт все матчи." : ""}
+          </p>
+        )}
+        {excluded.length > 0 ? (
+          <p className="mt-1 text-xs text-zinc-500">
+            Не включены: {excluded.flatMap((fixture) => (isFixtureExclusion(fixture.klass) ? [`${fixture.label} (${exclusionLabel(fixture.klass)})`] : [])).join("; ")}
+          </p>
+        ) : null}
+        <CalculateIntermediateButton roundId={round.id} />
+      </div>
     </Section>
   );
 }
