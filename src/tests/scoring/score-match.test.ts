@@ -64,9 +64,8 @@ describe("scoreMatch categories", () => {
 
     expect(result.baseCategory).toBe("diff");
     expect(result.basePoints).toBe(4);
-    // Actual total 6 qualifies for +4. The base category stays diff.
-    expect(result.bonusPoints).toBe(4);
-    expect(result.finalMatchPoints).toBe(8);
+    expect(result.bonusPoints).toBe(0);
+    expect(result.finalMatchPoints).toBe(4);
     expect(result.explanations[0]).toContain("Same goal difference (2)");
   });
 
@@ -131,45 +130,53 @@ describe("scoreMatch bonuses", () => {
     expect(predictedZerosOnADraw).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 0, finalMatchPoints: 6 });
   });
 
-  it("awards the difference bonus from the actual result, including the exact threshold", () => {
-    const actualThree = scoreMatch(match({ home: 3, away: 0 }, { home: 2, away: 1 }));
-    const actualTwo = scoreMatch(match({ home: 3, away: 1 }, { home: 1, away: 0 }));
-    const predictedThreeActualOne = scoreMatch(match({ home: 1, away: 0 }, { home: 3, away: 0 }));
+  it("awards the difference bonus only when both differences reach 3", () => {
+    const widerActual = scoreMatch(match({ home: 7, away: 2 }, { home: 3, away: 0 }));
+    const narrowPrediction = scoreMatch(match({ home: 5, away: 2 }, { home: 1, away: 0 }));
+    const narrowActual = scoreMatch(match({ home: 1, away: 2 }, { home: 0, away: 3 }));
+    const bothExactlyThree = scoreMatch(match({ home: 0, away: 3 }, { home: 1, away: 4 }));
+    const predictedTwo = scoreMatch(match({ home: 4, away: 1 }, { home: 2, away: 0 }));
+    const actualTwo = scoreMatch(match({ home: 3, away: 1 }, { home: 4, away: 1 }));
 
-    expect(actualThree).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 3, finalMatchPoints: 6 });
-    expect(actualThree.explanations).toContain("Bonus: actual goal difference 3 >= 3 (+3)");
+    expect(widerActual).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 3, finalMatchPoints: 6 });
+    expect(widerActual.explanations).toContain("Bonus: predicted goal difference 3 and actual goal difference 5 are both >= 3 (+3)");
+    expect(narrowPrediction).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
+    expect(narrowActual).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
+    expect(bothExactlyThree).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 3, finalMatchPoints: 9 });
+    expect(predictedTwo).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
     expect(actualTwo).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
-    expect(predictedThreeActualOne).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 1, finalMatchPoints: 4 });
-    expect(predictedThreeActualOne.explanations).toContain("Bonus: correctly predicted zero goals (+1)");
-    expect(predictedThreeActualOne.explanations.join(" ")).not.toContain("goal difference");
   });
 
-  it("awards the high-total bonus from the actual total, including the exact threshold", () => {
-    const actualFive = scoreMatch(match({ home: 3, away: 2 }, { home: 2, away: 1 }));
-    const actualFour = scoreMatch(match({ home: 3, away: 1 }, { home: 1, away: 0 }));
-    const predictedFiveActualThree = scoreMatch(match({ home: 2, away: 1 }, { home: 3, away: 2 }));
-    const actualSixDifferentPrediction = scoreMatch(match({ home: 4, away: 2 }, { home: 3, away: 2 }));
+  it("awards the high-total bonus only when both totals reach 5", () => {
+    const actualSix = scoreMatch(match({ home: 4, away: 2 }, { home: 3, away: 2 }));
+    const actualThree = scoreMatch(match({ home: 0, away: 3 }, { home: 1, away: 4 }));
+    const predictedThree = scoreMatch(match({ home: 3, away: 2 }, { home: 2, away: 1 }));
+    const bothExactlyFive = scoreMatch(match({ home: 4, away: 1 }, { home: 3, away: 2 }));
+    const predictedFour = scoreMatch(match({ home: 0, away: 5 }, { home: 1, away: 3 }));
+    const actualFour = scoreMatch(match({ home: 3, away: 1 }, { home: 3, away: 2 }));
 
-    expect(actualFive).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 4, finalMatchPoints: 10 });
-    expect(actualFive.explanations).toContain("Bonus: actual total goals 5 >= 5 (+4)");
-    expect(actualFour).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 0, finalMatchPoints: 3 });
-    expect(predictedFiveActualThree).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 0, finalMatchPoints: 6 });
-    expect(actualSixDifferentPrediction).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
-    expect(actualSixDifferentPrediction.explanations).toContain("Bonus: actual total goals 6 >= 5 (+4)");
+    expect(actualSix).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
+    expect(actualSix.explanations).toContain("Bonus: predicted total 5 and actual total 6 are both >= 5 (+4)");
+    expect(actualThree).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 3, finalMatchPoints: 9 });
+    expect(actualThree.explanations.join(" ")).not.toContain("total");
+    expect(predictedThree).toMatchObject({ baseCategory: "neighbor", bonusPoints: 0, finalMatchPoints: 6 });
+    expect(bothExactlyFive).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 4, finalMatchPoints: 7 });
+    expect(predictedFour).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
+    expect(actualFour).toMatchObject({ baseCategory: "outcome", bonusPoints: 0, finalMatchPoints: 3 });
   });
 
-  it("stacks the actual-difference bonus with the actual high total", () => {
-    const result = scoreMatch(match({ home: 5, away: 0 }, { home: 4, away: 1 }));
+  it("stacks both threshold bonuses when each side of both conditions qualifies", () => {
+    const result = scoreMatch(match({ home: 6, away: 1 }, { home: 5, away: 0 }));
 
-    expect(result).toMatchObject({ baseCategory: "outcome", basePoints: 3, bonusPoints: 7, finalMatchPoints: 10 });
+    expect(result).toMatchObject({ baseCategory: "neighbor", basePoints: 6, bonusPoints: 7, finalMatchPoints: 13 });
     expect(result.explanations).toEqual([
-      "Correct outcome only (home win)",
-      "Bonus: actual goal difference 5 >= 3 (+3)",
-      "Bonus: actual total goals 5 >= 5 (+4)",
+      "Neighbor result: both sides shifted by +1 (5-0 → 6-1)",
+      "Bonus: predicted goal difference 5 and actual goal difference 5 are both >= 3 (+3)",
+      "Bonus: predicted total 5 and actual total 7 are both >= 5 (+4)",
     ]);
   });
 
-  it("withholds both actual-result bonuses on a wrong outcome unless the configured policy allows them", () => {
+  it("withholds both threshold bonuses on a wrong outcome unless the configured policy allows them", () => {
     const withheld = scoreMatch(match({ home: 5, away: 0 }, { home: 0, away: 5 }));
     const applied = scoreMatch(
       match({ home: 5, away: 0 }, { home: 0, away: 5 }),
@@ -179,8 +186,8 @@ describe("scoreMatch bonuses", () => {
     expect(defaultScoringConfig.bonusesRequireRewardedBase).toBe(true);
     expect(withheld).toMatchObject({ baseCategory: "miss", bonusPoints: 0, finalMatchPoints: -1 });
     expect(applied).toMatchObject({ bonusPoints: 7, finalMatchPoints: 6 });
-    expect(applied.explanations).toContain("Bonus: actual goal difference 5 >= 3 (+3)");
-    expect(applied.explanations).toContain("Bonus: actual total goals 5 >= 5 (+4)");
+    expect(applied.explanations).toContain("Bonus: predicted goal difference 5 and actual goal difference 5 are both >= 3 (+3)");
+    expect(applied.explanations).toContain("Bonus: predicted total 5 and actual total 5 are both >= 5 (+4)");
   });
 
   it("scores Pinochet's Krasnodar slip as 14 and Oswald's Fakel slip as 3", () => {
@@ -197,7 +204,7 @@ describe("scoreMatch bonuses", () => {
     });
     expect(krasnodar.explanations).toEqual([
       "Correct outcome only (home win)",
-      "Bonus: actual total goals 6 >= 5 (+4)",
+      "Bonus: predicted total 5 and actual total 6 are both >= 5 (+4)",
       "Match of the Round: x2",
     ]);
     expect(fakel).toMatchObject({
@@ -210,20 +217,20 @@ describe("scoreMatch bonuses", () => {
     });
   });
 
-  it("scores an actual difference of 3 on a neighbor as 9", () => {
-    const result = scoreMatch(match({ home: 0, away: 3 }, { home: 1, away: 4 }));
+  it("scores a 0-4 Match of the Round predicted 1-2 as 6", () => {
+    const result = scoreMatch(match({ home: 0, away: 4 }, { home: 1, away: 2 }, true));
 
     expect(result).toMatchObject({
-      baseCategory: "neighbor",
-      basePoints: 6,
-      bonusPoints: 3,
-      mtApplied: false,
-      mtMultiplier: 1,
-      finalMatchPoints: 9,
+      baseCategory: "outcome",
+      basePoints: 3,
+      bonusPoints: 0,
+      mtApplied: true,
+      mtMultiplier: 2,
+      finalMatchPoints: 6,
     });
     expect(result.explanations).toEqual([
-      "Neighbor result: both sides shifted by -1 (1-4 → 0-3)",
-      "Bonus: actual goal difference 3 >= 3 (+3)",
+      "Correct outcome only (away win)",
+      "Match of the Round: x2",
     ]);
   });
 
@@ -263,14 +270,13 @@ describe("scoreMatch bonuses", () => {
     expect(lokomotiv).toMatchObject({
       baseCategory: "outcome",
       basePoints: 3,
-      bonusPoints: 3,
+      bonusPoints: 0,
       mtApplied: true,
       mtMultiplier: 2,
-      finalMatchPoints: 12,
+      finalMatchPoints: 6,
     });
     expect(lokomotiv.explanations).toEqual([
       "Correct outcome only (away win)",
-      "Bonus: actual goal difference 4 >= 3 (+3)",
       "Match of the Round: x2",
     ]);
   });
