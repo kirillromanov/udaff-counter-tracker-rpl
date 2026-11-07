@@ -4,7 +4,8 @@ import { recalculateRound, type RoundCalculationReport } from "@/lib/domain/stan
 import { ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 import { ingestRoundResults, ingestSeasonResults, type IngestReport } from "./ingest";
 import {
-  nextPollAfterCheck,
+  advanceFixtureCheck,
+  fixtureBlocksPolling,
   planRoundPoll,
   pollIntervals,
   selectDueRoundIds,
@@ -15,22 +16,30 @@ import {
 
 function toPollFixture(match: {
   kickoffAt: Date | null;
-  actualHomeGoals: number | null;
-  actualAwayGoals: number | null;
+  actualHomeGoals?: number | null;
+  actualAwayGoals?: number | null;
   resultState: string;
   resultResolution: string;
   resultConflict: boolean;
   conflictAcknowledgedAt: Date | null;
+  autoCheckAttempts?: number;
+  autoCheckKickoffAt?: Date | null;
+  autoCheckNextAt?: Date | null;
+  autoCheckHistory?: string;
   resultObservations?: readonly { matchStatus: string }[];
 }): PollFixture {
   return {
     kickoffAt: match.kickoffAt,
-    actualHomeGoals: match.actualHomeGoals,
-    actualAwayGoals: match.actualAwayGoals,
+    actualHomeGoals: match.actualHomeGoals ?? null,
+    actualAwayGoals: match.actualAwayGoals ?? null,
     resultState: match.resultState,
     resultResolution: match.resultResolution,
     resultConflict: match.resultConflict,
     conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+    autoCheckAttempts: match.autoCheckAttempts,
+    autoCheckKickoffAt: match.autoCheckKickoffAt,
+    autoCheckNextAt: match.autoCheckNextAt,
+    autoCheckHistory: match.autoCheckHistory,
     liveReported: match.resultObservations?.some((observation) => observation.matchStatus === "live") ?? false,
     providerStatus: providerStatusOf(match.resultObservations),
   };
@@ -76,7 +85,7 @@ export interface RoundRefreshReport extends IngestReport {
  * Manual buttons and the due-round poll use this same ingestion path.
  * A busy lock does not fetch again and does not change stored scores.
  */
-export async function refreshRoundResults(roundId: string): Promise<RoundRefreshReport> {
+export async function refreshRoundResults(roundId: string, options?: { automatic?: boolean }): Promise<RoundRefreshReport> {
   if (!beginRoundRefresh(roundId)) {
     return {
       busy: true,
@@ -94,7 +103,7 @@ export async function refreshRoundResults(roundId: string): Promise<RoundRefresh
   }
   try {
     const report = await ingestRoundResults(roundId);
-    await syncRoundPollState(roundId, new Date(), report.sources);
+    await syncRoundPollState(roundId, new Date(), report.sources, options?.automatic === true);
     const round = await prisma.round.findUniqueOrThrow({
       where: { id: roundId },
       select: { standingRole: true },
@@ -122,12 +131,79 @@ export async function refreshRoundResults(roundId: string): Promise<RoundRefresh
   }
 }
 
-async function syncRoundPollState(roundId: string, checkedAt: Date, sources: IngestReport["sources"]): Promise<void> {
+async function persistFixtureCheck(
+  match: {
+    id: string;
+    kickoffAt: Date | null;
+    resultState: string;
+    resultResolution: string;
+    resultConflict: boolean;
+    conflictAcknowledgedAt: Date | null;
+    autoCheckAttempts: number;
+    autoCheckKickoffAt: Date | null;
+    autoCheckNextAt: Date | null;
+    autoCheckHistory: string;
+    resultObservations?: readonly { matchStatus: string }[];
+  },
+  checkedAt: Date,
+  automatic: boolean,
+): Promise<void> {
+  const fixture = toPollFixture(match);
+  const next = advanceFixtureCheck(
+    {
+      kickoffAt: match.kickoffAt,
+      autoCheckAttempts: match.autoCheckAttempts,
+      autoCheckKickoffAt: match.autoCheckKickoffAt,
+      autoCheckNextAt: match.autoCheckNextAt,
+      autoCheckHistory: match.autoCheckHistory,
+      verified:
+        !match.resultConflict &&
+        (match.resultState === "verified" ||
+          match.resultState === "manual" ||
+          match.resultResolution === "verified" ||
+          match.resultResolution === "manual"),
+      held: fixture.providerStatus === "postponed" || fixture.providerStatus === "cancelled" || fixture.providerStatus === "suspended",
+      acknowledged: Boolean(fixture.resultConflict && fixture.conflictAcknowledgedAt),
+    },
+    checkedAt,
+    automatic,
+  );
+  if (
+    next.autoCheckAttempts !== match.autoCheckAttempts ||
+    next.autoCheckNextAt?.getTime() !== match.autoCheckNextAt?.getTime() ||
+    next.autoCheckKickoffAt?.getTime() !== match.autoCheckKickoffAt?.getTime() ||
+    next.autoCheckHistory !== match.autoCheckHistory
+  ) {
+    await prisma.match.update({
+      where: { id: match.id },
+      data: {
+        autoCheckAttempts: next.autoCheckAttempts,
+        autoCheckKickoffAt: next.autoCheckKickoffAt,
+        autoCheckNextAt: next.autoCheckNextAt,
+        autoCheckHistory: next.autoCheckHistory ?? "[]",
+      },
+    });
+    match.autoCheckAttempts = next.autoCheckAttempts;
+    match.autoCheckKickoffAt = next.autoCheckKickoffAt;
+    match.autoCheckNextAt = next.autoCheckNextAt;
+    match.autoCheckHistory = next.autoCheckHistory ?? "[]";
+  }
+}
+
+async function syncRoundPollState(
+  roundId: string,
+  checkedAt: Date,
+  sources: IngestReport["sources"],
+  automatic: boolean,
+): Promise<void> {
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
   });
   const intervals = pollIntervals();
+  for (const match of round.matches) {
+    await persistFixtureCheck(match, checkedAt, automatic);
+  }
   const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
   const lastSuccessfulSource = strongestSuccessfulSource(sources);
   await prisma.round.update({
@@ -135,7 +211,7 @@ async function syncRoundPollState(roundId: string, checkedAt: Date, sources: Ing
     data: {
       pollStatus: plan.pollStatus,
       lastPolledAt: checkedAt,
-      nextPollAt: nextPollAfterCheck(plan, checkedAt, intervals.liveMinutes),
+      nextPollAt: plan.nextPollAt,
       lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
       pollHealthSummary: sourceHealthSummary(sources),
     },
@@ -161,13 +237,16 @@ export async function syncSeasonPollState(
     if (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id)) {
       continue;
     }
+    for (const match of round.matches) {
+      await persistFixtureCheck(match, checkedAt, false);
+    }
     const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
     await prisma.round.update({
       where: { id: round.id },
       data: {
         pollStatus: plan.pollStatus,
         lastPolledAt: checkedAt,
-        nextPollAt: nextPollAfterCheck(plan, checkedAt, intervals.liveMinutes),
+        nextPollAt: plan.nextPollAt,
         lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
         pollHealthSummary: summary,
       },
@@ -205,12 +284,23 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
     if (round.standingRole === ARCHIVED_ROUND && round.id !== options?.forceRoundId) {
       continue;
     }
-    const plan = planRoundPoll(round.matches.map(toPollFixture), now, intervals);
-    if (!plan.active && (round.pollStatus !== "finalized" || round.nextPollAt != null)) {
+    const fixtures = round.matches.map(toPollFixture);
+    const plan = planRoundPoll(fixtures, now, intervals);
+    const open = fixtures.some((fixture) => fixtureBlocksPolling(fixture, now));
+    if (!open && (round.pollStatus !== "finalized" || round.nextPollAt != null)) {
       await prisma.round.update({
         where: { id: round.id },
         data: { pollStatus: "finalized", nextPollAt: null },
       });
+      round.pollStatus = "finalized";
+      round.nextPollAt = null;
+    } else if (!plan.active && round.nextPollAt != null) {
+      await prisma.round.update({
+        where: { id: round.id },
+        data: { pollStatus: plan.pollStatus, nextPollAt: null },
+      });
+      round.pollStatus = plan.pollStatus;
+      round.nextPollAt = null;
     }
   }
   const dueIds = new Set(
@@ -235,7 +325,7 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
     if (!round) {
       continue;
     }
-    const report = await refreshRoundResults(roundId);
+    const report = await refreshRoundResults(roundId, { automatic: options?.forceRoundId !== roundId });
     const current = grouped.get(round.seasonId);
     grouped.set(round.seasonId, current ? combineReports(current, report) : report);
   }

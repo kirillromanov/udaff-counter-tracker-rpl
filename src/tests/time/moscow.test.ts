@@ -35,26 +35,24 @@ describe("Moscow fixture clocks", () => {
     expect(correctedMoscowKickoff(correctedMoscowKickoff(misread, moscow), moscow)).toBeNull();
   });
 
-  it("moves an estimated check with the corrected kickoff and leaves a finishedAt check alone", () => {
+  it("checks a Moscow kickoff two hours later, without a second finish offset", () => {
     const corrected = new Date("2026-11-06T16:30:00.000Z");
     const finishedAt = new Date("2026-11-06T18:12:00.000Z");
     const now = new Date("2026-11-06T12:00:00.000Z");
-    const estimated = resultCheckAt(
-      { kickoffAt: corrected, actualHomeGoals: null, actualAwayGoals: null, resultState: "open", resultResolution: "", resultConflict: false, conflictAcknowledgedAt: null },
-      now,
-      120,
-      120,
-    );
-    const finished = resultCheckAt(
-      { kickoffAt: corrected, finishedAt, actualHomeGoals: 0, actualAwayGoals: 1, resultState: "open", resultResolution: "", resultConflict: false, conflictAcknowledgedAt: null },
-      now,
-      120,
-      120,
-    );
-    expect(estimated?.at.toISOString()).toBe("2026-11-06T20:30:00.000Z");
-    expect(estimated?.basis).toBe("estimated");
-    expect(finished?.at.toISOString()).toBe("2026-11-06T20:12:00.000Z");
-    expect(finished?.basis).toBe("finished");
+    const open = {
+      kickoffAt: corrected,
+      actualHomeGoals: null,
+      actualAwayGoals: null,
+      resultState: "open",
+      resultResolution: "",
+      resultConflict: false,
+      conflictAcknowledgedAt: null,
+    };
+    const estimated = resultCheckAt(open, now, 120, 120);
+    const finished = resultCheckAt({ ...open, finishedAt, actualHomeGoals: 0, actualAwayGoals: 1 }, now, 120, 120);
+    expect(estimated?.at.toISOString()).toBe("2026-11-06T18:30:00.000Z");
+    expect(estimated?.basis).toBe("kickoff");
+    expect(finished?.at.toISOString()).toBe("2026-11-06T18:30:00.000Z");
   });
 
   it("repairs a stored misread once and leaves a correct instant", () => {

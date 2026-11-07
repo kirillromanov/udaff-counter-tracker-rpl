@@ -15,6 +15,11 @@ export interface PollFixture {
   /** A provider finish time, when one was actually recorded. Never inferred from the clock. */
   finishedAt?: Date | null;
   providerStatus?: "finished" | "live" | "scheduled" | "postponed" | "cancelled" | "suspended" | "unknown" | null;
+  /** Automatic attempts already used for autoCheckKickoffAt. */
+  autoCheckAttempts?: number;
+  autoCheckKickoffAt?: Date | null;
+  autoCheckNextAt?: Date | null;
+  autoCheckHistory?: string;
 }
 
 export interface PollIntervals {
@@ -23,11 +28,16 @@ export interface PollIntervals {
   matchDurationMinutes?: number;
 }
 
-/** Two hours after finish. This is not kickoff plus two hours. */
-export const RESULT_CHECK_DELAY_MINUTES = 120;
+/** First automatic check is two hours after the stored kickoff, not after an estimated finish. */
+export const FIRST_CHECK_MINUTES = 120;
+export const AUTO_RETRY_MINUTES = 5;
+export const MAX_AUTO_ATTEMPTS = 10;
+export const CHECK_POLICY_TEXT =
+  "Первая проверка — через 2 часа после начала матча. Затем каждые 5 минут, до 10 автоматических попыток всего.";
+export const CHECK_EXHAUSTED_TEXT = "Автопроверка остановлена: 10 попыток, итоговый результат не подтверждён";
 export const DEFAULT_MATCH_DURATION_MINUTES = 120;
 
-export type ResultCheckBasis = "finished" | "estimated" | "retry";
+export type ResultCheckBasis = "kickoff" | "retry";
 
 export interface ResultCheck {
   at: Date;
@@ -64,27 +74,59 @@ function addMinutes(value: Date, minutes: number): Date {
   return new Date(value.getTime() + minutes * 60_000);
 }
 
+export interface FixtureCheckStatus {
+  attempts: number;
+  limit: number;
+  nextAt: Date | null;
+  exhausted: boolean;
+  verified: boolean;
+  held: boolean;
+}
+
+function sameInstant(left: Date | null | undefined, right: Date | null | undefined): boolean {
+  return left != null && right != null && left.getTime() === right.getTime();
+}
+
+/** A new accepted kickoff starts at zero. The same kickoff, including a repeated import, keeps the budget. */
+export function checkCycle(fixture: PollFixture): { attempts: number; reset: boolean } {
+  const reset = Boolean(fixture.kickoffAt && fixture.autoCheckKickoffAt && !sameInstant(fixture.kickoffAt, fixture.autoCheckKickoffAt));
+  return { attempts: reset ? 0 : (fixture.autoCheckAttempts ?? 0), reset };
+}
+
+function isHeldFixture(fixture: PollFixture): boolean {
+  return fixture.providerStatus === "postponed" || fixture.providerStatus === "cancelled" || fixture.providerStatus === "suspended";
+}
+
+/** Next automatic check for one fixture. This does not write or increment the attempt counter. */
+export function fixtureCheckStatus(fixture: PollFixture): FixtureCheckStatus {
+  const cycle = checkCycle(fixture);
+  const verified = isVerified(fixture);
+  const held = isHeldFixture(fixture);
+  const acknowledged = fixture.resultConflict && fixture.conflictAcknowledgedAt != null;
+  const exhausted = !cycle.reset && !verified && !held && cycle.attempts >= MAX_AUTO_ATTEMPTS;
+  let nextAt: Date | null = null;
+  if (!verified && !held && !acknowledged && !exhausted && fixture.kickoffAt) {
+    nextAt = cycle.attempts === 0 ? addMinutes(fixture.kickoffAt, FIRST_CHECK_MINUTES) : (fixture.autoCheckNextAt ?? null);
+  }
+  return { attempts: cycle.attempts, limit: MAX_AUTO_ATTEMPTS, nextAt, exhausted, verified, held };
+}
+
 /**
- * When to check one fixture.
- * A recorded finish schedules finishedAt + 2 hours.
- * Otherwise kickoff + expected duration is the estimated finish, and the check is 2 hours after that.
- * The clock alone never marks the match finished. A postponed or still-live provider status is a retry.
+ * The first automatic check is the stored kickoff plus two hours.
+ * A later retry uses the time stored after the previous attempt.
+ * A postponed or cancelled fixture is not polled against the obsolete kickoff.
  */
-export function resultCheckAt(fixture: PollFixture, now: Date, durationMinutes: number, retryMinutes: number): ResultCheck | null {
+export function resultCheckAt(fixture: PollFixture, now: Date, durationMinutes?: number, retryMinutes?: number): ResultCheck | null {
+  void durationMinutes;
+  void retryMinutes;
   if (!fixtureBlocksPolling(fixture, now)) {
     return null;
   }
-  const status = fixture.providerStatus;
-  if (status === "postponed" || status === "cancelled" || status === "suspended") {
-    return { at: addMinutes(now, retryMinutes), basis: "retry" };
+  const status = fixtureCheckStatus(fixture);
+  if (!status.nextAt) {
+    return null;
   }
-  if (fixture.finishedAt) {
-    return { at: addMinutes(fixture.finishedAt, RESULT_CHECK_DELAY_MINUTES), basis: "finished" };
-  }
-  if (fixture.kickoffAt) {
-    return { at: addMinutes(addMinutes(fixture.kickoffAt, durationMinutes), RESULT_CHECK_DELAY_MINUTES), basis: "estimated" };
-  }
-  return { at: addMinutes(now, retryMinutes), basis: "retry" };
+  return { at: status.nextAt, basis: status.attempts === 0 ? "kickoff" : "retry" };
 }
 
 /** The next time a check may run. A future kickoff estimate wins. An overdue fixture waits out a stored retry. */
@@ -102,14 +144,72 @@ export function effectiveNextCheck(plan: RoundPollPlan, stored: Date | null, now
   return target ?? stored;
 }
 
-export function nextPollAfterCheck(plan: RoundPollPlan, checkedAt: Date, retryMinutes: number): Date | null {
+export function nextPollAfterCheck(plan: RoundPollPlan, checkedAt: Date, retryMinutes?: number): Date | null {
+  void retryMinutes;
   if (!plan.active || !plan.nextPollAt) {
     return null;
   }
   if (plan.nextPollAt.getTime() > checkedAt.getTime()) {
     return plan.nextPollAt;
   }
-  return addMinutes(checkedAt, retryMinutes);
+  return addMinutes(checkedAt, AUTO_RETRY_MINUTES);
+}
+
+export interface StoredFixtureCheck {
+  kickoffAt: Date | null;
+  autoCheckAttempts: number;
+  autoCheckKickoffAt: Date | null;
+  autoCheckNextAt: Date | null;
+  autoCheckHistory?: string;
+  verified: boolean;
+  held: boolean;
+  acknowledged: boolean;
+}
+
+function readHistory(value: string | undefined): { kickoffAt: string | null; attempts: number; endedAt: string }[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as { kickoffAt: string | null; attempts: number; endedAt: string }[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One completed automatic check uses one attempt and schedules the next five minutes later.
+ * A manual refresh leaves the budget unchanged. Ten attempts, or a verified result, clears the next check.
+ * A changed kickoff archives the old cycle and starts again. The same kickoff does not.
+ */
+export function advanceFixtureCheck(fixture: StoredFixtureCheck, checkedAt: Date, automatic: boolean): StoredFixtureCheck {
+  const reset = Boolean(fixture.kickoffAt && fixture.autoCheckKickoffAt && !sameInstant(fixture.kickoffAt, fixture.autoCheckKickoffAt));
+  let attempts = reset ? 0 : fixture.autoCheckAttempts;
+  let history = fixture.autoCheckHistory ?? "[]";
+  if (reset && fixture.autoCheckAttempts > 0) {
+    const previous = readHistory(history);
+    previous.push({
+      kickoffAt: fixture.autoCheckKickoffAt?.toISOString() ?? null,
+      attempts: fixture.autoCheckAttempts,
+      endedAt: checkedAt.toISOString(),
+    });
+    history = JSON.stringify(previous);
+  }
+  let nextAt = attempts === 0 && fixture.kickoffAt ? addMinutes(fixture.kickoffAt, FIRST_CHECK_MINUTES) : fixture.autoCheckNextAt;
+  if (reset && fixture.kickoffAt) {
+    nextAt = addMinutes(fixture.kickoffAt, FIRST_CHECK_MINUTES);
+  }
+  const due = nextAt != null && nextAt.getTime() <= checkedAt.getTime() && attempts < MAX_AUTO_ATTEMPTS && !fixture.held && !fixture.acknowledged;
+  if (automatic && due) {
+    attempts += 1;
+  }
+  if (fixture.verified || fixture.acknowledged || fixture.held || attempts >= MAX_AUTO_ATTEMPTS) {
+    nextAt = null;
+  } else if (automatic && due) {
+    nextAt = addMinutes(checkedAt, AUTO_RETRY_MINUTES);
+  }
+  return { ...fixture, autoCheckAttempts: attempts, autoCheckKickoffAt: fixture.kickoffAt, autoCheckNextAt: nextAt, autoCheckHistory: history };
 }
 
 function hasScore(fixture: PollFixture): boolean {
@@ -182,6 +282,7 @@ export function fixtureBlocksPolling(fixture: PollFixture, now: Date): boolean {
 }
 
 export function planRoundPoll(fixtures: readonly PollFixture[], now: Date, intervals: PollIntervals): RoundPollPlan {
+  void intervals;
   if (fixtures.length === 0) {
     return { pollStatus: "scheduled", active: false, nextPollAt: null, reason: "This round has no fixtures." };
   }
@@ -194,33 +295,22 @@ export function planRoundPoll(fixtures: readonly PollFixture[], now: Date, inter
       reason: "All fixtures are final. Unresolved conflicts are absent or acknowledged.",
     };
   }
-  const duration = intervals.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES;
-  const checks = blocking.flatMap((fixture) => {
-    const check = resultCheckAt(fixture, now, duration, intervals.liveMinutes);
-    return check ? [check] : [];
-  });
-  const earliest = checks.sort((left, right) => left.at.getTime() - right.at.getTime())[0];
-  const nextPollAt = earliest?.at ?? addMinutes(now, intervals.liveMinutes);
+  const statuses = fixtures.map((fixture) => fixtureCheckStatus(fixture));
+  const nextPollAt = statuses
+    .flatMap((status) => (status.nextAt ? [status.nextAt] : []))
+    .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
   const phases = fixtures.map((fixture) => fixturePhase(fixture, now));
   const pollStatus: RoundPollStatus = phases.includes("live") ? "live" : "scheduled";
-  const unacknowledged = blocking.some((fixture) => fixturePhase(fixture, now) === "conflict-review");
-  const held = blocking.some((fixture) => {
-    const status = fixture.providerStatus;
-    return status === "postponed" || status === "cancelled" || status === "suspended" || status === "live";
-  });
-  const windowPassed = Boolean(earliest && earliest.basis !== "retry" && earliest.at.getTime() <= now.getTime());
-  const reason = held
-    ? "The provider has not finished the match, so elapsed time does not finalize it. The next check uses the retry interval."
-    : unacknowledged
-      ? "Polling continues until the source conflict is resolved or acknowledged."
-      : windowPassed
-        ? `The finish window has passed and the result is still open, so the next check waits ${intervals.liveMinutes} minutes.`
-        : earliest?.basis === "finished"
-          ? "Next check is 2 hours after the recorded finish."
-          : earliest?.basis === "estimated"
-            ? `Next check is 2 hours after the estimated finish (kickoff plus ${duration} minutes).`
-            : `The finish window has passed and the result is still open, so the next check waits ${intervals.liveMinutes} minutes.`;
-  return { pollStatus, active: true, nextPollAt, reason };
+  if (!nextPollAt) {
+    const exhausted = statuses.some((status) => status.exhausted);
+    return {
+      pollStatus,
+      active: false,
+      nextPollAt: null,
+      reason: exhausted ? CHECK_EXHAUSTED_TEXT : "The provider postponed or cancelled the match, so the old kickoff is not polled.",
+    };
+  }
+  return { pollStatus, active: true, nextPollAt, reason: CHECK_POLICY_TEXT };
 }
 
 export function isPollDue(plan: RoundPollPlan, nextPollAt: Date | null, now: Date, force: boolean): boolean {

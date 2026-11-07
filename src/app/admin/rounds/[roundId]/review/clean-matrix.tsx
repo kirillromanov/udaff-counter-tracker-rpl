@@ -3,7 +3,7 @@ import { revisionToken } from "@/lib/domain/import/matrix-edits";
 import { cellText } from "@/lib/domain/import/save-matrix";
 import { scoreMatch } from "@/lib/domain/scoring/score-match";
 import { fixtureConfidence, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
-import { planRoundPoll, pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
+import { fixtureCheckStatus, planRoundPoll, pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
 import type { RefreshQuery } from "@/lib/domain/results/refresh-status";
 import { prisma } from "@/lib/db/prisma";
 import { SubmitButton } from "../../../submit-button";
@@ -84,7 +84,12 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
     resultConflict: match.resultConflict,
     conflictAcknowledgedAt: match.conflictAcknowledgedAt,
     liveReported: match.resultObservations.some((observation) => observation.matchStatus === "live"),
-    providerStatus: match.resultObservations.some((observation) => observation.matchStatus === "live") ? "live" : null,
+    providerStatus: (["postponed", "cancelled", "suspended", "live"] as const).find((status) =>
+      match.resultObservations.some((observation) => observation.matchStatus === status),
+    ) ?? null,
+    autoCheckAttempts: match.autoCheckAttempts,
+    autoCheckKickoffAt: match.autoCheckKickoffAt,
+    autoCheckNextAt: match.autoCheckNextAt,
   }));
   const pollPlan = planRoundPoll(pollFixtures, now, pollIntervals());
   const intermediate = round.matches.map((match) => ({
@@ -116,6 +121,28 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
       <MatchResultsRefresh
         lastPolledAt={round.lastPolledAt}
         lastSuccessfulSource={round.lastSuccessfulSource}
+        checks={round.matches.map((match) => ({
+          label: `${match.homeTeam} — ${match.awayTeam}`,
+          status: fixtureCheckStatus({
+            kickoffAt: match.kickoffAt,
+            actualHomeGoals: match.actualHomeGoals,
+            actualAwayGoals: match.actualAwayGoals,
+            resultState: match.resultState,
+            resultResolution: match.resultResolution,
+            resultConflict: match.resultConflict,
+            conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+            autoCheckAttempts: match.autoCheckAttempts,
+            autoCheckKickoffAt: match.autoCheckKickoffAt,
+            autoCheckNextAt: match.autoCheckNextAt,
+            providerStatus: match.resultObservations.some((observation) => observation.matchStatus === "postponed")
+              ? "postponed"
+              : match.resultObservations.some((observation) => observation.matchStatus === "cancelled")
+                ? "cancelled"
+                : match.resultObservations.some((observation) => observation.matchStatus === "suspended")
+                  ? "suspended"
+                  : null,
+          }),
+        }))}
         nextPollAt={round.nextPollAt}
         now={now}
         plan={pollPlan}

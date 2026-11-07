@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { alignToFixture, type AlignedObservation } from "@/lib/domain/results/decide";
-import { effectiveNextCheck, fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
+import { effectiveNextCheck, fixtureCheckStatus, fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
 import { fallbackSourceLabel, unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { rankFixtureResult, SOURCE_RANK, type CandidateStanding } from "@/lib/domain/results/ranking";
 import { RoundNav } from "../../../round-nav";
@@ -118,6 +118,9 @@ export default async function FixturesPage({
       providerStatus: (["postponed", "cancelled", "suspended", "live"] as const).find((status) =>
         match.resultObservations.some((observation) => observation.matchStatus === status),
       ) ?? null,
+      autoCheckAttempts: match.autoCheckAttempts,
+      autoCheckKickoffAt: match.autoCheckKickoffAt,
+      autoCheckNextAt: match.autoCheckNextAt,
     })),
     rankedAt,
     pollIntervals(),
@@ -254,6 +257,28 @@ export default async function FixturesPage({
           <MatchResultsRefresh
             lastPolledAt={round.lastPolledAt}
             lastSuccessfulSource={round.lastSuccessfulSource}
+            checks={round.matches.map((match) => ({
+              label: `${match.homeTeam} — ${match.awayTeam}`,
+              status: fixtureCheckStatus({
+                kickoffAt: match.kickoffAt,
+                actualHomeGoals: match.actualHomeGoals,
+                actualAwayGoals: match.actualAwayGoals,
+                resultState: match.resultState,
+                resultResolution: match.resultResolution,
+                resultConflict: match.resultConflict,
+                conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                autoCheckAttempts: match.autoCheckAttempts,
+                autoCheckKickoffAt: match.autoCheckKickoffAt,
+                autoCheckNextAt: match.autoCheckNextAt,
+                providerStatus: match.resultObservations.some((observation) => observation.matchStatus === "postponed")
+                  ? "postponed"
+                  : match.resultObservations.some((observation) => observation.matchStatus === "cancelled")
+                    ? "cancelled"
+                    : match.resultObservations.some((observation) => observation.matchStatus === "suspended")
+                      ? "suspended"
+                      : null,
+              }),
+            }))}
             nextPollAt={round.nextPollAt}
             now={rankedAt}
             plan={pollPlan}
@@ -321,6 +346,34 @@ export default async function FixturesPage({
                   </div>
                   <p className="mt-2 text-xs text-zinc-600">
                     Kickoff {match.kickoffAt ? formatWhen(match.kickoffAt) : "not set"}
+                    {" · "}
+                    {fixtureCheckStatus({
+                      kickoffAt: match.kickoffAt,
+                      actualHomeGoals: match.actualHomeGoals,
+                      actualAwayGoals: match.actualAwayGoals,
+                      resultState: match.resultState,
+                      resultResolution: match.resultResolution,
+                      resultConflict: match.resultConflict,
+                      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                      autoCheckAttempts: match.autoCheckAttempts,
+                      autoCheckKickoffAt: match.autoCheckKickoffAt,
+                      autoCheckNextAt: match.autoCheckNextAt,
+                    }).verified
+                      ? "Итоговый результат подтверждён"
+                      : fixtureCheckStatus({
+                          kickoffAt: match.kickoffAt,
+                          actualHomeGoals: match.actualHomeGoals,
+                          actualAwayGoals: match.actualAwayGoals,
+                          resultState: match.resultState,
+                          resultResolution: match.resultResolution,
+                          resultConflict: match.resultConflict,
+                          conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                          autoCheckAttempts: match.autoCheckAttempts,
+                          autoCheckKickoffAt: match.autoCheckKickoffAt,
+                          autoCheckNextAt: match.autoCheckNextAt,
+                        }).exhausted
+                        ? "Автопроверка остановлена: 10 попыток, итоговый результат не подтверждён"
+                        : `Попытки ${match.autoCheckAttempts}/10`}
                     {match.resultNote ? ` · ${match.resultNote}` : ""}
                   </p>
                 </div>

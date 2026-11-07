@@ -86,6 +86,14 @@ model Match {
   resultNote        String?
   /// Set when an admin leaves a source conflict visible but allows the round to stop polling.
   conflictAcknowledgedAt DateTime?
+  /// Automatic result checks used for the current kickoff. A manual refresh does not change this.
+  autoCheckAttempts   Int       @default(0)
+  /// Kickoff instant this attempt budget belongs to. A different kickoff starts a new cycle.
+  autoCheckKickoffAt  DateTime?
+  /// Next automatic check for this fixture. Empty when the fixture is verified or the budget is spent.
+  autoCheckNextAt     DateTime?
+  /// Earlier cycles replaced by a new kickoff: [{kickoffAt, attempts, endedAt}].
+  autoCheckHistory    String    @default("[]")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

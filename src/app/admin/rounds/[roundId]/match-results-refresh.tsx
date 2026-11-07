@@ -1,4 +1,4 @@
-import { effectiveNextCheck, type RoundPollPlan } from "@/lib/domain/results/poll";
+import { effectiveNextCheck, type FixtureCheckStatus, type RoundPollPlan } from "@/lib/domain/results/poll";
 import { describeRefreshQuery, type RefreshQuery } from "@/lib/domain/results/refresh-status";
 import { Notice } from "../../ui";
 import { RefreshResultsButton } from "./refresh-results-button";
@@ -19,6 +19,7 @@ export function MatchResultsRefresh({
   plan,
   now,
   query,
+  checks = [],
 }: {
   roundId: string;
   returnTo: "review" | "fixtures";
@@ -29,6 +30,7 @@ export function MatchResultsRefresh({
   plan: RoundPollPlan;
   now: Date;
   query: RefreshQuery;
+  checks?: { label: string; status: FixtureCheckStatus }[];
 }) {
   const outcome = describeRefreshQuery(query);
   const next = effectiveNextCheck(plan, nextPollAt, now);
@@ -54,6 +56,22 @@ export function MatchResultsRefresh({
         Next automatic check {nextLabel}
       </p>
       <p className="mt-1 text-xs text-zinc-600">{plan.reason}</p>
+      {checks.length > 0 ? (
+        <ul className="mt-1 space-y-1 text-xs text-zinc-600">
+          {checks.map((check) => (
+            <li key={check.label}>
+              {check.label}
+              {": "}
+              {check.status.verified
+                ? "Итоговый результат подтверждён"
+                : check.status.exhausted
+                  ? "Автопроверка остановлена: 10 попыток, итоговый результат не подтверждён"
+                  : `Попытки ${check.status.attempts}/${check.status.limit}`}
+              {check.status.nextAt ? ` · следующая проверка ${formatWhen(check.status.nextAt)}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {sourcesFailed ? <p className="mt-1 text-xs text-red-700">{pollHealthSummary}</p> : pollHealthSummary ? <p className="mt-1 text-xs text-zinc-600">{pollHealthSummary}</p> : null}
       <div className="mt-3">
         <RefreshResultsButton returnTo={returnTo} roundId={roundId} />

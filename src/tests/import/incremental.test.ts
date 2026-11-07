@@ -111,9 +111,9 @@ describe("incremental prediction comments", () => {
       intervals,
     );
     expect(upcoming.active).toBe(true);
-    expect(upcoming.nextAt?.toISOString()).toBe("2026-10-23T00:00:00.000Z");
+    expect(upcoming.nextAt?.toISOString()).toBe("2026-10-22T22:00:00.000Z");
     expect(live.active).toBe(true);
-    expect(live.nextAt?.toISOString()).toBe("2026-10-22T20:00:00.000Z");
+    expect(live.nextAt?.toISOString()).toBe("2026-10-22T18:00:00.000Z");
     expect(archived.active).toBe(false);
     expect(finalized.active).toBe(false);
 

@@ -2,7 +2,7 @@ import { loadEnvFile } from "node:process";
 import { prisma } from "@/lib/db/prisma";
 import { planMoscowKickoffRepair } from "@/lib/domain/forum/repair-moscow-kickoff";
 import { applyAutoSelection } from "@/lib/domain/import/persist-import";
-import { nextPollAfterCheck, planRoundPoll, pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
+import { planRoundPoll, pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import { formatMoscow } from "@/lib/domain/time/moscow";
@@ -58,7 +58,7 @@ async function main() {
   }));
   const intervals = pollIntervals();
   const pollPlan = planRoundPoll(fixtures, now, intervals);
-  const nextPollAt = nextPollAfterCheck(pollPlan, now, intervals.liveMinutes);
+  const nextPollAt = pollPlan.nextPollAt;
   await prisma.round.update({
     where: { id: round.id },
     data: { nextPollAt, pollStatus: pollPlan.pollStatus },
