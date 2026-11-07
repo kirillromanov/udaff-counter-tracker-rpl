@@ -135,20 +135,19 @@ function matchBonuses(
     explanations.push(`Bonus: correctly predicted zero goals (+${zeroBonus})`);
   }
 
-  const predictedDiff = Math.abs(predicted.home - predicted.away);
-  if (predictedDiff >= config.bonuses.bigGoalDiffMin) {
+  const actualDifference = Math.abs(actual.home - actual.away);
+  if (actualDifference >= config.bonuses.bigGoalDiffMin) {
     points += config.bonuses.bigGoalDiff;
     explanations.push(
-      `Bonus: predicted goal difference ${predictedDiff} >= ${config.bonuses.bigGoalDiffMin} (+${config.bonuses.bigGoalDiff})`,
+      `Bonus: actual goal difference ${actualDifference} >= ${config.bonuses.bigGoalDiffMin} (+${config.bonuses.bigGoalDiff})`,
     );
   }
 
-  const predictedTotal = predicted.home + predicted.away;
   const actualTotal = actual.home + actual.away;
-  if (predictedTotal >= config.bonuses.highTotalMin && predictedTotal === actualTotal) {
+  if (actualTotal >= config.bonuses.highTotalMin) {
     points += config.bonuses.highTotalExact;
     explanations.push(
-      `Bonus: predicted total goals ${predictedTotal} matches actual total and is >= ${config.bonuses.highTotalMin} (+${config.bonuses.highTotalExact})`,
+      `Bonus: actual total goals ${actualTotal} >= ${config.bonuses.highTotalMin} (+${config.bonuses.highTotalExact})`,
     );
   }
 

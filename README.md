@@ -39,7 +39,7 @@ Match points, bonuses, and the Match of the Round multiplier live in [`src/lib/c
 
 A neighbor is the same outcome and the same signed goal difference, with both teams shifted by exactly one goal. `1-0` against `2-1` is a neighbor. `2-0` against `4-2` is the same goal difference, but not a neighbor.
 
-Match bonuses apply only to rewarded categories (`exact`, `neighbor`, `diff`, `outcome`) unless `bonusesRequireRewardedBase` is turned off. A `0-0` result awards +2 instead of the +1 zero-total bonus. The Match of the Round multiplier also applies to a negative score unless `mtAppliesToNegative` is turned off.
+Match bonuses apply only to rewarded categories (`exact`, `neighbor`, `diff`, `outcome`) unless `bonusesRequireRewardedBase` is turned off. A correctly predicted zero on one side is +1, so an exact `0-0` is +2. The +3 bonus applies when the actual absolute goal difference is at least 3. The +4 bonus applies when the actual goal total is at least 5. The Match of the Round multiplier is applied once to that subtotal, including a negative score unless `mtAppliesToNegative` is turned off.
 
 ## Tests
 
