@@ -12,6 +12,8 @@ import { fieldClass, Section } from "../../../ui";
 import { CalculateIntermediateButton } from "../calculate-intermediate-button";
 import { MatchResultsRefresh } from "../match-results-refresh";
 import { classifyIntermediateFixture, exclusionLabel, isFixtureExclusion, ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
+import { slipsByParticipant } from "@/lib/domain/import/effective-slip";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 
 function liveFixture(match: {
   id: string;
@@ -166,6 +168,8 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                     {match.awayTeam}
                     {match.isMatchOfTheRound ? " МТ" : ""}
                     <div className="font-normal text-zinc-500">
+                      {match.kickoffAt ? formatMoscow(match.kickoffAt) : "no kickoff"}
+                      <br />
                       {match.actualHomeGoals == null ? match.confidence : `${match.actualHomeGoals}-${match.actualAwayGoals}`}
                     </div>
                   </th>
@@ -176,9 +180,22 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
             <tbody>
               {roster.map((person) => {
                 const owned = round.predictionSets.filter((set) => set.participantId === person.id);
-                const selected = owned.find((set) => set.selected) ?? null;
-                const reviewOnly = !selected && owned.some((set) => set.attributionReview === "review");
-                const alternatives = owned.filter((set) => set.id !== selected?.id);
+                const selectedSets = owned.filter((set) => set.selected);
+                const selected = [...selectedSets].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ?? null;
+                const slip = slipsByParticipant(
+                  fixtures.map((match) => match.id),
+                  selectedSets.map((set) => ({
+                    id: set.id,
+                    participantId: set.participantId,
+                    selection: set.selection,
+                    manuallyEdited: set.manuallyEdited,
+                    createdAt: set.createdAt,
+                    postedAt: set.forumComment?.postedAt ?? null,
+                    predictions: set.predictions,
+                  })),
+                )[0];
+                const reviewOnly = selectedSets.length === 0 && owned.some((set) => set.attributionReview === "review");
+                const alternatives = owned.filter((set) => !selectedSets.some((chosen) => chosen.id === set.id));
                 let total = 0;
                 let counted = 0;
                 const stored = round.roundScores.find((score) => score.participantId === person.id);
@@ -187,6 +204,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                     <th className="sticky left-0 bg-white px-2 py-2 text-left font-medium">
                       {person.name}
                       <input name={`revision_${person.id}`} type="hidden" value={revisionToken(selected?.updatedAt ?? null)} />
+                      {slip ? <div className="text-xs font-normal text-zinc-600">{slip.label}</div> : null}
                       {reviewOnly ? <div className="text-xs text-amber-700">Owner needs review. Not in the stored total yet.</div> : null}
                       {selected && selected.attributionMethod !== "author" ? (
                         <div className="mt-1 max-w-56 text-xs font-normal text-zinc-600">
@@ -209,10 +227,14 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                       ) : null}
                     </th>
                     {fixtures.map((match) => {
-                      const prediction = selected?.predictions.find((item) => item.matchId === match.id);
-                      const missing = !prediction || prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null;
+                      const cell = slip?.cells.find((item) => item.matchId === match.id);
+                      const cellReview = cell?.state === "review";
+                      const prediction = cell?.state === "selected"
+                        ? { homeGoals: cell.home, awayGoals: cell.away, ignored: false, markedAsMt: false }
+                        : selected?.predictions.find((item) => item.matchId === match.id);
+                      const missing = cellReview || !prediction || prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null;
                       const predicted = missing ? null : { home: prediction.homeGoals as number, away: prediction.awayGoals as number };
-                      const scored = match.actualHomeGoals != null && match.actualAwayGoals != null && !reviewOnly
+                      const scored = !cellReview && match.actualHomeGoals != null && match.actualAwayGoals != null && !reviewOnly
                         ? scoreMatch({
                             matchId: match.id,
                             actual: { home: match.actualHomeGoals, away: match.actualAwayGoals },
@@ -232,7 +254,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                         <td key={match.id} className="px-2 py-2">
                           <input
                             name={`score_${person.id}_${match.id}`}
-                            defaultValue={cellText(prediction?.homeGoals, prediction?.awayGoals, prediction?.ignored)}
+                            defaultValue={cellReview ? "" : cellText(prediction?.homeGoals, prediction?.awayGoals, prediction?.ignored)}
                             placeholder="missing"
                             className={`${fieldClass} w-16`}
                           />
@@ -245,13 +267,15 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                             </select>
                           ) : null}
                           <div className="text-xs text-zinc-500">
-                            {match.confidence !== "verified"
-                              ? "prospective"
-                              : reviewOnly
-                                ? "review"
-                                : scored
-                                  ? `${scored.finalMatchPoints}`
-                                  : "no result"}
+                            {cellReview
+                              ? "conflict"
+                              : match.confidence !== "verified"
+                                ? "prospective"
+                                : reviewOnly
+                                  ? "review"
+                                  : scored
+                                    ? `${scored.finalMatchPoints}`
+                                    : "no result"}
                             {prediction?.markedAsMt && !match.isMatchOfTheRound ? " · text says MT" : ""}
                           </div>
                         </td>
@@ -282,7 +306,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
         ) : (
           <p>
             Рассчитано по {includedCount} из {round.matches.length} матчей
-            {calculatedAt ? ` · ${calculatedAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}.
+            {calculatedAt ? ` · ${formatMoscow(calculatedAt)}` : ""}.
             {includedCount < round.matches.length ? " Бонус тура ждёт все матчи." : ""}
           </p>
         )}

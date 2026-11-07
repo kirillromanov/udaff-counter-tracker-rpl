@@ -3,7 +3,7 @@ import { defaultScoringConfig, scoringConfigFromRecord } from "@/lib/config/scor
 import { scoreLiveParticipant, type LiveFixtureInput } from "@/lib/domain/scoring/live-score";
 import { buildCleanSeasonStandings, type CleanSeasonTable } from "./clean-season";
 import { countsAsConfirmedRound } from "./intermediate";
-import { oneSelectedSetPerParticipant } from "./recalculate-round";
+import { slipsByParticipant } from "@/lib/domain/import/effective-slip";
 import { countsTowardProduction } from "./round-role";
 
 function toFixture(match: {
@@ -47,7 +47,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
         include: {
           matches: true,
           roundScores: true,
-          predictionSets: { where: { selected: true }, include: { predictions: true } },
+          predictionSets: { where: { selected: true }, include: { predictions: true, forumComment: { select: { postedAt: true } } } },
         },
       },
     },
@@ -74,21 +74,29 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
       });
       continue;
     }
-    const sets = oneSelectedSetPerParticipant(round.predictionSets);
-    if (sets.length === 0) {
+    const slips = slipsByParticipant(
+      fixtures.map((fixture) => fixture.matchId),
+      round.predictionSets.map((set) => ({
+        id: set.id,
+        participantId: set.participantId,
+        selection: set.selection,
+        manuallyEdited: set.manuallyEdited,
+        createdAt: set.createdAt,
+        postedAt: set.forumComment?.postedAt ?? null,
+        predictions: set.predictions,
+      })),
+    );
+    if (slips.length === 0) {
       continue;
     }
     liveRounds.push({
       roundId: round.id,
       order: round.number,
-      scores: sets.map((set) => {
-        const predictions = set.predictions.flatMap((prediction) =>
-          prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null
-            ? []
-            : [{ matchId: prediction.matchId, home: prediction.homeGoals, away: prediction.awayGoals }],
-        );
-        const scored = scoreLiveParticipant(set.participantId, fixtures, predictions, config);
-        return { participantId: set.participantId, points: scored.confirmedPoints + scored.provisionalPoints };
+      scores: slips.map((slip) => {
+        const scored = scoreLiveParticipant(slip.participantId, fixtures, slip.predictions, config, {
+          unresolvedMatchIds: slip.unresolvedMatchIds,
+        });
+        return { participantId: slip.participantId, points: scored.confirmedPoints + scored.provisionalPoints };
       }),
     });
   }

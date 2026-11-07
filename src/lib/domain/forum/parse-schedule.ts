@@ -1,4 +1,5 @@
 import { normalizeCommentText, normalizeTeamName } from "@/lib/domain/parser/normalize";
+import { moscowWallClockToUtc } from "@/lib/domain/time/moscow";
 
 export interface ScheduledFixture {
   kickoffAt: Date | null;
@@ -34,7 +35,7 @@ function tooWordy(value: string): boolean {
  * Read the dated fixture list from an opening post.
  * Lines look like `26.07.2026 19:30 — Рубин — Краснодар (МТ)` or
  * `16.09.2026 18:30 Спартак – Факел`. Standings rows and prose are ignored.
- * A missing year uses `defaultYear`. Kickoff is stored as UTC, same as comment times.
+ * A missing year uses `defaultYear`. A timezone-less clock is Europe/Moscow (UTC+3), stored as a UTC instant.
  */
 export function parseFixtureSchedule(text: string, defaultYear = 2026): FixtureSchedule {
   const byPair = new Map<string, ScheduledFixture>();
@@ -58,7 +59,7 @@ export function parseFixtureSchedule(text: string, defaultYear = 2026): FixtureS
     const day = Number(match[1]);
     const month = Number(match[2]);
     const year = match[3] ? Number(match[3]) : defaultYear;
-    const kickoffAt = new Date(Date.UTC(year, month - 1, day, Number(match[4]), Number(match[5])));
+    const kickoffAt = moscowWallClockToUtc(year, month, day, Number(match[4]), Number(match[5]));
     if (Number.isNaN(kickoffAt.getTime())) {
       continue;
     }

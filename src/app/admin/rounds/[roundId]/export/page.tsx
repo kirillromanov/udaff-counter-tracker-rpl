@@ -9,6 +9,7 @@ import { confirmedCutoffLabel } from "@/lib/domain/standings/clean-season";
 import { loadCleanSeason } from "@/lib/domain/standings/load-clean-season";
 import { CopyButton } from "../../../copy-button";
 import { CrumbLink, EmptyState, PageBody, PageHeader, Section } from "../../../ui";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 import { RoundNav } from "../../../round-nav";
 
 export const instant = false;
@@ -135,7 +136,7 @@ export default async function ExportPage({ params }: { params: Promise<{ roundId
                 stale
                   ? "This stored table is stale and is not the current result."
                   : partial
-                    ? `${intermediateRoundHeading(round.number, includedCount, round.matches.length)}${calculatedAt ? ` · ${calculatedAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}. Verified finished matches only. The round bonus is pending.`
+                    ? `${intermediateRoundHeading(round.number, includedCount, round.matches.length)}${calculatedAt ? ` · ${formatMoscow(calculatedAt)}` : ""}. Verified finished matches only. The round bonus is pending.`
                     : "Final round table. Match points, the round-goals bonus, and the winner line."
               }
               text={roundText}

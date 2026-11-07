@@ -4,8 +4,8 @@ export interface SelectableSet {
   postedAt: Date | null;
   valid: boolean;
   /**
-   * An incomplete slip that still has scored lines. Used only when the
-   * participant has no complete valid set and no manual selection.
+   * A scored slip that is not clean enough to merge. Used only when the
+   * participant has no valid set and no manual selection.
    */
   provisional?: boolean;
   selection: "auto" | "manual";
@@ -24,9 +24,9 @@ function latest(sets: SelectableSet[]): SelectableSet {
 }
 
 /**
- * One selected set per participant.
- * A manually chosen set stays selected. Otherwise the latest valid set is used.
- * A set is valid when it contains at least one active scored prediction.
+ * Manual choice stays one set and is not mixed with later imports.
+ * Otherwise every valid comment stays selected so partial slips can be merged
+ * by fixture. A valid set has at least one clean scored prediction.
  */
 export function resolveSelections(sets: SelectableSet[]): string[] {
   const groups = new Map<string, SelectableSet[]>();
@@ -45,7 +45,7 @@ export function resolveSelections(sets: SelectableSet[]): string[] {
     }
     const valid = group.filter((set) => set.valid);
     if (valid.length > 0) {
-      chosen.push(latest(valid).id);
+      chosen.push(...valid.map((set) => set.id).sort());
       continue;
     }
     const provisional = group.filter((set) => set.provisional);

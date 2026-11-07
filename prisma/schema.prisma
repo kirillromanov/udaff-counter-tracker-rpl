@@ -246,7 +246,7 @@ model PredictionSet {
   rawComment      String?
   status          String   @default("draft")
   selected        Boolean  @default(false)
-  /// auto: latest valid comment wins. manual: an admin chose this set.
+  /// auto: valid comments stay selected and are merged by fixture. manual: an admin chose this set.
   selection       String   @default("auto")
   confidence      Float?
   warningsJson    String   @default("[]")

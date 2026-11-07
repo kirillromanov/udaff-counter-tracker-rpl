@@ -43,7 +43,7 @@ describe("parseFixtureSchedule", () => {
       awayTeam: "Краснодар",
       isMatchOfTheRound: true,
     });
-    expect(schedule.fixtures[0]?.kickoffAt?.toISOString()).toBe("2026-07-24T20:00:00.000Z");
+    expect(schedule.fixtures[0]?.kickoffAt?.toISOString()).toBe("2026-07-24T17:00:00.000Z");
   });
 
   it("accepts a short date and an en dash, and warns when no match is marked", () => {
@@ -72,12 +72,20 @@ describe("parseFixtureSchedule", () => {
 describe("import acceptance", () => {
   const row = { ignored: false, homeGoals: 1, awayGoals: 0, warning: null };
 
-  it("accepts a complete clean slip and holds back incomplete or conflicting ones", () => {
+  it("accepts a clean partial slip and holds back a conflicting one", () => {
     expect(
       isAcceptableImport({ warnings: [], unmatchedLines: 0, fixtureCount: 1, predictions: [row] }),
     ).toBe(true);
     expect(
       importNeedsReview({
+        warnings: ["No prediction for Родина — Оренбург"],
+        unmatchedLines: 0,
+        fixtureCount: 2,
+        predictions: [row],
+      }),
+    ).toBe(false);
+    expect(
+      isAcceptableImport({
         warnings: ["No prediction for Родина — Оренбург"],
         unmatchedLines: 0,
         fixtureCount: 2,

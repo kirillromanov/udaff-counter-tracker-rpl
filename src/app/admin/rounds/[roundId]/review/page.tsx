@@ -42,6 +42,7 @@ import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import type { PollFixture } from "@/lib/domain/results/poll";
 import { AuthorIdentityReview } from "./author-identity";
 import { CleanMatrix } from "./clean-matrix";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 import {
   addManualSetAction,
   fetchCommentsAction,
@@ -59,7 +60,7 @@ function formatWhen(value: Date | null): string {
   if (!value) {
     return "no timestamp";
   }
-  return value.toISOString().slice(0, 16).replace("T", " ");
+  return formatMoscow(value);
 }
 
 const rowTone = {

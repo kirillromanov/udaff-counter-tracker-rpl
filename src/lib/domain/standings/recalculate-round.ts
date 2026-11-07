@@ -11,6 +11,7 @@ import {
   type IntermediateFixture,
 } from "./intermediate";
 import { rosterIdsToScore } from "./roster-scores";
+import { slipsByParticipant } from "@/lib/domain/import/effective-slip";
 
 interface SelectedSet {
   participantId: string;
@@ -84,7 +85,7 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
     include: {
       matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } },
       predictionSets: {
-        include: { predictions: true },
+        include: { predictions: true, forumComment: { select: { postedAt: true } } },
       },
       season: {
         include: {
@@ -115,8 +116,21 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
   const config = round.season.scoringConfig
     ? scoringConfigFromRecord(round.season.scoringConfig)
     : defaultScoringConfig;
-  const selectedSets = oneSelectedSetPerParticipant(round.predictionSets.filter((set) => set.selected));
-  const selectedIds = selectedSets.map((set) => set.participantId);
+  const fixtureIds = round.matches.map((match) => match.id);
+  const slips = slipsByParticipant(
+    fixtureIds,
+    round.predictionSets.filter((set) => set.selected).map((set) => ({
+      id: set.id,
+      participantId: set.participantId,
+      selection: set.selection,
+      manuallyEdited: set.manuallyEdited,
+      createdAt: set.createdAt,
+      postedAt: set.forumComment?.postedAt ?? null,
+      predictions: set.predictions,
+    })),
+  );
+  const slipsById = new Map(slips.map((slip) => [slip.participantId, slip]));
+  const selectedIds = slips.map((slip) => slip.participantId);
   const selectedIdSet = new Set(selectedIds);
   const unresolvedIds = [
     ...new Set(
@@ -133,26 +147,23 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
   if (scoreIds.length === 0) {
     throw new Error("No selected prediction set to score");
   }
-  const sets = scoreIds.map((participantId) => {
-    return selectedSets.find((set) => set.participantId === participantId) ?? {
-      participantId,
-      updatedAt: new Date(0),
-      predictions: [],
-    };
-  });
   const calculation = scoreIntermediateRound(
     {
       roundId,
       fixtures,
-      participants: sets.map((set) => ({
-        participantId: set.participantId,
-        predictions: set.predictions.map((prediction) => ({
-          matchId: prediction.matchId,
-          home: prediction.homeGoals,
-          away: prediction.awayGoals,
-          ignored: prediction.ignored,
-        })),
-      })),
+      participants: scoreIds.map((participantId) => {
+        const slip = slipsById.get(participantId);
+        return {
+          participantId,
+          unresolvedMatchIds: slip?.unresolvedMatchIds ?? [],
+          predictions: (slip?.predictions ?? []).map((prediction) => ({
+            matchId: prediction.matchId,
+            home: prediction.home,
+            away: prediction.away,
+            ignored: false,
+          })),
+        };
+      }),
     },
     config,
   );

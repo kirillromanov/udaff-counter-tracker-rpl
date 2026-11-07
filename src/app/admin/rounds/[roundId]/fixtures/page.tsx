@@ -11,11 +11,12 @@ import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Sect
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { MatchResultsRefresh } from "../match-results-refresh";
 import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 
 export const instant = false;
 
-function formatUtc(value: Date): string {
-  return `${value.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+function formatWhen(value: Date): string {
+  return formatMoscow(value);
 }
 
 function nextCheckLabel(stored: Date | null, active: boolean, now: Date): string {
@@ -25,7 +26,7 @@ function nextCheckLabel(stored: Date | null, active: boolean, now: Date): string
   if (!stored || stored.getTime() <= now.getTime()) {
     return "due now";
   }
-  return formatUtc(stored);
+  return formatWhen(stored);
 }
 
 function phaseTone(phase: FixturePhase, acknowledged: boolean): "success" | "warning" | "danger" | "info" | "neutral" {
@@ -177,7 +178,7 @@ export default async function FixturesPage({
             {pollPlan.reason}
           </p>
           <p className="mt-2 text-xs text-zinc-600">
-            Last check {round.lastPolledAt ? formatUtc(round.lastPolledAt) : "not recorded"}
+            Last check {round.lastPolledAt ? formatWhen(round.lastPolledAt) : "not recorded"}
             {" · "}
             Next check {nextCheckLabel(effectiveNextCheck(pollPlan, round.nextPollAt, rankedAt), pollPlan.active, rankedAt)}
             {" · "}
@@ -226,8 +227,8 @@ export default async function FixturesPage({
                   <li key={row.source}>
                     <Badge tone={row.degraded ? "warning" : down ? "danger" : "success"}>{row.degraded ? "degraded" : down ? "down" : "healthy"}</Badge>{" "}
                     <span className="font-medium">{row.source}</span> · {row.role} · {row.consecutiveFailures} consecutive failures
-                    {row.lastSuccessAt ? <span className="text-zinc-500"> · last success {row.lastSuccessAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span> : null}
-                    {row.lastFailureAt ? <span className="text-zinc-500"> · last failure {row.lastFailureAt.toISOString().slice(0, 16).replace("T", " ")} UTC</span> : null}
+                    {row.lastSuccessAt ? <span className="text-zinc-500"> · last success {formatWhen(row.lastSuccessAt)}</span> : null}
+                    {row.lastFailureAt ? <span className="text-zinc-500"> · last failure {formatWhen(row.lastFailureAt)}</span> : null}
                     {row.lastError ? <span className="text-zinc-500"> · {row.lastError}</span> : null}
                   </li>
                 );
@@ -318,7 +319,10 @@ export default async function FixturesPage({
                       }, rankedAt), match.conflictAcknowledgedAt != null)}
                     </Badge>
                   </div>
-                  {match.resultNote ? <p className="mt-2 text-xs text-zinc-600">{match.resultNote}</p> : null}
+                  <p className="mt-2 text-xs text-zinc-600">
+                    Kickoff {match.kickoffAt ? formatWhen(match.kickoffAt) : "not set"}
+                    {match.resultNote ? ` · ${match.resultNote}` : ""}
+                  </p>
                 </div>
               ))}
               <SubmitButton pendingLabel="Saving…" variant="primary">
@@ -376,7 +380,7 @@ export default async function FixturesPage({
                               <span className="text-xs text-zinc-600">
                                 {candidate.source} · rank {candidate.weight} · {candidate.homeGoals}-{candidate.awayGoals}
                                 {parsed ? ` · parsed ${parsed.homeTeam} ${parsed.homeGoals}-${parsed.awayGoals} ${parsed.awayTeam}` : ""}
-                                {parsed ? ` · ${parsed.fetchedAt.toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}
+                                {parsed ? ` · ${formatWhen(parsed.fetchedAt)}` : ""}
                                 {" · "}
                                 {candidate.reason}
                               </span>

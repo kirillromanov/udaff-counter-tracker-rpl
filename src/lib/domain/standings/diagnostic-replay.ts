@@ -1,5 +1,6 @@
 import path from "node:path";
 import { isAcceptableImport, type ImportSetShape } from "@/lib/domain/import/accept-import";
+import { mergePredictionCells } from "@/lib/domain/import/merge-predictions";
 import { resolveSelections, type SelectableSet } from "@/lib/domain/import/select-sets";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
 import { resolveAuthor, type IdentityCatalog } from "@/lib/domain/participants/resolve-author";
@@ -134,7 +135,7 @@ export function buildDiagnosticReport(input: {
     const unmatched = new Set<string>();
     const parsingErrors: { warning: string; rawLine: string }[] = [];
     let recognized = 0;
-    const sets: (SelectableSet & { points: number | null })[] = [];
+    const sets: (SelectableSet & { lines: ReturnType<typeof rowsForStorage> })[] = [];
     const refs = fixtureRefs(round);
     const resultIssues = round.fixtures.flatMap((fixture) => {
       const actual = usableActual(fixture);
@@ -197,28 +198,6 @@ export function buildDiagnosticReport(input: {
         })),
       );
       const valid = isAcceptableImport(shape);
-      let points: number | null = null;
-      if (valid && scored) {
-        const byFixture = new Map(stored.map((line) => [line.fixtureId, line]));
-        points = scoreRound(
-          {
-            roundId: `diagnostic-${round.number}`,
-            participantId: author.participantId,
-            matches: round.fixtures.map((fixture) => {
-              const line = byFixture.get(fixture.id);
-              return {
-                matchId: fixture.id,
-                actual: { home: fixture.actualHomeGoals ?? 0, away: fixture.actualAwayGoals ?? 0 },
-                predicted: line && line.homeGoals != null && line.awayGoals != null
-                  ? { home: line.homeGoals, away: line.awayGoals }
-                  : null,
-                isMatchOfTheRound: fixture.isMatchOfTheRound,
-              };
-            }),
-          },
-          config,
-        ).roundTotal;
-      }
       sets.push({
         id: comment.id,
         participantId: author.participantId,
@@ -226,21 +205,59 @@ export function buildDiagnosticReport(input: {
         valid,
         selection: "auto",
         selected: false,
-        points,
+        lines: stored,
       });
     }
 
     if (scored) {
       const chosen = new Set(resolveSelections(sets));
+      const groups = new Map<string, typeof sets>();
       for (const set of sets) {
-        if (!chosen.has(set.id) || set.points == null) {
+        if (!chosen.has(set.id)) {
           continue;
         }
-        const name = input.catalog.participants.find((person) => person.id === set.participantId)?.name ?? set.participantId;
-        const current = computed.get(set.participantId) ?? { name, points: 0, rounds: [] };
-        current.points += set.points;
+        const group = groups.get(set.participantId) ?? [];
+        group.push(set);
+        groups.set(set.participantId, group);
+      }
+      for (const [participantId, group] of groups) {
+        const cells = mergePredictionCells(
+          round.fixtures.map((fixture) => fixture.id),
+          group.map((set) => ({
+            id: set.id,
+            postedAt: set.postedAt,
+            manual: false,
+            predictions: set.lines.flatMap((line) =>
+              line.fixtureId
+                ? [{ matchId: line.fixtureId, home: line.homeGoals, away: line.awayGoals, ignored: false, warning: line.warnings[0] ?? null }]
+                : [],
+            ),
+          })),
+        );
+        const points = scoreRound(
+          {
+            roundId: `diagnostic-${round.number}`,
+            participantId,
+            matches: round.fixtures.flatMap((fixture) => {
+              const cell = cells.find((item) => item.matchId === fixture.id);
+              if (cell?.state === "review") {
+                return [];
+              }
+              return [{
+                matchId: fixture.id,
+                actual: { home: fixture.actualHomeGoals ?? 0, away: fixture.actualAwayGoals ?? 0 },
+                predicted: cell?.state === "selected" ? { home: cell.home, away: cell.away } : null,
+                isMatchOfTheRound: fixture.isMatchOfTheRound,
+              }];
+            }),
+          },
+          config,
+        ).roundTotal;
+        const name = input.catalog.participants.find((person) => person.id === participantId)?.name ?? participantId;
+        const current = computed.get(participantId) ?? { name, points: 0, rounds: [] };
+        current.points += points;
         current.rounds.push(round.number);
-        computed.set(set.participantId, current);
+        computed.set(participantId, current);
       }
     }
 

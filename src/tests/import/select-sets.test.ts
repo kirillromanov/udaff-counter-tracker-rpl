@@ -12,7 +12,7 @@ function set(overrides: Partial<SelectableSet> & Pick<SelectableSet, "id" | "pos
 }
 
 describe("resolveSelections", () => {
-  it("selects the latest valid comment when the same participant posted twice", () => {
+  it("keeps every valid comment when the same participant posted twice", () => {
     const chosen = resolveSelections([
       set({ id: "early", postedAt: new Date("2026-10-16T10:00:00Z"), valid: true }),
       set({ id: "late", postedAt: new Date("2026-10-16T18:00:00Z"), valid: true }),
@@ -24,7 +24,7 @@ describe("resolveSelections", () => {
       }),
     ]);
 
-    expect(chosen).toEqual(["late", "other"]);
+    expect(chosen).toEqual(["early", "late", "other"]);
   });
 
   it("skips a newer comment that has no scored prediction", () => {
@@ -50,16 +50,16 @@ describe("resolveSelections", () => {
     expect(chosen).toEqual(["chosen"]);
   });
 
-  it("uses an incomplete slip only when the participant has no complete one", () => {
+  it("keeps a valid partial slip beside a complete one", () => {
     const chosen = resolveSelections([
-      set({ id: "partial", postedAt: new Date("2026-10-16T18:00:00Z"), valid: false, provisional: true }),
-      set({ id: "complete", postedAt: new Date("2026-10-16T10:00:00Z"), valid: true, provisional: true }),
+      set({ id: "partial", postedAt: new Date("2026-10-16T18:00:00Z"), valid: true }),
+      set({ id: "complete", postedAt: new Date("2026-10-16T10:00:00Z"), valid: true }),
     ]);
     const onlyPartial = resolveSelections([
       set({ id: "partial", postedAt: new Date("2026-10-16T18:00:00Z"), valid: false, provisional: true }),
     ]);
 
-    expect(chosen).toEqual(["complete"]);
+    expect(chosen).toEqual(["complete", "partial"]);
     expect(onlyPartial).toEqual(["partial"]);
   });
 

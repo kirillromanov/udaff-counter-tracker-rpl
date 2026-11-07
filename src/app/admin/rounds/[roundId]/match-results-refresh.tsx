@@ -3,8 +3,10 @@ import { describeRefreshQuery, type RefreshQuery } from "@/lib/domain/results/re
 import { Notice } from "../../ui";
 import { RefreshResultsButton } from "./refresh-results-button";
 
-function formatUtc(value: Date): string {
-  return `${value.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+import { formatMoscow } from "@/lib/domain/time/moscow";
+
+function formatWhen(value: Date): string {
+  return formatMoscow(value);
 }
 
 export function MatchResultsRefresh({
@@ -30,7 +32,7 @@ export function MatchResultsRefresh({
 }) {
   const outcome = describeRefreshQuery(query);
   const next = effectiveNextCheck(plan, nextPollAt, now);
-  const nextLabel = !plan.active ? "stopped" : next && next.getTime() > now.getTime() ? formatUtc(next) : "due now";
+  const nextLabel = !plan.active ? "stopped" : next && next.getTime() > now.getTime() ? formatWhen(next) : "due now";
   const sourcesFailed = Boolean(pollHealthSummary && !pollHealthSummary.includes(" ok") && pollHealthSummary.includes("failed"));
   return (
     <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
@@ -45,7 +47,7 @@ export function MatchResultsRefresh({
         </Notice>
       ) : null}
       <p className="mt-2 text-xs text-zinc-600">
-        Last refresh attempt {lastPolledAt ? formatUtc(lastPolledAt) : "not recorded"}
+        Last refresh attempt {lastPolledAt ? formatWhen(lastPolledAt) : "not recorded"}
         {" · "}
         Last successful source refresh {lastSuccessfulSource ?? "none"}
         {" · "}

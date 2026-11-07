@@ -11,8 +11,28 @@ import {
   type RankedLiveScore,
 } from "@/lib/domain/scoring/live-score";
 import { countsAsConfirmedRound } from "./intermediate";
-import { oneSelectedSetPerParticipant } from "./recalculate-round";
+import { slipsByParticipant, type StoredSlipSet } from "@/lib/domain/import/effective-slip";
 import { countsTowardProduction } from "./round-role";
+
+function storedSlip(set: {
+  id: string;
+  participantId: string;
+  selection: string;
+  manuallyEdited: boolean;
+  createdAt: Date;
+  predictions: StoredSlipSet["predictions"];
+  forumComment: { postedAt: Date | null } | null;
+}): StoredSlipSet {
+  return {
+    id: set.id,
+    participantId: set.participantId,
+    selection: set.selection,
+    manuallyEdited: set.manuallyEdited,
+    createdAt: set.createdAt,
+    postedAt: set.forumComment?.postedAt ?? null,
+    predictions: set.predictions,
+  };
+}
 
 function toFixture(match: {
   id: string;
@@ -52,7 +72,7 @@ export async function loadLiveRound(roundId: string): Promise<LiveRoundView | nu
     include: {
       matches: { orderBy: { sortOrder: "asc" } },
       season: { include: { scoringConfig: true } },
-      predictionSets: { where: { selected: true }, include: { predictions: true, participant: true } },
+      predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true } } } },
     },
   });
   if (!round) {
@@ -61,19 +81,12 @@ export async function loadLiveRound(roundId: string): Promise<LiveRoundView | nu
   const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
   const fixtures = round.matches.map(toFixture);
   const names = new Map(round.predictionSets.map((set) => [set.participantId, set.participant.name]));
-  const sets = oneSelectedSetPerParticipant(round.predictionSets);
+  const slips = slipsByParticipant(fixtures.map((fixture) => fixture.matchId), round.predictionSets.map(storedSlip));
   const rows = rankLiveScores(
-    sets.map((set) => {
-      const predictions = set.predictions.flatMap((prediction) =>
-        prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null
-          ? []
-          : [{ matchId: prediction.matchId, home: prediction.homeGoals, away: prediction.awayGoals }],
-      );
-      return {
-        ...scoreLiveParticipant(set.participantId, fixtures, predictions, config),
-        name: names.get(set.participantId) ?? set.participantId,
-      };
-    }),
+    slips.map((slip) => ({
+      ...scoreLiveParticipant(slip.participantId, fixtures, slip.predictions, config, { unresolvedMatchIds: slip.unresolvedMatchIds }),
+      name: names.get(slip.participantId) ?? slip.participantId,
+    })),
   );
   return { complete: roundIsComplete(fixtures), fixtures, rows };
 }
@@ -107,7 +120,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
         matches: { orderBy: { sortOrder: "asc" } },
         roundScores: true,
         season: { include: { scoringConfig: true } },
-        predictionSets: { where: { selected: true }, include: { predictions: true, participant: true } },
+        predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true } } } },
       },
     }),
   ]);
@@ -126,21 +139,18 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
     if (!complete && !(roundIsComplete(fixtures) && round.roundScores.length === 0)) {
       unverifiedRounds.push({ number: round.number, name: round.name });
       const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
-      const sets = oneSelectedSetPerParticipant(round.predictionSets);
+      const slips = slipsByParticipant(fixtures.map((fixture) => fixture.matchId), round.predictionSets.map(storedSlip));
       return [
         {
           order: round.number,
           production: true,
           complete: false,
-          scores: sets.map((set) => {
-            const predictions = set.predictions.flatMap((prediction) =>
-              prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null
-                ? []
-                : [{ matchId: prediction.matchId, home: prediction.homeGoals, away: prediction.awayGoals }],
-            );
-            const scored = scoreLiveParticipant(set.participantId, fixtures, predictions, config);
+          scores: slips.map((slip) => {
+            const scored = scoreLiveParticipant(slip.participantId, fixtures, slip.predictions, config, {
+              unresolvedMatchIds: slip.unresolvedMatchIds,
+            });
             return {
-              participantId: set.participantId,
+              participantId: slip.participantId,
               confirmedPoints: scored.confirmedPoints,
               provisionalPoints: scored.provisionalPoints,
             };

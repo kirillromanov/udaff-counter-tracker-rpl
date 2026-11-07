@@ -25,9 +25,9 @@ describe("review status", () => {
     ).toBe("correction");
   });
 
-  it("flags a selected slip that skipped a fixture, and leaves an unselected partial slip alone", () => {
+  it("does not treat a missing fixture as a review reason", () => {
     const warnings = ["No prediction for Родина — Оренбург"];
-    expect(setTone({ selected: true, warnings, unmatched: 0, predictions: [clean] })).toBe("correction");
+    expect(setTone({ selected: true, warnings, unmatched: 0, predictions: [clean] })).toBe("ok");
     expect(setTone({ selected: false, warnings, unmatched: 0, predictions: [clean] })).toBe("ok");
   });
 

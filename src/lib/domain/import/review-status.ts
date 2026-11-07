@@ -72,11 +72,8 @@ export function setTone(set: SetToneInput): ReviewTone {
   if (set.warnings.some(isConflictWarning) || set.predictions.some((prediction) => predictionTone(prediction) === "conflict")) {
     return "conflict";
   }
-  const missingOnSelected =
-    set.selected && set.warnings.some((warning) => warning.toLowerCase().startsWith("no prediction for"));
   if (
     set.unmatched > 0 ||
-    missingOnSelected ||
     set.warnings.some(isCorrectionWarning) ||
     set.predictions.some((prediction) => predictionTone(prediction) === "correction")
   ) {

@@ -138,8 +138,10 @@ export function scoreLiveParticipant(
   fixtures: readonly LiveFixtureInput[],
   predictions: readonly LivePrediction[],
   config: ScoringConfig = defaultScoringConfig,
+  options?: { unresolvedMatchIds?: readonly string[] },
 ): LiveParticipantScore {
   const predictedByMatch = new Map(predictions.map((prediction) => [prediction.matchId, prediction]));
+  const unresolved = new Set(options?.unresolvedMatchIds ?? []);
   const complete = roundIsComplete(fixtures);
   const confirmedInputs = [];
   const lines: LiveMatchLine[] = [];
@@ -151,6 +153,22 @@ export function scoreLiveParticipant(
   for (const fixture of fixtures) {
     const confidence = fixtureConfidence(fixture);
     const prediction = predictedByMatch.get(fixture.matchId);
+    if (unresolved.has(fixture.matchId)) {
+      lines.push({
+        matchId: fixture.matchId,
+        label: fixture.label,
+        confidence,
+        acknowledgedConflict: false,
+        points: null,
+        category: "review",
+        predicted: "review",
+        actual:
+          fixture.actualHomeGoals != null && fixture.actualAwayGoals != null
+            ? `${fixture.actualHomeGoals}-${fixture.actualAwayGoals}`
+            : "—",
+      });
+      continue;
+    }
     const acknowledgedConflict = fixture.resultConflict && fixture.conflictAcknowledged;
     if (confidence === "pending") {
       pendingCount += 1;

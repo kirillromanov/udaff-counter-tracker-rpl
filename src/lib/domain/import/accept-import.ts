@@ -26,20 +26,20 @@ function rowNeedsReview(warning: string | null): boolean {
 }
 
 /**
- * A clean slip covers every fixture with a score and has no parser warning
- * that needs a person to decide. Chatter with no scores is not acceptable
- * and is also not a review row.
+ * One clean scored fixture is enough. A comment that does not cover the
+ * whole round is still acceptable. Chatter with no scores is not.
  */
 export function isAcceptableImport(set: ImportSetShape): boolean {
   if (set.fixtureCount <= 0 || importNeedsReview(set)) {
     return false;
   }
-  return scoredCount(set) === set.fixtureCount;
+  return scoredCount(set) > 0;
 }
 
 /**
- * Incomplete scored slips, malformed lines, swapped clubs, ambiguous fixtures,
- * and duplicate lines stay in review. A comment with no scores does not.
+ * Malformed lines, swapped clubs, ambiguous fixtures, and duplicate lines
+ * stay in review. A missing fixture is not a review reason, and a comment
+ * with no scores is not a review row.
  */
 export function importNeedsReview(set: ImportSetShape): boolean {
   if (set.unmatchedLines > 0) {
@@ -48,10 +48,5 @@ export function importNeedsReview(set: ImportSetShape): boolean {
   if (set.warnings.some((warning) => isConflictWarning(warning) || isCorrectionWarning(warning))) {
     return true;
   }
-  if (set.predictions.some((row) => rowNeedsReview(row.warning))) {
-    return true;
-  }
-  const scored = scoredCount(set);
-  const missingFixture = set.warnings.some((warning) => warning.toLowerCase().startsWith("no prediction for"));
-  return scored > 0 && (scored < set.fixtureCount || missingFixture);
+  return set.predictions.some((row) => rowNeedsReview(row.warning));
 }

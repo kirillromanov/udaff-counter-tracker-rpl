@@ -32,6 +32,8 @@ export interface IntermediatePrediction {
 export interface IntermediateParticipant {
   participantId: string;
   predictions: readonly IntermediatePrediction[];
+  /** Conflicting cells stay out of the score. They are not missing predictions. */
+  unresolvedMatchIds?: readonly string[];
 }
 
 export interface IntermediateRoundResult {
@@ -140,19 +142,23 @@ export function scoreIntermediateRound(
 
   const scores = input.participants.map((participant) => {
     const predictedByMatch = new Map<string, { home: number; away: number } | null>();
-    const matches = included.map((fixture) => {
+    const unresolved = new Set(participant.unresolvedMatchIds ?? []);
+    const matches = included.flatMap((fixture) => {
+      if (unresolved.has(fixture.matchId)) {
+        return [];
+      }
       const prediction = participant.predictions.find((item) => item.matchId === fixture.matchId);
       const predicted =
         prediction && !prediction.ignored && prediction.home != null && prediction.away != null
           ? { home: prediction.home, away: prediction.away }
           : null;
       predictedByMatch.set(fixture.matchId, predicted);
-      return {
+      return [{
         matchId: fixture.matchId,
         actual: { home: fixture.actualHomeGoals as number, away: fixture.actualAwayGoals as number },
         predicted,
         isMatchOfTheRound: fixture.isMatchOfTheRound,
-      };
+      }];
     });
     const scored = scoreRound({ roundId: input.roundId, participantId: participant.participantId, matches }, config);
     const result: RoundScoreResult = complete

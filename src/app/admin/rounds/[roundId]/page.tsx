@@ -7,6 +7,7 @@ import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { fixtureMode } from "@/lib/domain/standings/load-live";
 import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 import { RoundNav } from "../../round-nav";
 import { SubmitButton } from "../../submit-button";
 import {
@@ -101,7 +102,7 @@ export default async function RoundPage({
         ) : null}
         {round.status === "imported" ? (
           <Notice label="Imported parser results" tone="info">
-            These slips are raw parser output{round.fetchedAt ? `, fetched ${round.fetchedAt.toISOString().slice(0, 16).replace("T", " ")}` : ""}.
+            These slips are raw parser output{round.fetchedAt ? `, fetched ${formatMoscow(round.fetchedAt)}` : ""}.
             They are not the trusted baseline and they are not the confirmed season total.
             {round.importNotes ? ` ${round.importNotes}` : ""}
           </Notice>

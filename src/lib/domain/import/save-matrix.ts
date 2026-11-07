@@ -41,7 +41,9 @@ export async function saveCleanMatrix(roundId: string, formData: FormData, recal
   const roster = round.season.participants.map((membership) => membership.participant);
 
   for (const person of roster) {
-    const selected = sets.find((set) => set.participantId === person.id && set.selected) ?? null;
+    const selected = sets
+      .filter((set) => set.participantId === person.id && set.selected)
+      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ?? null;
     const submitted = String(formData.get(`revision_${person.id}`) ?? "");
     if (submitted && !revisionsMatch(revisionToken(selected?.updatedAt ?? null), submitted)) {
       throw new Error(`${person.name} was updated after this page opened. Reload the review and save again.`);
@@ -96,6 +98,7 @@ export async function saveCleanMatrix(roundId: string, formData: FormData, recal
       const current = await tx.predictionSet.findFirst({
         where: { roundId, participantId: person.id, selected: true },
         include: { predictions: true },
+        orderBy: { updatedAt: "desc" },
       });
       const changes: CorrectionEntry[] = [];
       for (const prediction of predictions) {
