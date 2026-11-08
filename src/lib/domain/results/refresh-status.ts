@@ -11,6 +11,11 @@ export interface RefreshQuery {
   intermediate?: string;
 }
 
+export interface SelectOptionSnapshot {
+  value: string;
+  defaultSelected?: boolean;
+}
+
 export interface FieldSnapshot {
   ignored?: boolean;
   type?: string;
@@ -18,6 +23,26 @@ export interface FieldSnapshot {
   defaultValue?: string;
   checked?: boolean;
   defaultChecked?: boolean;
+  options?: readonly SelectOptionSnapshot[];
+}
+
+const MISSING_TEXT = new Set(["", "—", "-"]);
+
+/** Empty, null, and the matrix placeholders are the same saved missing prediction. */
+export function canonicalEditableText(value: string | null | undefined): string {
+  const text = (value ?? "").trim();
+  return MISSING_TEXT.has(text) ? "" : text;
+}
+
+function savedSelectValue(field: FieldSnapshot): string {
+  const marked = field.options?.find((option) => option.defaultSelected);
+  if (marked) {
+    return marked.value;
+  }
+  if (field.options && field.options.length > 0) {
+    return field.options[0]?.value ?? "";
+  }
+  return field.defaultValue ?? "";
 }
 
 export function hasUnsavedFieldEdits(fields: readonly FieldSnapshot[]): boolean {
@@ -28,8 +53,40 @@ export function hasUnsavedFieldEdits(fields: readonly FieldSnapshot[]): boolean 
     if (field.type === "checkbox" || field.type === "radio") {
       return field.checked !== field.defaultChecked;
     }
-    return field.value !== field.defaultValue;
+    if (field.type === "select" || field.options) {
+      return (field.value ?? "") !== savedSelectValue(field);
+    }
+    return canonicalEditableText(field.value) !== canonicalEditableText(field.defaultValue);
   });
+}
+
+export function snapshotFormControl(element: Element | RadioNodeList): FieldSnapshot {
+  if (!(element instanceof HTMLElement)) {
+    return { ignored: true };
+  }
+  if (element instanceof HTMLInputElement) {
+    return {
+      type: element.type,
+      value: element.value,
+      defaultValue: element.defaultValue,
+      checked: element.checked,
+      defaultChecked: element.defaultChecked,
+    };
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    return { value: element.value, defaultValue: element.defaultValue };
+  }
+  if (element instanceof HTMLSelectElement) {
+    return {
+      type: "select",
+      value: element.value,
+      options: [...element.options].map((option) => ({
+        value: option.value,
+        defaultSelected: option.defaultSelected,
+      })),
+    };
+  }
+  return { ignored: true };
 }
 
 /**

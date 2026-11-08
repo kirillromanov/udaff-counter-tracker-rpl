@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { selectDuePredictionRoundIds } from "@/lib/domain/import/incremental";
 import { selectDueRoundIds, type PollFixture } from "@/lib/domain/results/poll";
@@ -43,6 +44,7 @@ describe("round lock transitions", () => {
     expect(again.changed).toBe(false);
     expect(again.closedAt?.toISOString()).toBe(at.toISOString());
     expect(again.closureLog).toBe(closed.closureLog);
+    expect(Object.keys(closed).sort()).toEqual(["changed", "closedAt", "closureLog"]);
 
     const reopened = planReopen({ ...openProduction, closedAt: closed.closedAt, closureLog: closed.closureLog }, new Date("2026-11-08T20:00:00.000Z"));
     expect(reopened.changed).toBe(true);
@@ -70,6 +72,12 @@ describe("round lock transitions", () => {
     expect(() => assertOpen(null)).not.toThrow();
     expect(() => assertTargetOpen("round-14", new Set(["round-14"]))).toThrow(CLOSED_ROUND_MESSAGE);
     expect(writableRoundIds(["round-13", "round-14"], new Set(["round-14"]))).toEqual(["round-13"]);
+  });
+
+  it("compares close-button edits against saved values, including an unselected menu", () => {
+    const controls = readFileSync("src/app/admin/rounds/[roundId]/round-lock-controls.tsx", "utf8");
+    expect(controls).toContain("hasUnsavedFieldEdits");
+    expect(controls).not.toContain("defaultSelected");
   });
 
   it("warns about incomplete data and does not invent a completion step", () => {

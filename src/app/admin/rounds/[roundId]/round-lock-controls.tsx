@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { hasUnsavedFieldEdits, snapshotFormControl, type FieldSnapshot } from "@/lib/domain/results/refresh-status";
 import { buttonClass } from "../../ui";
 import { closeRoundAction, reopenRoundAction } from "./workflow-actions";
 
@@ -18,34 +19,13 @@ const REOPEN_TEXT = [
 ].join("\n\n");
 
 function unsavedEdits(): boolean {
+  const fields: FieldSnapshot[] = [];
   for (const form of document.forms) {
     for (const element of form.elements) {
-      if (element instanceof HTMLInputElement) {
-        if (element.type === "hidden" || element.type === "submit" || element.type === "button") {
-          continue;
-        }
-        if (element.type === "checkbox" || element.type === "radio") {
-          if (element.checked !== element.defaultChecked) {
-            return true;
-          }
-          continue;
-        }
-        if (element.value !== element.defaultValue) {
-          return true;
-        }
-      }
-      if (element instanceof HTMLTextAreaElement && element.value !== element.defaultValue) {
-        return true;
-      }
-      if (element instanceof HTMLSelectElement) {
-        const selected = [...element.options].some((option) => option.selected !== option.defaultSelected);
-        if (selected) {
-          return true;
-        }
-      }
+      fields.push(snapshotFormControl(element));
     }
   }
-  return false;
+  return hasUnsavedFieldEdits(fields);
 }
 
 export function RoundLockControls({

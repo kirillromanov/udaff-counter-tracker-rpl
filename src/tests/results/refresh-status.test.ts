@@ -30,6 +30,51 @@ describe("shared match-result refresh", () => {
     expect(hasUnsavedFieldEdits([{ type: "checkbox", checked: true, defaultChecked: false }])).toBe(true);
   });
 
+  it("lets a saved round close when predictions are missing and menus are untouched", () => {
+    const allMissing = Array.from({ length: 8 }, () => ({ value: "", defaultValue: "" }));
+    const partial = [
+      { value: "2-1", defaultValue: "2-1" },
+      { value: "", defaultValue: "" },
+      { value: "0-0", defaultValue: "0-0" },
+      { value: "—", defaultValue: "" },
+      { value: "-", defaultValue: undefined },
+      { value: undefined, defaultValue: undefined },
+    ];
+    const untouchedMenus = [
+      { type: "select" as const, value: "", options: [{ value: "" }, { value: "person" }] },
+      { type: "select" as const, value: "first-person", options: [{ value: "first-person" }, { value: "second" }] },
+      {
+        type: "select" as const,
+        value: "owner",
+        options: [
+          { value: "other", defaultSelected: false },
+          { value: "owner", defaultSelected: true },
+        ],
+      },
+    ];
+    expect(hasUnsavedFieldEdits([...allMissing, ...untouchedMenus])).toBe(false);
+    expect(hasUnsavedFieldEdits([...partial, ...untouchedMenus])).toBe(false);
+  });
+
+  it("still requires save or cancel for a real edit, including one that is reverted", () => {
+    expect(hasUnsavedFieldEdits([{ value: "1-0", defaultValue: "" }])).toBe(true);
+    expect(hasUnsavedFieldEdits([{ value: "", defaultValue: "2-1" }])).toBe(true);
+    expect(hasUnsavedFieldEdits([{ value: "2-1", defaultValue: "2-1" }])).toBe(false);
+    expect(hasUnsavedFieldEdits([{ value: "4", defaultValue: "2" }])).toBe(true);
+    expect(hasUnsavedFieldEdits([{ type: "radio", checked: true, defaultChecked: false }])).toBe(true);
+    expect(hasUnsavedFieldEdits([{ type: "radio", checked: true, defaultChecked: true }])).toBe(false);
+    expect(
+      hasUnsavedFieldEdits([
+        { type: "select", value: "second", options: [{ value: "first" }, { value: "second" }] },
+      ]),
+    ).toBe(true);
+    expect(
+      hasUnsavedFieldEdits([
+        { type: "select", value: "first", options: [{ value: "first" }, { value: "second" }] },
+      ]),
+    ).toBe(false);
+  });
+
   it("does not start a second refresh for the same round while the first lock is held", () => {
     expect(beginRoundRefresh("round-14")).toBe(true);
     expect(beginRoundRefresh("round-14")).toBe(false);
