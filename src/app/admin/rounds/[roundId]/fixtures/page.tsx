@@ -5,7 +5,9 @@ import { alignToFixture, type AlignedObservation } from "@/lib/domain/results/de
 import { effectiveNextCheck, fixtureCheckStatus, fixturePhase, fixturePhaseLabel, planRoundPoll, pollIntervals, pollStatusLabel, type FixturePhase } from "@/lib/domain/results/poll";
 import { fallbackSourceLabel, unavailableFromHealth, SOURCE_POLICY } from "@/lib/domain/results/policy";
 import { rankFixtureResult, SOURCE_RANK, type CandidateStanding } from "@/lib/domain/results/ranking";
+import { isRoundClosed } from "@/lib/domain/rounds/round-lock";
 import { RoundNav } from "../../../round-nav";
+import { MutationRegion, RoundLockBadge, RoundLockPanel } from "../round-lock-banner";
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
@@ -142,9 +144,11 @@ export default async function FixturesPage({
         }
         description="One match can be the official Match of the Round. Fetched scores stay empty until a source reports the match finished."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
         title="Fixtures and results"
       />
       <PageBody>
+        <RoundLockPanel roundId={round.id} />
         {round.standingRole === ARCHIVED_ROUND ? (
           <Notice label="Archived reference" tone="info">
             Source checks on this round stay available. A fetched score updates this reference round and does not change production standings.
@@ -171,6 +175,7 @@ export default async function FixturesPage({
           </Notice>
         ) : null}
 
+        <MutationRegion closed={isRoundClosed(round.closedAt)}>
         <Section
           description="The dev server does not poll by itself. A due check uses the same multi-source ingestion. A finalized round is skipped until a fixture is unfinished or an open conflict returns."
           id="poll"
@@ -481,6 +486,7 @@ export default async function FixturesPage({
             </SubmitButton>
           </form>
         </Section>
+        </MutationRegion>
       </PageBody>
     </>
   );

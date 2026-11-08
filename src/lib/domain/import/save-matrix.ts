@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import { applyAutoSelection } from "./persist-import";
 import {
@@ -20,6 +21,7 @@ function cellValue(formData: FormData, participantId: string, matchId: string): 
 }
 
 export async function saveCleanMatrix(roundId: string, formData: FormData, recalculate: boolean): Promise<void> {
+  await assertRoundMutable(roundId);
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: {
@@ -156,6 +158,7 @@ export async function saveCleanMatrix(roundId: string, formData: FormData, recal
 }
 
 export async function saveMatrixResults(roundId: string, formData: FormData): Promise<void> {
+  await assertRoundMutable(roundId);
   const matches = await prisma.match.findMany({ where: { roundId } });
   for (const match of matches) {
     const homeText = String(formData.get(`actual_${match.id}_home`) ?? "").trim();

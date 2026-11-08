@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { participantKey } from "@/lib/domain/import/participant-key";
 import { KNOWN_ALIASES, KNOWN_IGNORED_AUTHORS } from "./known-participants";
 import { applyRosterAction, canPermanentlyDelete, type MembershipState } from "./roster";
@@ -323,6 +324,7 @@ export async function createParticipantForAuthor(value: string, seasonId: string
 }
 
 export async function importAuthorAnyway(roundId: string, authorName: string): Promise<void> {
+  await assertRoundMutable(roundId);
   const key = participantKey(authorName);
   if (!key) {
     throw new Error("Author name is required");

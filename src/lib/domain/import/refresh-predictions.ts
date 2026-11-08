@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
+import { assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { fetchForumPost } from "@/lib/domain/forum/fetch-post";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { pollIntervals, type PollFixture } from "@/lib/domain/results/poll";
@@ -58,6 +60,7 @@ export async function refreshRoundPredictions(
   roundId: string,
   options?: { url?: string; now?: Date; fetchPost?: (url: string) => Promise<ForumPost> },
 ): Promise<PredictionRefreshReport> {
+  await assertRoundMutable(roundId);
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
@@ -86,6 +89,7 @@ export async function refreshRoundPredictions(
     { standingRole: round.standingRole, hasForumUrl: true, fixtures: round.matches.map(toPollFixture) },
     now,
   );
+  await assertRoundMutable(roundId);
   await prisma.round.update({
     where: { id: roundId },
     data: {
@@ -119,6 +123,7 @@ export async function refreshDuePredictions(options?: {
       standingRole: round.standingRole,
       forumUrl: round.forumUrl,
       nextPredictionFetchAt: round.nextPredictionFetchAt,
+      closedAt: round.closedAt,
       matches: round.matches.map(toPollFixture),
     })),
     now,
@@ -131,6 +136,9 @@ export async function refreshDuePredictions(options?: {
     try {
       reports.push(await refreshRoundPredictions(roundId, { now, fetchPost: options?.fetchPost }));
     } catch (error) {
+      if (error instanceof RoundClosedError) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : "Prediction refresh failed";
       const plan = planPredictionRefresh(
         {

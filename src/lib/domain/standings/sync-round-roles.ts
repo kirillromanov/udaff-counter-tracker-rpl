@@ -9,12 +9,12 @@ export async function syncRoundStandingRoles(seasonId: string): Promise<void> {
       orderBy: { afterRoundNumber: "desc" },
       select: { afterRoundNumber: true },
     }),
-    prisma.round.findMany({ where: { seasonId }, select: { id: true, number: true, standingRole: true } }),
+    prisma.round.findMany({ where: { seasonId }, select: { id: true, number: true, standingRole: true, closedAt: true } }),
   ]);
   const baselineAfterRound = checkpoint?.afterRoundNumber ?? null;
   for (const round of rounds) {
     const role = standingRoleForRound(round.number, baselineAfterRound);
-    if (round.standingRole === role) {
+    if (round.closedAt || round.standingRole === role) {
       continue;
     }
     await prisma.round.update({ where: { id: round.id }, data: { standingRole: role } });

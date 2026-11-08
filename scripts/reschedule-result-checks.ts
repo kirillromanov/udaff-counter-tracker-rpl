@@ -47,7 +47,7 @@ function toFixture(match: {
 
 async function main() {
   const rounds = await prisma.round.findMany({
-    where: { standingRole: { not: ARCHIVED_ROUND } },
+    where: { standingRole: { not: ARCHIVED_ROUND }, closedAt: null },
     include: { matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } } },
   });
   const now = new Date();

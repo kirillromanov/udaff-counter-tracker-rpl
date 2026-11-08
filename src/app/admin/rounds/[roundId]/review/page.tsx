@@ -22,7 +22,9 @@ import {
 } from "@/lib/domain/review/operator-status";
 import { prisma } from "@/lib/db/prisma";
 import { SeasonLayers } from "../../../layers";
+import { isRoundClosed } from "@/lib/domain/rounds/round-lock";
 import { RoundNav } from "../../../round-nav";
+import { MutationRegion, RoundLockBadge, RoundLockPanel } from "../round-lock-banner";
 import { SubmitButton } from "../../../submit-button";
 import {
   Badge,
@@ -224,6 +226,7 @@ export default async function RoundImportPage({
             <CrumbLink href={`/admin/rounds/${round.id}`}>{round.name ?? `Round ${round.number}`}</CrumbLink>
           </>
         }
+        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
         description="Imported parser results for this round. Accepted slips can be scored later. Flagged and unmatched rows stay unresolved."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Parser review"
@@ -231,6 +234,7 @@ export default async function RoundImportPage({
       <PageBody>
         <SeasonLayers current="import" reviewHref={`/admin/rounds/${round.id}/review`} seasonId={round.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        <RoundLockPanel roundId={round.id} />
         {query.imported ? <Notice tone="success">Saved {query.imported} comments.</Notice> : null}
         {query.fetched ? <Notice tone="success">Prediction refresh: {query.fetched}</Notice> : null}
         {query.parsed ? <Notice tone="success">Parsed {query.parsed} comments.</Notice> : null}
@@ -245,7 +249,9 @@ export default async function RoundImportPage({
           </Notice>
         ) : null}
         {query.saved === "results" ? <Notice tone="success">Actual results saved. They apply to every participant.</Notice> : null}
-        <CleanMatrix refreshQuery={query} roundId={round.id} />
+        <MutationRegion closed={isRoundClosed(round.closedAt)}>
+          <CleanMatrix refreshQuery={query} roundId={round.id} />
+        </MutationRegion>
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">
             Fetched {formatWhen(round.fetchedAt)}
@@ -277,6 +283,7 @@ export default async function RoundImportPage({
           ]}
         />
 
+        <MutationRegion closed={isRoundClosed(round.closedAt)}>
         <Section
           description="Refresh reads the thread again. A repeated comment stays stored once. An edited comment updates its slip unless you already edited that slip by hand."
           id="import"
@@ -376,14 +383,17 @@ export default async function RoundImportPage({
             </div>
           ) : null}
           {queue !== "accepted" ? (
+            <MutationRegion closed={isRoundClosed(round.closedAt)}>
             <AuthorIdentityReview
               groups={identityGroups}
               participants={linkTargets}
               roundId={round.id}
               seasonId={round.seasonId}
             />
+            </MutationRegion>
           ) : null}
         </Section>
+        </MutationRegion>
 
         <Section
           description="Needs review is the default. Rose rows are parse conflicts. Amber rows still need a score, a fixture, or a swapped-club check."
@@ -422,6 +432,7 @@ export default async function RoundImportPage({
               title="Nothing in this queue"
             />
           ) : (
+            <MutationRegion closed={isRoundClosed(round.closedAt)}>
             <div className="space-y-8">
               {visibleParticipants.map((participant) => (
                 <div key={participant.id}>
@@ -549,9 +560,11 @@ export default async function RoundImportPage({
                 </div>
               ))}
             </div>
+            </MutationRegion>
           )}
         </Section>
 
+        <MutationRegion closed={isRoundClosed(round.closedAt)}>
         <Section
           description="Rename a nick, merge two people who are the same, or add a blank set when a comment failed to import."
           id="participants"
@@ -617,6 +630,7 @@ export default async function RoundImportPage({
             </Link>
           </p>
         </Section>
+        </MutationRegion>
       </PageBody>
     </>
   );

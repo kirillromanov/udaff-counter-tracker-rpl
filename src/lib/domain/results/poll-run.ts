@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
+import { assertRoundMutable, assertRoundMutableTx } from "@/lib/domain/rounds/round-lock-db";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { recalculateRound, type RoundCalculationReport } from "@/lib/domain/standings/recalculate-round";
 import { ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
@@ -102,7 +104,9 @@ export async function refreshRoundResults(roundId: string, options?: { automatic
     };
   }
   try {
+    await assertRoundMutable(roundId);
     const report = await ingestRoundResults(roundId);
+    await assertRoundMutable(roundId);
     await syncRoundPollState(roundId, new Date(), report.sources, options?.automatic === true);
     const round = await prisma.round.findUniqueOrThrow({
       where: { id: roundId },
@@ -122,6 +126,13 @@ export async function refreshRoundResults(roundId: string, options?: { automatic
         total: calculation.total,
       };
     } catch (error) {
+      if (error instanceof RoundClosedError) {
+        throw error;
+      }
+      const current = await prisma.round.findUnique({ where: { id: roundId }, select: { closedAt: true } });
+      if (current?.closedAt) {
+        throw new RoundClosedError();
+      }
       await prisma.round.update({ where: { id: roundId }, data: { status: ROUND_STATUS_STALE } });
       console.error(error);
       return { ...report, busy: false, recalculated: false, calculation: "stale", included: 0, total: 0 };
@@ -201,20 +212,62 @@ async function syncRoundPollState(
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
   });
   const intervals = pollIntervals();
-  for (const match of round.matches) {
-    await persistFixtureCheck(match, checkedAt, automatic);
-  }
-  const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
-  const lastSuccessfulSource = strongestSuccessfulSource(sources);
-  await prisma.round.update({
-    where: { id: round.id },
-    data: {
-      pollStatus: plan.pollStatus,
-      lastPolledAt: checkedAt,
-      nextPollAt: plan.nextPollAt,
-      lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
-      pollHealthSummary: sourceHealthSummary(sources),
-    },
+  await prisma.$transaction(async (tx) => {
+    await assertRoundMutableTx(tx, roundId);
+    for (const match of round.matches) {
+      const fixture = toPollFixture(match);
+      const next = advanceFixtureCheck(
+        {
+          kickoffAt: match.kickoffAt,
+          autoCheckAttempts: match.autoCheckAttempts,
+          autoCheckKickoffAt: match.autoCheckKickoffAt,
+          autoCheckNextAt: match.autoCheckNextAt,
+          autoCheckHistory: match.autoCheckHistory,
+          verified:
+            !match.resultConflict &&
+            (match.resultState === "verified" ||
+              match.resultState === "manual" ||
+              match.resultResolution === "verified" ||
+              match.resultResolution === "manual"),
+          held: fixture.providerStatus === "postponed" || fixture.providerStatus === "cancelled" || fixture.providerStatus === "suspended",
+          acknowledged: Boolean(fixture.resultConflict && fixture.conflictAcknowledgedAt),
+        },
+        checkedAt,
+        automatic,
+      );
+      if (
+        next.autoCheckAttempts !== match.autoCheckAttempts ||
+        next.autoCheckNextAt?.getTime() !== match.autoCheckNextAt?.getTime() ||
+        next.autoCheckKickoffAt?.getTime() !== match.autoCheckKickoffAt?.getTime() ||
+        next.autoCheckHistory !== match.autoCheckHistory
+      ) {
+        await tx.match.update({
+          where: { id: match.id },
+          data: {
+            autoCheckAttempts: next.autoCheckAttempts,
+            autoCheckKickoffAt: next.autoCheckKickoffAt,
+            autoCheckNextAt: next.autoCheckNextAt,
+            autoCheckHistory: next.autoCheckHistory ?? "[]",
+          },
+        });
+        match.autoCheckAttempts = next.autoCheckAttempts;
+        match.autoCheckKickoffAt = next.autoCheckKickoffAt;
+        match.autoCheckNextAt = next.autoCheckNextAt;
+        match.autoCheckHistory = next.autoCheckHistory ?? "[]";
+      }
+    }
+    const plan = planRoundPoll(round.matches.map(toPollFixture), checkedAt, intervals);
+    const lastSuccessfulSource = strongestSuccessfulSource(sources);
+    await tx.round.update({
+      where: { id: round.id },
+      data: {
+        pollStatus: plan.pollStatus,
+        lastPolledAt: checkedAt,
+        nextPollAt: plan.nextPollAt,
+        lastSuccessfulSource: lastSuccessfulSource ?? round.lastSuccessfulSource,
+        pollHealthSummary: sourceHealthSummary(sources),
+      },
+    });
   });
 }
 
@@ -234,7 +287,7 @@ export async function syncSeasonPollState(
   const summary = sourceHealthSummary(sources);
   const lastSuccessfulSource = strongestSuccessfulSource(sources);
   for (const round of rounds) {
-    if (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id)) {
+    if (round.closedAt || (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id))) {
       continue;
     }
     for (const match of round.matches) {
@@ -281,6 +334,9 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
   });
   for (const round of rounds) {
+    if (round.closedAt) {
+      continue;
+    }
     if (round.standingRole === ARCHIVED_ROUND && round.id !== options?.forceRoundId) {
       continue;
     }
@@ -309,6 +365,7 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
         id: round.id,
         nextPollAt: round.nextPollAt,
         standingRole: round.standingRole,
+        closedAt: round.closedAt,
         matches: round.matches.map(toPollFixture),
       })),
       now,

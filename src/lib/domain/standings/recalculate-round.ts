@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertRoundMutable, assertRoundMutableTx } from "@/lib/domain/rounds/round-lock-db";
 import { defaultScoringConfig, scoringConfigFromRecord } from "@/lib/config/scoring";
 import type { RoundScoreResult } from "@/lib/domain/scoring/types";
 import type { StoredBreakdown } from "@/lib/domain/export/export-audit";
@@ -80,6 +81,7 @@ export interface RoundCalculationReport {
 }
 
 export async function recalculateRound(roundId: string): Promise<RoundCalculationReport> {
+  await assertRoundMutable(roundId);
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: {
@@ -188,6 +190,7 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
       : new Set<string>();
 
   await prisma.$transaction(async (tx) => {
+    await assertRoundMutableTx(tx, roundId);
     await tx.roundScore.deleteMany({ where: { roundId } });
     if (calculation.scores.length > 0) {
       await tx.roundScore.createMany({

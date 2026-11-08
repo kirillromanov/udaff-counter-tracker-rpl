@@ -180,12 +180,16 @@ export function selectDuePredictionRoundIds(
     forumUrl: string | null;
     nextPredictionFetchAt: Date | null;
     matches: readonly PollFixture[];
+    closedAt?: Date | null;
   }[],
   now: Date,
   intervals: PollIntervals = pollIntervals(),
   forceRoundId?: string,
 ): string[] {
   return rounds.flatMap((round) => {
+    if (round.closedAt) {
+      return [];
+    }
     const plan = planPredictionRefresh(
       { standingRole: round.standingRole, hasForumUrl: Boolean(round.forumUrl), fixtures: round.matches },
       now,

@@ -30,6 +30,9 @@ export async function rebuildComputedStandings(seasonId: string, afterRoundNumbe
   }
   let scored = 0;
   for (const round of rounds) {
+    if (round.closedAt) {
+      continue;
+    }
     scored += (await recalculateRound(round.id)).participants;
   }
   return scored;

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { fetchForumPost } from "@/lib/domain/forum/fetch-post";
 import { parseFixtureSchedule } from "@/lib/domain/forum/parse-schedule";
 import type { ForumPost } from "@/lib/domain/forum/types";
@@ -62,6 +63,9 @@ async function importOne(
   const existing = await prisma.round.findUnique({
     where: { seasonId_number: { seasonId, number: source.number } },
   });
+  if (existing) {
+    await assertRoundMutable(existing.id);
+  }
   const round = existing
     ? await prisma.round.update({
         where: { id: existing.id },

@@ -11,6 +11,7 @@ import { CopyButton } from "../../../copy-button";
 import { CrumbLink, EmptyState, PageBody, PageHeader, Section } from "../../../ui";
 import { formatMoscow } from "@/lib/domain/time/moscow";
 import { RoundNav } from "../../../round-nav";
+import { RoundLockBadge, RoundLockPanel } from "../round-lock-banner";
 
 export const instant = false;
 
@@ -117,11 +118,13 @@ export default async function ExportPage({ params }: { params: Promise<{ roundId
             </CrumbLink>
           </>
         }
+        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
         description="Plain text for a forum post. Copy a block and paste it as-is."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Export"
       />
       <PageBody>
+        <RoundLockPanel roundId={round.id} />
         {round.roundScores.length === 0 ? (
           <Section id="results" title="Round results">
             <EmptyState

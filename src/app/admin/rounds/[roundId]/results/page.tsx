@@ -6,6 +6,7 @@ import { confidenceLabel, fixtureConfidence, type LiveConfidence } from "@/lib/d
 import { loadLiveRound } from "@/lib/domain/standings/load-live";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { RoundNav } from "../../../round-nav";
+import { RoundLockBadge, RoundLockPanel } from "../round-lock-banner";
 import {
   Badge,
   CrumbLink,
@@ -94,9 +95,11 @@ export default async function RoundResultsPage({
             : "Live points follow the fixtures that have a result. A stored production total is written only after every fixture is verified."
         }
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
         title="Round results"
       />
       <PageBody>
+        <RoundLockPanel roundId={round.id} />
         {query.calculated ? (
           <Notice tone="success">
             {round.standingRole === ARCHIVED_ROUND

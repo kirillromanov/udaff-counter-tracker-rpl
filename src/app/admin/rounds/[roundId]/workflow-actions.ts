@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
+import { closeProductionRound, reopenProductionRound, assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
@@ -51,6 +52,7 @@ export async function refreshMatchResultsAction(formData: FormData): Promise<voi
   const returnTo = String(formData.get("returnTo") ?? "fixtures");
   const path = returnTo === "review" ? reviewPath(roundId) : fixturesPath(roundId);
   try {
+    await assertRoundMutable(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
     const report = await refreshRoundResults(roundId);
     refresh(roundId);
@@ -71,6 +73,7 @@ export async function refreshMatchResultsAction(formData: FormData): Promise<voi
 export async function saveFixturesAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const round = await prisma.round.findUniqueOrThrow({
       where: { id: roundId },
       include: { matches: true },
@@ -123,6 +126,7 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
 export async function addFixtureAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const homeTeam = String(formData.get("homeTeam") ?? "").trim();
     const awayTeam = String(formData.get("awayTeam") ?? "").trim();
     if (!homeTeam || !awayTeam) {
@@ -150,6 +154,7 @@ export async function addFixtureAction(formData: FormData): Promise<void> {
 export async function deleteFixtureAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     await prisma.match.delete({ where: { id: String(formData.get("matchId") ?? "") } });
     refresh(roundId);
     redirect(fixturesPath(roundId));
@@ -161,6 +166,7 @@ export async function deleteFixtureAction(formData: FormData): Promise<void> {
 export async function saveForumUrlAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const raw = String(formData.get("forumUrl") ?? "").trim();
     let forumUrl: string | null = null;
     if (raw) {
@@ -185,6 +191,7 @@ export async function saveForumUrlAction(formData: FormData): Promise<void> {
 export async function fetchResultsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
     const report = await ingestAndTrack(round.seasonId);
     refresh(roundId);
@@ -198,6 +205,7 @@ export async function fetchResultsAction(formData: FormData): Promise<void> {
 export async function pollDueAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const report = await pollDueRounds();
     refresh(roundId);
     if (!report.checked) {
@@ -237,6 +245,7 @@ export async function pollDueAction(formData: FormData): Promise<void> {
 export async function pollRoundAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const report = await pollDueRounds({ forceRoundId: roundId });
     refresh(roundId);
     if (!report.checked) {
@@ -255,6 +264,7 @@ export async function pollRoundAction(formData: FormData): Promise<void> {
 export async function acknowledgeConflictAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const matchId = String(formData.get("matchId") ?? "");
     const match = await prisma.match.findUnique({ where: { id: matchId } });
     if (!match || !match.resultConflict) {
@@ -302,6 +312,7 @@ export async function acknowledgeConflictAction(formData: FormData): Promise<voi
 export async function acceptSourceScoreAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
+    await assertRoundMutable(roundId);
     const matchId = String(formData.get("matchId") ?? "");
     const homeGoals = goals(formData.get("homeGoals"));
     const awayGoals = goals(formData.get("awayGoals"));
@@ -337,6 +348,38 @@ export async function calculateRoundAction(formData: FormData): Promise<void> {
     revalidatePath(`/admin/seasons/${round.seasonId}`);
     revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
     redirect(`/admin/rounds/${roundId}/results?calculated=${calculation.participants}&included=${calculation.included}&fixtureCount=${calculation.total}`);
+  } catch (error) {
+    fail(hubPath(roundId), error);
+  }
+}
+
+export async function closeRoundAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    await closeProductionRound(roundId);
+    refresh(roundId);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    if (round) {
+      revalidatePath(`/admin/seasons/${round.seasonId}`);
+      revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
+    }
+    redirect(`${hubPath(roundId)}?closed=1`);
+  } catch (error) {
+    fail(hubPath(roundId), error);
+  }
+}
+
+export async function reopenRoundAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    await reopenProductionRound(roundId);
+    refresh(roundId);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    if (round) {
+      revalidatePath(`/admin/seasons/${round.seasonId}`);
+      revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
+    }
+    redirect(`${hubPath(roundId)}?reopened=1`);
   } catch (error) {
     fail(hubPath(roundId), error);
   }

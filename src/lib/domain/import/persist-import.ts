@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertRoundMutable, assertRoundsMutable } from "@/lib/domain/rounds/round-lock-db";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { attributeComment } from "@/lib/domain/parser/attribute-blocks";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
@@ -62,6 +63,7 @@ function linkedParticipantId(authorName: string, catalog: Awaited<ReturnType<typ
 }
 
 export async function saveForumPost(roundId: string, post: ForumPost): Promise<ForumSaveResult> {
+  await assertRoundMutable(roundId);
   await prisma.round.update({
     where: { id: roundId },
     data: { forumUrl: post.sourceUrl },
@@ -169,6 +171,7 @@ export async function parseStoredComments(
   roundId: string,
   options?: { authorKey?: string; force?: boolean; commentId?: string },
 ): Promise<number> {
+  await assertRoundMutable(roundId);
   await ensureKnownIdentities();
   const catalog = await loadIdentityCatalog();
   const round = await prisma.round.findUniqueOrThrow({
@@ -339,6 +342,10 @@ export async function reparseAuthor(authorName: string): Promise<void> {
   const comments = await prisma.forumComment.findMany({ select: { roundId: true, authorName: true } });
   const roundIds = [...new Set(comments.filter((comment) => participantKey(comment.authorName) === key).map((comment) => comment.roundId))];
   for (const roundId of roundIds) {
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { closedAt: true } });
+    if (round?.closedAt) {
+      continue;
+    }
     await parseStoredComments(roundId, { authorKey: key });
   }
 }
@@ -347,6 +354,7 @@ export async function applyAutoSelection(
   roundId: string,
   options?: { participantIds?: string[]; commentId?: string },
 ): Promise<void> {
+  await assertRoundMutable(roundId);
   const sets = await prisma.predictionSet.findMany({
     where: { roundId },
     include: { predictions: true, forumComment: true },
@@ -415,6 +423,7 @@ export async function applyAutoSelection(
 
 export async function selectPredictionSet(setId: string): Promise<void> {
   const set = await prisma.predictionSet.findUniqueOrThrow({ where: { id: setId } });
+  await assertRoundMutable(set.roundId);
   await prisma.predictionSet.updateMany({
     where: { roundId: set.roundId, participantId: set.participantId },
     data: { selected: false, selection: "auto" },
@@ -444,7 +453,11 @@ export async function updatePredictionFromForm(formData: FormData): Promise<void
   const awayGoals = parseGoals(formData.get("awayGoals"));
   const ignored = formData.get("ignored") === "on";
 
-  const current = await prisma.prediction.findUniqueOrThrow({ where: { id: predictionId } });
+  const current = await prisma.prediction.findUniqueOrThrow({
+    where: { id: predictionId },
+    include: { predictionSet: { select: { roundId: true } } },
+  });
+  await assertRoundMutable(current.predictionSet.roundId);
   if (matchId !== current.matchId) {
     const clash = await prisma.prediction.findUnique({
       where: {
@@ -476,6 +489,7 @@ export async function mergeParticipants(sourceId: string, targetId: string): Pro
   }
   const sets = await prisma.predictionSet.findMany({ where: { participantId: sourceId } });
   const roundIds = [...new Set(sets.map((set) => set.roundId))];
+  await assertRoundsMutable(roundIds);
 
   await prisma.predictionSet.updateMany({
     where: { participantId: sourceId },
@@ -547,6 +561,7 @@ export async function mergeParticipants(sourceId: string, targetId: string): Pro
 }
 
 export async function addManualPredictionSet(roundId: string, participantName: string): Promise<void> {
+  await assertRoundMutable(roundId);
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { orderBy: { sortOrder: "asc" } } },

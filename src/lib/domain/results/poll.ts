@@ -328,12 +328,21 @@ export function isPollDue(plan: RoundPollPlan, nextPollAt: Date | null, now: Dat
 }
 
 export function selectDueRoundIds(
-  rounds: readonly { id: string; nextPollAt: Date | null; matches: readonly PollFixture[]; standingRole?: string }[],
+  rounds: readonly {
+    id: string;
+    nextPollAt: Date | null;
+    matches: readonly PollFixture[];
+    standingRole?: string;
+    closedAt?: Date | null;
+  }[],
   now: Date,
   intervals: PollIntervals,
   forceRoundId?: string,
 ): string[] {
   return rounds.flatMap((round) => {
+    if (round.closedAt) {
+      return [];
+    }
     const forced = forceRoundId === round.id;
     if (round.standingRole === "archived" && !forced) {
       return [];

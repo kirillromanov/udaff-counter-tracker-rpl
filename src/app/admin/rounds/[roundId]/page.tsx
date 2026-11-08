@@ -6,7 +6,9 @@ import { summarizeSets, toSetToneInput } from "@/lib/domain/import/review-status
 import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { fixtureMode } from "@/lib/domain/standings/load-live";
-import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
+import { isRoundClosed } from "@/lib/domain/rounds/round-lock";
+import { MutationRegion, RoundLockBadge, RoundLockPanel } from "./round-lock-banner";
 import { formatMoscow } from "@/lib/domain/time/moscow";
 import { RoundNav } from "../../round-nav";
 import { SubmitButton } from "../../submit-button";
@@ -34,7 +36,7 @@ export default async function RoundPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; closed?: string; reopened?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -68,6 +70,7 @@ export default async function RoundPage({
   });
   const snapshot = round.standingRole === ARCHIVED_ROUND ? null : await latestSeasonSnapshot(round.seasonId);
   const archived = round.standingRole === ARCHIVED_ROUND;
+  const closed = isRoundClosed(round.closedAt);
 
   return (
     <>
@@ -75,7 +78,7 @@ export default async function RoundPage({
         badges={
           <>
             <StatusBadge status={round.status} />
-            <Badge tone={archived ? "neutral" : "info"}>{standingRoleLabel(round.standingRole)}</Badge>
+            <RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />
           </>
         }
         crumbs={
@@ -95,6 +98,9 @@ export default async function RoundPage({
       />
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        {query.closed ? <Notice tone="success">Round closed. Saved data is unchanged.</Notice> : null}
+        {query.reopened ? <Notice tone="success">Production reopened. Nothing was fetched or recalculated.</Notice> : null}
+        <RoundLockPanel roundId={round.id} />
         {archived ? (
           <Notice label="Archived reference" tone="info">
             This round is part of the trusted baseline. Parser review, fixtures, and a reference calculation stay available. Calculating it does not change production standings.
@@ -149,6 +155,7 @@ export default async function RoundPage({
           id="import"
           title="Import and parser review"
         >
+          <MutationRegion closed={closed}>
           <form action={saveForumUrlAction} className="flex flex-wrap items-end gap-2">
             <input name="roundId" type="hidden" value={round.id} />
             <label className="min-w-72 flex-1 text-xs font-medium text-zinc-500">
@@ -163,6 +170,7 @@ export default async function RoundPage({
             </label>
             <SubmitButton pendingLabel="Saving…">Save URL</SubmitButton>
           </form>
+          </MutationRegion>
           <p className="mt-3 text-sm text-zinc-500">
             {round._count.forumComments} comments stored. Fetch and parse from the review page so the URL you type is the one that is downloaded.
           </p>
@@ -251,12 +259,14 @@ export default async function RoundPage({
               ? "Live points on Round results are diagnostic. Calculate stores a reference total for this round only, after every fixture is verified."
               : "Live points update on Round results without being stored. Calculate writes this round onto the production season total only after every fixture is verified."}
           </p>
+          <MutationRegion closed={closed}>
           <form action={calculateRoundAction} className="mt-4">
             <input name="roundId" type="hidden" value={round.id} />
             <SubmitButton pendingLabel="Calculating…" variant="primary">
               Calculate round
             </SubmitButton>
           </form>
+          </MutationRegion>
           {scores.length === 0 ? (
             <p className="mt-4 text-sm text-zinc-500">No calculation stored yet.</p>
           ) : (

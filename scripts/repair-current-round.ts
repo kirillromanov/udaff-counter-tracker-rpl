@@ -15,7 +15,7 @@ try {
 
 async function main() {
   const round = await prisma.round.findFirst({
-    where: { standingRole: { not: ARCHIVED_ROUND }, status: { not: "scored" } },
+    where: { standingRole: { not: ARCHIVED_ROUND }, status: { not: "scored" }, closedAt: null },
     orderBy: { number: "desc" },
     include: {
       matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } },

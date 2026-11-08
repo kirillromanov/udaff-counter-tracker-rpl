@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
+import { assertRoundMutableTx, closedRoundIdSet } from "@/lib/domain/rounds/round-lock-db";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { alignToFixture, applyResultDecision, attachResults, type AlignedObservation, type FixtureSide } from "./decide";
 import { collectSourceFetches, nextSourceHealth, resolveFixture, unavailableSources, type SourceHealth } from "./policy";
@@ -122,8 +124,13 @@ export async function ingestSeasonResults(
     });
   }
   const unavailable = unavailableSources(fetches, health);
+  const closedIds = await closedRoundIdSet(writable.map((round) => round.id));
+  if (options?.onlyRoundIds?.some((id) => closedIds.has(id))) {
+    throw new RoundClosedError();
+  }
+  const openRounds = writable.filter((round) => !closedIds.has(round.id));
 
-  const fixtures = writable.flatMap((round) =>
+  const fixtures = openRounds.flatMap((round) =>
     round.matches.map((match) => ({
       id: match.id,
       homeTeam: match.homeTeam,
@@ -144,6 +151,10 @@ export async function ingestSeasonResults(
   }
 
   async function storeAttached(roundFixtures: readonly FixtureSide[], roundResults: readonly SourceMatch[]) {
+    const closedNow = await closedRoundIdSet(openRounds.map((round) => round.id));
+    if (options?.onlyRoundIds?.some((id) => closedNow.has(id))) {
+      throw new RoundClosedError();
+    }
     const attached = attachResults(roundFixtures, roundResults);
     for (const [matchId, observations] of attached) {
       for (const observation of observations) {
@@ -244,17 +255,23 @@ export async function ingestSeasonResults(
     if (write.changedGoals) {
       updated += 1;
     }
-    await prisma.match.update({
-      where: { id: fixture.id },
-      data: {
-        actualHomeGoals: write.actualHomeGoals,
-        actualAwayGoals: write.actualAwayGoals,
-        resultState: write.resultState,
-        resultConflict: write.resultConflict,
-        resultResolution: write.resultResolution,
-        resultNote: write.resultNote,
-        conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
-      },
+    const roundId = openRounds.find((round) => round.matches.some((match) => match.id === fixture.id))?.id;
+    await prisma.$transaction(async (tx) => {
+      if (roundId) {
+        await assertRoundMutableTx(tx, roundId);
+      }
+      await tx.match.update({
+        where: { id: fixture.id },
+        data: {
+          actualHomeGoals: write.actualHomeGoals,
+          actualAwayGoals: write.actualAwayGoals,
+          resultState: write.resultState,
+          resultConflict: write.resultConflict,
+          resultResolution: write.resultResolution,
+          resultNote: write.resultNote,
+          conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
+        },
+      });
     });
   }
 
