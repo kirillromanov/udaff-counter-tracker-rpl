@@ -90,6 +90,26 @@ describe("round lock transitions", () => {
     expect(countsTowardProduction("archived", 13, 13)).toBe(false);
   });
 
+  it("labels a closed production round Closed without changing its standing contribution", () => {
+    expect(productionLockLabel("operational", null)).toBe("Production");
+    expect(productionLockLabel("operational", at)).toBe("Closed");
+    expect(productionLockLabel("archived", null)).toBe("Archived reference");
+    expect(productionLockLabel("archived", at)).toBe("Archived reference");
+    expect(countsTowardProduction("operational", 14, 13)).toBe(true);
+
+    const seasonPage = readFileSync("src/app/admin/seasons/[seasonId]/page.tsx", "utf8");
+    expect(seasonPage).toContain("productionLockLabel(round.standingRole, round.closedAt)");
+    expect(seasonPage).toContain(">Status<");
+    expect(seasonPage).not.toContain("standingRoleLabel");
+
+    const actions = readFileSync("src/app/admin/rounds/[roundId]/workflow-actions.ts", "utf8");
+    const closeBody = actions.slice(actions.indexOf("export async function closeRoundAction"));
+    const reopenStart = closeBody.indexOf("export async function reopenRoundAction");
+    expect(closeBody.slice(0, reopenStart)).toContain("revalidateSeasonRoundList(round.seasonId)");
+    expect(closeBody.slice(reopenStart)).toContain("revalidateSeasonRoundList(round.seasonId)");
+    expect(actions).toContain("revalidatePath(`/admin/seasons/${seasonId}`)");
+  });
+
   it("does not schedule or force a closed round, and reopening keeps the stored retry time", () => {
     const rounds = [
       { id: "open", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", matches: [fixture()] },

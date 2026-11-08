@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { roundLayerLabel } from "@/lib/domain/review/operator-status";
-import { ARCHIVED_ROUND, standingRoleLabel } from "@/lib/domain/standings/round-role";
+import { productionLockLabel } from "@/lib/domain/rounds/round-lock";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { confirmedCutoffLabel } from "@/lib/domain/standings/clean-season";
 import { loadCleanSeason } from "@/lib/domain/standings/load-clean-season";
@@ -220,6 +221,7 @@ function RoundGroup({
     name: string | null;
     status: string;
     standingRole: string;
+    closedAt: Date | null;
     _count: { roundScores: number; matches: number };
   }[];
   acceptedByRound: Map<string, number>;
@@ -240,7 +242,7 @@ function RoundGroup({
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
                 <th className="py-2 pr-3 font-medium">Round</th>
-                <th className="py-2 pr-3 font-medium">Role</th>
+                <th className="py-2 pr-3 font-medium">Status</th>
                 <th className="py-2 pr-3 font-medium">Layer</th>
                 <th className="py-2 pr-3 font-medium">Fixtures</th>
                 <th className="py-2 pr-3 font-medium">Accepted</th>
@@ -252,6 +254,7 @@ function RoundGroup({
               {rounds.map((round) => {
                 const layer = roundLayerLabel(round.status, round._count.roundScores, round.standingRole);
                 const flagged = flaggedByRound.get(round.id) ?? 0;
+                const status = productionLockLabel(round.standingRole, round.closedAt);
                 return (
                   <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
                     <td className="py-2.5 pr-3">
@@ -260,7 +263,7 @@ function RoundGroup({
                       </Link>
                     </td>
                     <td className="py-2.5 pr-3">
-                      <Badge tone={round.standingRole === ARCHIVED_ROUND ? "neutral" : "info"}>{standingRoleLabel(round.standingRole)}</Badge>
+                      <Badge tone={status === "Archived reference" ? "neutral" : status === "Closed" ? "warning" : "info"}>{status}</Badge>
                     </td>
                     <td className="py-2.5 pr-3">
                       <Badge tone={layer === "Confirmed round" || layer === "Reference total" ? "info" : layer === "Imported raw" ? "warning" : "neutral"}>{layer}</Badge>

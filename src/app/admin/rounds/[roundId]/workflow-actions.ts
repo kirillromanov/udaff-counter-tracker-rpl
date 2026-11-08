@@ -43,6 +43,11 @@ function refresh(roundId: string): void {
   revalidatePath(`/admin/rounds/${roundId}/export`);
 }
 
+function revalidateSeasonRoundList(seasonId: string): void {
+  revalidatePath(`/admin/seasons/${seasonId}`);
+  revalidatePath(`/admin/seasons/${seasonId}/standings`);
+}
+
 function reviewPath(roundId: string): string {
   return `/admin/rounds/${roundId}/review`;
 }
@@ -360,8 +365,7 @@ export async function closeRoundAction(formData: FormData): Promise<void> {
     refresh(roundId);
     const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
     if (round) {
-      revalidatePath(`/admin/seasons/${round.seasonId}`);
-      revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
+      revalidateSeasonRoundList(round.seasonId);
     }
     redirect(`${hubPath(roundId)}?closed=1`);
   } catch (error) {
@@ -376,8 +380,7 @@ export async function reopenRoundAction(formData: FormData): Promise<void> {
     refresh(roundId);
     const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
     if (round) {
-      revalidatePath(`/admin/seasons/${round.seasonId}`);
-      revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
+      revalidateSeasonRoundList(round.seasonId);
     }
     redirect(`${hubPath(roundId)}?reopened=1`);
   } catch (error) {
