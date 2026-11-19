@@ -22,7 +22,11 @@
     "scores:recalculate-1-13": "tsx scripts/recalculate-rounds-1-13.ts",
     "local:dev": "zsh scripts/dev-up.sh --dev",
     "local:service": "zsh scripts/dev-up.sh --service",
-    "local:install": "zsh scripts/install-launch-agent.sh"
+    "local:install": "zsh scripts/install-launch-agent.sh",
+    "worker:plan": "tsx scripts/worker.ts --plan",
+    "worker:once": "tsx scripts/worker.ts --once",
+    "worker:run": "tsx scripts/worker.ts",
+    "worker:agent": "zsh scripts/worker-agent.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

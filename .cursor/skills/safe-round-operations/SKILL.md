@@ -34,7 +34,7 @@ Run `src/tests/rounds/round-lock.test.ts` and `src/tests/rounds/production-activ
 
 ## Stop
 
-Stop if a change would recalculate, refetch, or reset `autoCheckAttempts`.
+Stop if a change would recalculate, refetch, or reset `autoCheckAttempts`. Do not install, load, or start the worker LaunchAgent. Do not set `WORKER_ENABLED=1` against the live database unless the operator asked to enable the worker.
 
 ## Report
 

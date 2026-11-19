@@ -50,9 +50,11 @@ Scoring functions do not import Prisma. Loaders and actions do.
 
 ## Scheduler
 
-There is no timer, cron, or `setInterval` in the application. `pollDueRounds` and `refreshDuePredictions` run only when an admin action or `scripts/poll-results.ts` / `scripts/refresh-predictions.ts` calls them.
+There is no timer, cron, or `setInterval` in the Next.js process. `pollDueRounds` and `refreshDuePredictions` run when an admin action or `scripts/poll-results.ts` / `scripts/refresh-predictions.ts` calls them.
 
-The LaunchAgent in [OPERATIONS.md](OPERATIONS.md) starts the web server. It does not start a second poller. Running those npm scripts by hand while the server is up is a second writer, not a second scheduler process. Avoid two servers on port 3000; `scripts/dev-up.sh --service` leaves an already healthy server in place.
+`scripts/worker.ts` is a separate process. It is disabled unless `WORKER_ENABLED=1`. The supervised loop also requires `WORKER_SCAN_MINUTES`. The web LaunchAgent does not start it. See [OPERATIONS.md](OPERATIONS.md) and [decisions/007-background-worker.md](decisions/007-background-worker.md).
+
+Running the npm scripts by hand while the server is up is another writer. The worker's claim file stops a second worker. An admin request shares that claim only when the server process has the same `WORKER_LOCK_DIR`. Avoid two servers on port 3000; `scripts/dev-up.sh --service` leaves an already healthy server in place.
 
 Due selection is in `selectDueRoundIds` and `selectDuePredictionRoundIds`. Both skip a closed round. Prediction refresh also returns inactive while `productionStartedAt` is null. Result due selection skips a non-archived round with a null timestamp even if a caller passes a force id. Archived rounds are skipped unless a result poll is forced for that id.
 

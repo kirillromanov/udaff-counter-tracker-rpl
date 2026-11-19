@@ -81,12 +81,26 @@ The serving checkout was then fast-forwarded to the merge of this change, rebuil
 
 `scripts/dev-up.sh --service` starts `npm run start -- --hostname 127.0.0.1 --port 3000`. `package.json` `start` stays `next start`, so a future host is not given this hostname. The check is `src/tests/ops/local-service-bind.test.ts`. Restart the existing LaunchAgent only after this command is the one in the serving checkout, and only when port 3000 is free. If that start fails, leave the agent stopped instead of returning to `npm run start -- --port 3000`.
 
+## Checks for the worker
+
+Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. The serving checkout was not switched, installed, or rebuilt. No seed, import, poll, refresh, recalculation, or round transition was run against `prisma/dev.db`.
+
+- `npm test`: 49 files, 332 tests passed, including `src/tests/worker/worker.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed in that worktree and printed Next.js 16.4.5. It did not use the serving checkout's `.next`.
+- `npm run worker:plan` was then run with the live database opened read-only. `PRAGMA data_version` stayed 2. No claim file was created. Rounds 1–13 were archived, round 14 was closed, and round 15 was not due. The worker LaunchAgent was not installed.
+
+## Background worker
+
+A separate process, `scripts/worker.ts`, plans both existing due jobs and runs prediction refresh only. `WORKER_ENABLED` defaults off. The supervised loop also requires `WORKER_SCAN_MINUTES`; the proposed value is 60 and is not compiled in as a default. Result checks stay unrun because `pollDueRounds` calls `recalculateRound`. The web LaunchAgent does not install or start the worker. Commands, claims, and the enable step are in [../OPERATIONS.md](../OPERATIONS.md). This handoff does not enable the worker or change the running server.
+
 ## Open
 
-- Two audit groups remain after Next.js 16.4.5. They do not, by themselves, block a later scheduler. Do not start that scheduler or upgrade Prisma until asked. See [../SECURITY.md](../SECURITY.md).
-- The running process was rebuilt on 16.4.5 after publication. Confirm a later checkout before assuming that build is still the one being served.
-- No authentication and no TLS. The supervised start command is `npm run start -- --hostname 127.0.0.1 --port 3000`. Confirm the live socket after the LaunchAgent restart. The source change does not prove the bind by itself.
-- No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
+- Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
+- The running process was rebuilt on 16.4.5 before this worker. Confirm a later checkout before assuming that build includes the worker.
+- No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
+- The worker is not enabled. Background result checks still need a decision because they would store scores. Do not start the worker agent until that is accepted or the result half stays skipped.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -94,7 +108,9 @@ The serving checkout was then fast-forwarded to the merge of this change, rebuil
 
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
-- Do not upgrade Next.js unless that upgrade was requested.
+- Do not upgrade Next.js or Prisma unless that upgrade was requested.
+- Do not install, load, or start `com.udaff.counter-tracker.worker`.
+- Do not set `WORKER_ENABLED=1` on the live database until the operator asks.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests

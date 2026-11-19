@@ -25,7 +25,7 @@ There is no deactivate or return-to-preparation action. A new operational round 
 | Action | Preparing | Production | Closed | Archived reference |
 | --- | --- | --- | --- | --- |
 | Save URL, edit fixtures, fetch and parse, review, correct cells | Allowed | Allowed | Rejected before the write | Allowed as reference work |
-| Due comment refresh and due result poll | Skipped | Eligible when a button or npm script runs | Skipped, including a forced id | Skipped unless a result poll is forced for that round |
+| Due comment refresh and due result poll | Skipped | Eligible when a button, an npm script, or an enabled worker runs. The worker refreshes predictions only | Skipped, including a forced id | Skipped unless a result poll is forced for that round |
 | Calculate and store `RoundScore` | Allowed, but the round is outside official totals | Allowed | Rejected | Allowed for reference snapshots; excluded from production totals |
 | Export | Allowed | Allowed | Allowed | Allowed |
 | Start production | Shown. Requires a saved URL, at least one fixture, and at most one Match of the Round | Idempotent if already started | Rejected | Rejected |
@@ -42,7 +42,7 @@ The Start and Close buttons share `hasUnsavedFieldEdits` in `src/lib/domain/resu
 
 `closeProductionRound` and `reopenProductionRound` change `closedAt` and the log only. Re-open leaves `productionStartedAt` set, so the round returns to Production without another Start. Neither action recalculates.
 
-After Start, the round is eligible for the next invocation of the existing due functions. Nothing in the Next.js process invokes those functions on a timer. The button copy says the next check follows the current kickoff schedule. That schedule is real (`FIRST_CHECK_MINUTES` is 120, then `AUTO_RETRY_MINUTES` is 5, up to `MAX_AUTO_ATTEMPTS` of 10). The invocation is not automatic until someone runs the button or the npm script. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
+After Start, the round is eligible for the next invocation of the existing due functions. Nothing in the Next.js process invokes those functions on a timer. The button copy says the next check follows the current kickoff schedule. That schedule is real (`FIRST_CHECK_MINUTES` is 120, then `AUTO_RETRY_MINUTES` is 5, up to `MAX_AUTO_ATTEMPTS` of 10). A separate worker can run the prediction half when `WORKER_ENABLED=1`. It does not run the result half, because that path stores scores. See [OPERATIONS.md](OPERATIONS.md) and [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
 
 ## Server guards
 
