@@ -12,7 +12,7 @@
 | `npm run lint` | `eslint` |
 | `npx tsc --noEmit` | Typecheck. There is no `typecheck` script |
 | `npm run build` | `next build`. Stop `next start` first so it is not reading `.next/` |
-| `npm run start` | `next start`. The local service adds `--port 3000` |
+| `npm run start` | `next start`. Without a hostname, Next listens on `0.0.0.0`. The local service does not use that default |
 | `npm run dev` | `next dev` |
 | `npm run local:install` | Writes a per-user LaunchAgent. The plist is outside the repo |
 | `npm run local:service` | `scripts/dev-up.sh --service` |
@@ -52,17 +52,19 @@ Restore by stopping the server, replacing `prisma/dev.db` with the backup, and s
 
 ## Local service
 
-`scripts/install-launch-agent.sh` writes `~/Library/LaunchAgents/com.udaff.counter-tracker.plist`. The program is `scripts/dev-up.sh --service`, which runs `npm run start -- --port 3000` when nothing is already healthy on port 3000. The command sets no hostname. A read-only socket check on 2026-11-19 showed one listener, `tcp46 *.3000`: every IPv4 and IPv6 address. There is no login page and no `middleware.ts`. That binding is the local admin, not a public deployment.
+`scripts/install-launch-agent.sh` writes `~/Library/LaunchAgents/com.udaff.counter-tracker.plist`. The program is `scripts/dev-up.sh --service`. When port 3000 is free, that mode runs `npm run start -- --hostname 127.0.0.1 --port 3000`. The plist does not contain the Next command, so a restart uses the script that is in the checkout. There is no login page and no `middleware.ts`. This loopback bind is the local admin. It is not the bind address for a future server. `npm run start` without `--hostname` still uses Next's `0.0.0.0` default.
 
 The same check found no user crontab and no LaunchAgent that runs `results:poll` or `predictions:refresh`. Due comment and result checks still run only when an admin action or those npm scripts call them.
 
-Restart without a second process:
+Restart without a second process. Boot the agent out first and wait until port 3000 is free. If a listener is still healthy, `--service` exits and leaves that listener in place, including an older all-interface process.
 
 ```bash
 launchctl bootout "gui/$(id -u)/com.udaff.counter-tracker"
 # wait until port 3000 is free
 launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.udaff.counter-tracker.plist"
 ```
+
+If this start fails, leave the agent stopped. Do not start `npm run start -- --port 3000` as a rollback. That command listens on every interface.
 
 If a build is required, boot the agent out first, run `npm run build`, then bootstrap once.
 

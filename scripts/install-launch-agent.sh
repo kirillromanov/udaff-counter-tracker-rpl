@@ -55,7 +55,7 @@ launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
 launchctl enable "gui/${UID_NUM}/com.udaff.counter-tracker" >/dev/null 2>&1 || true
 
 print -r -- "Installed ${PLIST}"
-print -r -- "After login the app is at http://localhost:3000"
+print -r -- "After login the app is at http://127.0.0.1:3000"
 print -r -- "Logs: ${LOG_DIR}/server.log and ${LOG_DIR}/launchd.log"
 print -r -- "Stop it with: launchctl bootout gui/${UID_NUM}/com.udaff.counter-tracker"
 print -r -- "Interactive dev server: zsh scripts/dev-up.sh --dev"
