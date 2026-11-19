@@ -128,16 +128,34 @@ Run on 2026-11-20 in a worktree of `8867c64cc67e35bfb901aaf29f99356f0039d7f5`. T
 
 The rule compares stored publication time with stored kickoff. A comment at the kickoff instant is late for that fixture. Fetch time is not used. A later eligible comment replaces only the fixtures it names. An edit without one reliable metadata timestamp leaves stored predictions and is flagged. Live selections were not rewritten.
 
+## Checks for the pre-merge review
+
+Run on 2026-11-20 against a read-only snapshot of the live database. `PRAGMA data_version` on the live file stayed 2. The serving checkout was not switched or restarted. No import, refresh, recalculation, or score write was run. Pull request #21 was not merged. The worker stayed disabled.
+
+The comparison used `origin/main` selection (`postedAt` falling back to `createdAt`, earliest identical score, disagreements in review) against this branch's `slipsByParticipant`. Stored breakdowns were compared with both results.
+
+- Archived auto slips change on rounds 1, 2, 4, 5, 6, 10, and 12: 38 selected cells become missing. There were no replacements and no new review cells. Each of those 38 cells matches its stored breakdown before the change and would disagree after it.
+- Live totals change on rounds 1, 2, 4, 5, and 6. The review total changes from the stored number to a newly calculated number for 8 participants on rounds 1, 2, and 5. Rounds 10 and 12 change the displayed score.
+- Closed round 14 does not change. Its selected sets are manual, so the deadline does not filter them. Round 15 does not change: 58 selected cells, and the closest publication is about 70 hours before kickoff.
+- Scored season totals and audit exports stay on stored points. Archived rounds stay out of the production total. Results breakdowns stay on `breakdownJson`.
+- All 939 stored permalinks match `postedAt` to the minute. None of the permalinks carries a timezone. Four comments have a body `<del datetime="+00:00">` three hours before the permalink minute, and none of those four has a prediction set. No comment has an edit mark in its metadata. One comment has the word in the body. No reliable edit time is derived.
+- Comments whose stored instant is less than three hours after kickoff are the clock-sensitive set. Four of the 38 changed cells are in that set. A Moscow reading of the permalink digits would leave those four eligible. The other 34 changed cells are later than three hours and stay late under that reading.
+
+- `npm test`: 51 files, 350 tests passed, including `src/tests/import/deadline-evidence.test.ts`.
+- `npx tsc --noEmit`: passed.
+
+Do not merge this branch until the review matrix and live panel keep a stored breakdown prediction, and until the comment clock is chosen. Do not rewrite stored scores or `postedAt` to get there.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. A prediction counts for a fixture only when the source comment was published before that fixture's kickoff. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker, and do not refresh round 15, until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. The per-fixture deadline is in pull request #21 and is not merged. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker, do not merge that pull request, and do not refresh round 15, until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. The per-fixture deadline is implemented in source and has not been deployed. Deploying it changes the slips the pages read without rewriting stored prediction rows. Do not run the round-15 prediction refresh as part of that deploy.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Pull request #21 is not safe to merge. Its read-time deadline changes archived review cells that stored breakdowns still score. The permalink timezone is unlabeled. Do not deploy it and do not run the round-15 prediction refresh.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -148,7 +166,8 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
-- Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15 in this change. The deadline is already decided. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
+- Do not merge pull request #21, deploy it, or recalculate archived rounds to make the review page match the new deadline. A stored breakdown is the scored prediction. The comment clock is still unlabeled.
+- Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests
