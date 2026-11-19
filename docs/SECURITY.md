@@ -13,7 +13,7 @@ This application is a local admin with no authentication. That is the current im
 
 ## Unverified or open
 
-- The Next.js 16.4.2 build reports a known security advisory and asks for `next upgrade`. A later retry of `next build` finished the compile. The retry does not patch Next.js. The advisory stays open until an upgrade is requested and verified. A clean install's `npm audit` summary (11 findings: 8 moderate, 3 high) was recorded and not remediated. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
+- `next` and `eslint-config-next` are pinned at 16.4.5. That is the first release after the vulnerable range `<=16.4.4`. A clean `next build` of 16.4.5 completed on the first attempt. The old `SecurityFatalError` was Next's upgrade nudge for an affected install, not a patch. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for the advisories and the findings that remain.
 - No third-party secret scanner is configured. Publication checks are the targeted searches recorded in the handoff.
 - Network deployment is not approved. Putting this process on a public host without authentication, TLS, a private database volume, and backups would expose the admin.
 

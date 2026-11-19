@@ -8,7 +8,7 @@ Verified from `package-lock.json` at the documentation checkpoint:
 | --- | --- |
 | Node.js used locally | 24.19.0 (README requires 22+) |
 | npm | 11.17.0 |
-| Next.js | 16.4.2 |
+| Next.js | 16.4.5 |
 | React | 19.3.0 |
 | Prisma | 6.19.3 |
 | Zod | 4.6.7 |
