@@ -81,6 +81,19 @@ The serving checkout was then fast-forwarded to the merge of this change, rebuil
 
 `scripts/dev-up.sh --service` starts `npm run start -- --hostname 127.0.0.1 --port 3000`. `package.json` `start` stays `next start`, so a future host is not given this hostname. The check is `src/tests/ops/local-service-bind.test.ts`. Restart the existing LaunchAgent only after this command is the one in the serving checkout, and only when port 3000 is free. If that start fails, leave the agent stopped instead of returning to `npm run start -- --port 3000`.
 
+## Checks for the serving update
+
+Run on 2026-11-20. The serving checkout fast-forwarded from `220ea1f1f6503610a40b32679a3f357ede513ba8` to `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. The web LaunchAgent was stopped, the production build ran, and the same agent was started again. No schema push, seed, import, parse, poll, refresh, or recalculation ran. `package-lock.json` was unchanged, so dependencies were not reinstalled.
+
+- The running process is `next-server` 16.4.5, build `UI3hxUAeqeBw---qenFjH`, one listener on `127.0.0.1:3000`. `http://127.0.0.1:3000/admin` and `http://localhost:3000/admin` returned 200.
+- `WORKER_ENABLED`, `WORKER_RESULTS_ENABLED`, and `PREDICTION_REFRESH_INTERVAL_MINUTES` are unset. The accepted initial interval is 60 minutes and is not configured.
+- `WORKER_LOCK_DIR` is the absolute path of `~/Library/Application Support/udaff-counter-tracker/worker-locks`. The directory had no claim files. `com.udaff.counter-tracker.worker` is not installed.
+- `PRAGMA data_version` stayed 2. Round, match, prediction, score, comment, checkpoint, and snapshot counts were unchanged. Round 15 `nextPredictionFetchAt` stayed `2026-11-20T18:30:00.000Z`.
+- `npm run worker:plan` used a read-only database connection. Round 15 prediction and result lines were separate. Both were `not-due` at `2026-11-20T18:30:00.000Z`. The prediction time is the stored field. The result time is earliest kickoff plus 120 minutes. Setting the 60-minute interval would not rewrite the stored value.
+- Isolated `src/tests/worker/worker.test.ts`: 15 tests passed, including claim contention. It did not open the live database.
+
+The first prediction-only refresh is not approved. It would call `refreshRoundPredictions` for round 15, with `PREDICTION_REFRESH_INTERVAL_MINUTES=60` only in that process, through the shared claim. It would not call result ingestion or scoring. Post-kickoff acceptance is still undecided, so that call stays unrun.
+
 ## Checks for independent schedules
 
 Run on 2026-11-20 in a worktree based on `ca6d5ee1be78add265709ca28716a1aa6ede7128`. The serving checkout was not switched, installed, or rebuilt. No seed, import, poll, refresh, recalculation, round transition, or schema push was run against `prisma/dev.db`.
@@ -106,14 +119,14 @@ Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. T
 
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. That variable has no default; 60 is only a proposal. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. Claims are shared by the worker, web refresh, and CLI once this code is the code those processes run. The serving process has not been updated. The worker agent is not installed. Do not enable it until the interval is accepted and the serving app has been restarted on this code. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Do not enable it while post-kickoff acceptance is undecided. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running process was rebuilt on 16.4.5 before this worker. Confirm a later checkout before assuming that build includes the worker.
+- The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` is unset on purpose. `WORKER_RESULTS_ENABLED` is off. The serving app does not yet share the claim directory. Post-kickoff comments are still eligible; do not treat that as a new deadline.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Post-kickoff acceptance is undecided. Do not run the round-15 prediction refresh until that decision is made.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -123,7 +136,8 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
-- Do not set `WORKER_ENABLED=1` on the live database until the operator asks.
+- Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
+- Do not call `refreshRoundPredictions` for round 15 until post-kickoff acceptance is decided. That call is the approved shape for the first prediction-only check: one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests
