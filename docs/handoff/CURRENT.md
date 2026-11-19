@@ -69,13 +69,22 @@ Run on 2026-11-19 in a worktree of `1df09addd8d3f1c9323f4c914d6655dfb43646d6`, w
 - `npx tsc --noEmit`: passed.
 - `npm ci` reported the same 11 audit findings. None were patched.
 
+## Next.js 16.4.5
+
+`next` and `eslint-config-next` are pinned at 16.4.5. React stays 19.3.0. Node 24.19.0 meets Next's `>=20.9.0` engine. The first `next build` in an isolated worktree of this change exited 0 and printed Next.js 16.4.5. It did not stop with `SecurityFatalError`. `npm test` passed 318 tests, and lint and `tsc --noEmit` passed. The isolated server on `127.0.0.1:3010` answered `/`, `/admin`, and `/admin/participants` with 200. It used a disposable SQLite file, not `prisma/dev.db`.
+
+`npm audit` went from 11 findings (8 moderate, 3 high) to 10 (7 moderate, 3 high). The `next` finding is gone. Prisma and `minimatch` remain, as [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md) records.
+
+The running checkout is still the previous build until the LaunchAgent is stopped, the checkout is fast-forwarded, dependencies are installed, and a new production build is started with the loopback command.
+
 ## Local bind
 
 `scripts/dev-up.sh --service` starts `npm run start -- --hostname 127.0.0.1 --port 3000`. `package.json` `start` stays `next start`, so a future host is not given this hostname. The check is `src/tests/ops/local-service-bind.test.ts`. Restart the existing LaunchAgent only after this command is the one in the serving checkout, and only when port 3000 is free. If that start fails, leave the agent stopped instead of returning to `npm run start -- --port 3000`.
 
 ## Open
 
-- Next.js 16.4.2 security advisory. A build retry is not a fix.
+- Prisma 6 remains on a high advisory whose npm fix is Prisma 7. `minimatch` remains through TypeScript ESLint. Neither was upgraded here.
+- This commit updates the lockfile. It does not by itself prove the running process has been rebuilt.
 - No authentication and no TLS. The supervised start command is `npm run start -- --hostname 127.0.0.1 --port 3000`. Confirm the live socket after the LaunchAgent restart. The source change does not prove the bind by itself.
 - No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.

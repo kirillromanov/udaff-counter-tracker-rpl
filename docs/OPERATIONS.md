@@ -66,7 +66,7 @@ launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.udaff.counter
 
 If this start fails, leave the agent stopped. Do not start `npm run start -- --port 3000` as a rollback. That command listens on every interface.
 
-If a build is required, boot the agent out first, run `npm run build`, then bootstrap once.
+A dependency change needs the agent stopped before `npm ci` or `npm run build`. Do not replace `node_modules` or `.next` while `next start` is using them. Then bootstrap the same LaunchAgent once. The start command stays `--hostname 127.0.0.1`. Do not run seed, `db push`, import, or recalculation as part of that restart. If the new build fails, leave the agent stopped rather than starting the previous vulnerable Next.js.
 
 ## Isolated tests
 
