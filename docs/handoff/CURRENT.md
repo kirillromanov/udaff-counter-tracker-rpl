@@ -144,7 +144,22 @@ The comparison used `origin/main` selection (`postedAt` falling back to `created
 - `npm test`: 51 files, 350 tests passed, including `src/tests/import/deadline-evidence.test.ts`.
 - `npx tsc --noEmit`: passed.
 
-Do not merge this branch until the review matrix and live panel keep a stored breakdown prediction, and until the comment clock is chosen. Do not rewrite stored scores or `postedAt` to get there.
+That comparison is the record of the branch before saved and live views were separated. The following section is the later check. Do not rewrite stored scores or `postedAt` from this older note.
+
+## Checks for saved calculations and the publication clock
+
+Run on 2026-11-20 in the same read-only snapshot. The live database `data_version` stayed 2. No comment was posted, no import was saved, and no score or `postedAt` was rewritten. The serving checkout was not updated. The worker stayed disabled. Pull request #21 was not merged.
+
+WordPress REST schema text calls `date` the site timezone and `date_gmt` GMT. Read-only comment responses from July, August, October, and November differ by exactly three hours. The HTML permalink matches `date` to the minute. Round 15's article line `20.11, 19:30 — Ростов — Крылья Советов` matches the stored kickoff `2026-11-20T16:30:00.000Z`. Kickoff is not converted a second time. A body `<del datetime>` is not used as the publication time.
+
+- Saved review cells on rounds 1–14 agree with the stored breakdown. The comparison found 0 disagreements. Closed round 14 and archived round 13 are manual, so their candidate slips remain those manual selections.
+- Auto rounds 1–12 have legacy publication times. Their current candidates are uncertain or absent. They are not classified as late.
+- Round 15 is an open live selection with no stored scores. 58 prediction cells are time uncertain. 14 fixture cells have no selected prediction. 0 cells are accepted by the deadline.
+- `npm test`: 53 files, 356 tests passed, including `src/tests/import/publication-clock.test.ts` and `src/tests/standings/calculation-view.test.ts`.
+- `npx tsc --noEmit`: passed.
+- ESLint on the changed source and tests: passed.
+
+The legacy correction is a separate approved write: set `postedAt` to the normalized UTC instant where `rawHtml` still shows the old encoding. It was not run.
 
 ## Background worker
 
@@ -155,7 +170,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Pull request #21 is not safe to merge. Its read-time deadline changes archived review cells that stored breakdowns still score. The permalink timezone is unlabeled. Do not deploy it and do not run the round-15 prediction refresh.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Pull request #21 is not merged. Saved calculations stay on the stored breakdown. Legacy publication times on the open round stay uncertain. Do not deploy it, do not correct `postedAt`, and do not run the round-15 prediction refresh.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -166,7 +181,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
-- Do not merge pull request #21, deploy it, or recalculate archived rounds to make the review page match the new deadline. A stored breakdown is the scored prediction. The comment clock is still unlabeled.
+- Do not merge pull request #21 or deploy it. Do not recalculate archived or closed rounds. Do not bulk-shift `postedAt`. A legacy publication time stays uncertain until the operator asks for that correction.
 - Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 

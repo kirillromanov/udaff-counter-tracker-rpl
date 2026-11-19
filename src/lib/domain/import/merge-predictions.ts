@@ -1,5 +1,6 @@
 import { commentEditEvidence } from "@/lib/domain/forum/comment-edit";
 import { fixtureDeadline } from "@/lib/domain/import/fixture-deadline";
+import { deadlineInstant } from "@/lib/domain/time/publication-clock";
 
 export interface MergePrediction {
   matchId: string;
@@ -27,7 +28,7 @@ export interface MergeSet {
 
 export type MergedCell =
   | { matchId: string; state: "selected"; home: number; away: number; setId: string }
-  | { matchId: string; state: "review"; setIds: string[] }
+  | { matchId: string; state: "review"; setIds: string[]; reason: "disagreement" | "uncertain-time" }
   | { matchId: string; state: "missing" };
 
 function scored(prediction: MergePrediction): prediction is MergePrediction & { home: number; away: number } {
@@ -35,7 +36,7 @@ function scored(prediction: MergePrediction): prediction is MergePrediction & { 
 }
 
 function authorityAt(set: MergeSet): Date | null {
-  return set.editedAt ?? commentEditEvidence(set.rawHtml ?? "", set.postedAt).editedAt ?? set.postedAt;
+  return set.editedAt ?? commentEditEvidence(set.rawHtml ?? "", set.postedAt).editedAt ?? deadlineInstant(set.postedAt, set.rawHtml);
 }
 
 /**
@@ -64,7 +65,7 @@ export function mergePredictionCells(fixtures: readonly MergeFixture[], sets: re
     const unknown = hits.filter((hit) => fixtureDeadline(hit.at, fixture.kickoffAt) === "unknown");
     if (eligible.length === 0) {
       return unknown.length > 0
-        ? { matchId: fixture.id, state: "review" as const, setIds: unknown.map((hit) => hit.set.id) }
+        ? { matchId: fixture.id, state: "review" as const, setIds: unknown.map((hit) => hit.set.id), reason: "uncertain-time" as const }
         : { matchId: fixture.id, state: "missing" as const };
     }
     const sameScore = eligible.every(
@@ -87,7 +88,7 @@ export function mergePredictionCells(fixtures: readonly MergeFixture[], sets: re
       (hit) => hit.prediction.home === latest[0]?.prediction.home && hit.prediction.away === latest[0]?.prediction.away,
     );
     if (!latestAgree) {
-      return { matchId: fixture.id, state: "review" as const, setIds: latest.map((hit) => hit.set.id) };
+      return { matchId: fixture.id, state: "review" as const, setIds: latest.map((hit) => hit.set.id), reason: "disagreement" as const };
     }
     const chosen = [...latest].sort((left, right) => left.set.id.localeCompare(right.set.id))[0] as (typeof latest)[number];
     return chosenCell(fixture.id, chosen);
@@ -107,7 +108,7 @@ function manualCell(
 ): MergedCell {
   const same = hits.every((hit) => hit.prediction.home === hits[0]?.prediction.home && hit.prediction.away === hits[0]?.prediction.away);
   if (!same) {
-    return { matchId, state: "review", setIds: hits.map((hit) => hit.set.id) };
+    return { matchId, state: "review", setIds: hits.map((hit) => hit.set.id), reason: "disagreement" };
   }
   const earliest = [...hits].sort((left, right) => {
     const leftTime = left.set.postedAt?.getTime() ?? Number.MAX_SAFE_INTEGER;

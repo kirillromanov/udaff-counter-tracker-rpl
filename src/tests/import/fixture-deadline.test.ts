@@ -96,7 +96,7 @@ describe("per-fixture publication deadline", () => {
 
   it("reads an edit time only from metadata that is not the permalink", () => {
     const published = new Date("2026-11-20T10:00:00.000Z");
-    const html = `<div class="comment-meta">Edited <time datetime="2026-11-20T18:00:00.000Z">20/11/2026 at 18:00</time>
+    const html = `<div class="comment-meta">Edited <time datetime="2026-11-20T18:00:00.000Z">20/11/2026 at 21:00</time>
 <a href="#comment-1">20/11/2026 at 10:00</a></div><p>edited my mind 2-1</p>`;
     expect(commentEditEvidence(html, published).editedAt?.toISOString()).toBe("2026-11-20T18:00:00.000Z");
     expect(commentEditEvidence(`<div class="comment-meta"><a href="#comment-1">20/11/2026 at 10:00</a></div><p>2-1</p>`, published).editedAt).toBeNull();

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { commentEditEvidence } from "@/lib/domain/forum/comment-edit";
 import { exportAudit, type StoredBreakdown } from "@/lib/domain/export/export-audit";
-import { fixtureDeadline } from "@/lib/domain/import/fixture-deadline";
 import { mergePredictionCells } from "@/lib/domain/import/merge-predictions";
 import { parseForumTimestamp } from "@/lib/domain/forum/extract-comments";
 import { formatMoscow } from "@/lib/domain/time/moscow";
@@ -15,15 +14,11 @@ function line(matchId: string, home: number, away: number) {
 }
 
 describe("stored forum clock", () => {
-  it("reads the permalink digits as a UTC minute and does not read a zone suffix", () => {
-    const stored = parseForumTimestamp("09/10/2026 at 19:45");
-    expect(stored?.toISOString()).toBe("2026-10-09T19:45:00.000Z");
-    expect(parseForumTimestamp("09/10/2026 at 19:45 MSK")?.toISOString()).toBe(stored?.toISOString());
-    expect(formatMoscow(stored as Date)).toBe("2026-10-09 22:45 UTC+3");
+  it("keeps the legacy digit encoding separate from a normalized site-local instant", () => {
+    const legacy = parseForumTimestamp("09/10/2026 at 19:45");
+    expect(legacy?.toISOString()).toBe("2026-10-09T19:45:00.000Z");
+    expect(formatMoscow(legacy as Date)).toBe("2026-10-09 22:45 UTC+3");
     expect(formatMoscow(kickoff)).toBe("2026-10-09 22:30 UTC+3");
-    expect(fixtureDeadline(stored, kickoff)).toBe("late");
-    const moscowReading = new Date((stored as Date).getTime() - 3 * 60 * 60 * 1000);
-    expect(fixtureDeadline(moscowReading, kickoff)).toBe("eligible");
   });
 });
 

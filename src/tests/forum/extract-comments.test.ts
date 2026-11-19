@@ -39,7 +39,7 @@ describe("extractForumPost", () => {
       externalId: "4521",
       authorName: "Hordi Cruyff",
     });
-    expect(post.comments[0]?.postedAt?.toISOString()).toBe("2026-10-16T10:10:00.000Z");
+    expect(post.comments[0]?.postedAt?.toISOString()).toBe("2026-10-16T07:10:00.000Z");
     expect(post.comments[0]?.rawText).toContain("Крылья Советов — Факел 2-0");
     expect(post.comments[0]?.rawText).toContain("(МТ)");
     expect(post.comments[0]?.rawHtml).toContain("comment-container");

@@ -1,11 +1,6 @@
-import { parseForumTimestamp } from "./extract-comments";
+import { normalizeOffsetlessPublication, parseExplicitOffset, permalinkText } from "@/lib/domain/time/publication-clock";
 
 const EDIT_MARK = /edited|изменено|отредактировано|правка/i;
-
-function parseIsoTimestamp(value: string): Date | null {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 /**
  * An edit time is reliable only when the comment metadata, not the prediction
@@ -18,15 +13,20 @@ export function commentEditEvidence(rawHtml: string, publishedAt: Date | null): 
   if (!EDIT_MARK.test(meta)) {
     return { editedAt: null };
   }
+  const permalink = permalinkText(meta);
   const times: Date[] = [];
   for (const match of meta.matchAll(/datetime="([^"]+)"/gi)) {
-    const parsed = parseIsoTimestamp(match[1] ?? "");
+    const parsed = parseExplicitOffset(match[1] ?? "");
     if (parsed) {
       times.push(parsed);
     }
   }
   for (const match of meta.matchAll(/(\d{1,2}\/\d{1,2}\/\d{4}(?:\s+at)?\s+\d{1,2}:\d{2})/gi)) {
-    const parsed = parseForumTimestamp(match[1] ?? "");
+    const text = match[1] ?? "";
+    if (permalink && text.trim() === permalink) {
+      continue;
+    }
+    const parsed = normalizeOffsetlessPublication(text);
     if (parsed) {
       times.push(parsed);
     }
