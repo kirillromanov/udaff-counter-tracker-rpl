@@ -73,7 +73,7 @@ Run on 2026-11-19 in a worktree of `1df09addd8d3f1c9323f4c914d6655dfb43646d6`, w
 
 `next` and `eslint-config-next` are pinned at 16.4.5. React stays 19.3.0. Node 24.19.0 meets Next's `>=20.9.0` engine. The first `next build` in an isolated worktree of this change exited 0 and printed Next.js 16.4.5. It did not stop with `SecurityFatalError`. `npm test` passed 318 tests, and lint and `tsc --noEmit` passed. The isolated server on `127.0.0.1:3010` answered `/`, `/admin`, and `/admin/participants` with 200. It used a disposable SQLite file, not `prisma/dev.db`.
 
-`npm audit` went from 11 findings (8 moderate, 3 high) to 10 (7 moderate, 3 high). The `next` finding is gone. Prisma and `minimatch` remain, as [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md) records.
+`npm audit` went from 11 findings (8 moderate, 3 high) to 10 (7 moderate, 3 high). The `next` finding is gone. The ten remaining entries are two vulnerabilities, assessed in [../SECURITY.md](../SECURITY.md). They were not upgraded.
 
 The serving checkout was then fast-forwarded to the merge of this change, rebuilt while the agent was stopped, and started again through the same LaunchAgent. The running process is `next-server` 16.4.5, build `IBgEizLdzmK0LBx66x82Q`, listening on `127.0.0.1:3000`.
 
@@ -83,7 +83,7 @@ The serving checkout was then fast-forwarded to the merge of this change, rebuil
 
 ## Open
 
-- Prisma 6 remains on a high advisory whose npm fix is Prisma 7. `minimatch` remains through TypeScript ESLint. Neither was upgraded here.
+- Two audit groups remain after Next.js 16.4.5. They do not, by themselves, block a later scheduler. Do not start that scheduler or upgrade Prisma until asked. See [../SECURITY.md](../SECURITY.md).
 - The running process was rebuilt on 16.4.5 after publication. Confirm a later checkout before assuming that build is still the one being served.
 - No authentication and no TLS. The supervised start command is `npm run start -- --hostname 127.0.0.1 --port 3000`. Confirm the live socket after the LaunchAgent restart. The source change does not prove the bind by itself.
 - No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
