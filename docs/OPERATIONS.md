@@ -16,6 +16,10 @@
 | `npm run dev` | `next dev` |
 | `npm run local:install` | Writes a per-user LaunchAgent. The plist is outside the repo |
 | `npm run local:service` | `scripts/dev-up.sh --service` |
+| `npm run worker:plan` | Read-only eligibility list. No fetch and no database write |
+| `npm run worker:once` | One prediction cycle, only when `WORKER_ENABLED=1` |
+| `npm run worker:run` | Supervised loop. Refuses to process until enable and scan are both set |
+| `npm run worker:agent -- install` | Writes the worker LaunchAgent and does not load it |
 | `npm run import:rounds` | Downloads the configured early-round sources. Writes comments and fixtures |
 | `npm run results:poll` | Runs `pollDueRounds` once |
 | `npm run predictions:refresh` | Runs the due prediction refresh once |
@@ -34,8 +38,11 @@ Names only. Values stay in the untracked `.env`. See `.env.example`.
 | `FOOTBALLDATA_API_KEY` | No | Bearer token. Empty skips that source |
 | `FOOTBALLDATA_LEAGUE_ID` | No | Overrides league discovery |
 | `FOOTBALLDATA_SEASON_ID` | No | Overrides season discovery |
-| `RESULT_POLL_INTERVAL_MINUTES` | No | Default 60. Used when a due check is actually run |
-| `RESULT_POLL_LIVE_INTERVAL_MINUTES` | No | Default 15 |
+| `RESULT_POLL_INTERVAL_MINUTES` | No | Default 60. Passed into due selection. The fixture clock is kickoff plus 120 minutes, then 5 |
+| `RESULT_POLL_LIVE_INTERVAL_MINUTES` | No | Default 15. Same limitation as the regular interval |
+| `WORKER_ENABLED` | No | Exact `1` enables worker cycles. Any other value, including empty, does no processing |
+| `WORKER_SCAN_MINUTES` | No | Required for `worker:run` when enabled. Integer from 5 to 1440. Proposed value 60. Not a new result interval |
+| `WORKER_LOCK_DIR` | No | Claim files. The worker defaults this to `~/Library/Application Support/udaff-counter-tracker/worker-locks` |
 
 ## Backup
 
@@ -54,7 +61,32 @@ Restore by stopping the server, replacing `prisma/dev.db` with the backup, and s
 
 `scripts/install-launch-agent.sh` writes `~/Library/LaunchAgents/com.udaff.counter-tracker.plist`. The program is `scripts/dev-up.sh --service`. When port 3000 is free, that mode runs `npm run start -- --hostname 127.0.0.1 --port 3000`. The plist does not contain the Next command, so a restart uses the script that is in the checkout. There is no login page and no `middleware.ts`. This loopback bind is the local admin. It is not the bind address for a future server. `npm run start` without `--hostname` still uses Next's `0.0.0.0` default.
 
-The same check found no user crontab and no LaunchAgent that runs `results:poll` or `predictions:refresh`. Due comment and result checks still run only when an admin action or those npm scripts call them.
+The web LaunchAgent does not run `results:poll`, `predictions:refresh`, or the worker. Due checks still run from an admin action or those npm scripts unless the worker is later enabled.
+
+## Worker
+
+The worker is one sequential process, `scripts/worker.ts`. It is not a Next.js timer, a route, or a second cron. The web command is unchanged.
+
+| Command | Effect |
+| --- | --- |
+| `npm run worker:plan` | Prints eligible and skipped rounds. Reads scheduling columns only. Creates no claim file and fetches nothing |
+| `WORKER_ENABLED=1 npm run worker:once` | One prediction-refresh cycle, then exit |
+| `WORKER_ENABLED=1 WORKER_SCAN_MINUTES=60 npm run worker:run` | Stays running. This is the proposed scan cap, not a default in the program |
+| `zsh scripts/worker-agent.sh install` | Writes `~/Library/LaunchAgents/com.udaff.counter-tracker.worker.plist` and does not bootstrap it |
+| `zsh scripts/worker-agent.sh start` | Bootstraps that plist. Do not run this until enablement is approved |
+| `zsh scripts/worker-agent.sh status` | `launchctl print` for the worker label |
+| `zsh scripts/worker-agent.sh stop` | `launchctl bootout` for the worker label |
+| `zsh scripts/worker-agent.sh uninstall` | Bootstraps nothing. Removes the plist after a bootout |
+
+`scripts/worker-service.sh` is the program inside the plist. It does not export `WORKER_ENABLED`. A disabled process exits 0. launchd is set to restart only after a non-zero exit, so a disabled exit does not loop. Logs go to `~/Library/Logs/udaff-counter-tracker/worker.log`. The same directory is used by the web server and is not rotated here.
+
+The worker and the web server both use `DATABASE_URL` from the repo `.env`. Start the worker with the repository as its working directory. `file:./dev.db` is the same relative path the server already uses. Claim files record a pid. A dead pid is replaced on the next acquire. A second live process logs `duplicate-worker` and exits 0. `SIGINT` and `SIGTERM` stop the loop after the current round. Forum fetches already time out after 20 seconds. One round's error does not stop the process. The next look is at least 5 minutes later, which is `AUTO_RETRY_MINUTES`.
+
+`refreshRoundPredictions` can write comments and, only when the round has no fixtures, new fixtures. It does not write `RoundScore`. `pollDueRounds` and `refreshRoundResults` do write scores through `recalculateRound`. The worker does not call them. A due result check is printed as `scoring-decision` and skipped. Leave it that way until an operator decides that a background result check may store scores.
+
+A stored `nextPredictionFetchAt` of null means the prediction refresh is due as soon as the round is active. A future value waits. Result eligibility remains the fixture clock. If a successful prediction refresh leaves that next time in the past, the loop waits `WORKER_SCAN_MINUTES` instead of fetching again immediately. Set the same `WORKER_LOCK_DIR` on the web server before expecting an admin click and the worker to share a claim. Until that restart, the file claim is taken by the worker and by new CLI calls that see the variable.
+
+Do not install or start the worker agent as part of updating the web server.
 
 Restart without a second process. Boot the agent out first and wait until port 3000 is free. If a listener is still healthy, `--service` exits and leaves that listener in place, including an older all-interface process.
 

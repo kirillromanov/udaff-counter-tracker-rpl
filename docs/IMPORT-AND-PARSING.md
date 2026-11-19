@@ -40,7 +40,7 @@ Adapters are listed in `RESULT_ADAPTERS` (`src/lib/domain/results/sources.ts`). 
 
 `SOURCE_RANK` gives premierliga weight 100, sport-ru 80, football-data 70, championat 45, sportbox 40, understat 35, footbolno 25. Verification sources cannot accept a score by themselves. A disagreement between official-strength sources stays in review. `FOOTBALLDATA_API_KEY` empty skips that adapter. The key belongs in `.env` and must not be committed.
 
-Polling stops for a fixture when it is verified, manually set, acknowledged, postponed or cancelled, or when 10 attempts are used. The first attempt time is kickoff plus 120 minutes. Retries are 5 minutes apart. A new kickoff starts a new attempt budget. The round drops out of due selection when every fixture is final or the round has no fixtures.
+Polling stops for a fixture when it is verified, manually set, acknowledged, postponed or cancelled, or when 10 attempts are used. The first attempt time is kickoff plus 120 minutes. Retries are 5 minutes apart. A new kickoff starts a new attempt budget. The round drops out of due selection when every fixture is final or the round has no fixtures. There is no separate prediction deadline. A null `nextPredictionFetchAt` means an active round's comment refresh is due. The worker uses that rule and does not fetch results. `refreshRoundPredictions` does not write scores. `pollDueRounds` does, through `recalculateRound`.
 
 ## Provenance and duplicates
 

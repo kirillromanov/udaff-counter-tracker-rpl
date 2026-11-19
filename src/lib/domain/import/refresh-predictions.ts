@@ -13,8 +13,11 @@ import {
   type IngestionCounts,
   type PredictionRefreshPlan,
 } from "./incremental";
+import { acquireClaim } from "@/lib/domain/worker/claims";
 import { ensureRoundFixtures } from "./ensure-fixtures";
 import { parseStoredComments, saveForumPost } from "./persist-import";
+
+const predictionRefreshLocks = new Set<string>();
 
 export interface PredictionRefreshReport {
   roundId: string;
@@ -24,6 +27,8 @@ export interface PredictionRefreshReport {
   summary: string;
   plan: PredictionRefreshPlan;
   failed: boolean;
+  /** True when this process or another process already holds the round. Nothing was fetched. */
+  busy: boolean;
 }
 
 export interface PredictionDueReport {
@@ -54,14 +59,66 @@ function toPollFixture(match: {
 }
 
 /**
+ * Record a failed prediction fetch without moving fixture retry counters.
+ * A round that closed during the request is left unchanged.
+ */
+export async function notePredictionRefreshFailure(roundId: string, now: Date, message: string): Promise<PredictionRefreshPlan> {
+  const round = await prisma.round.findUnique({
+    where: { id: roundId },
+    include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+  });
+  const plan = planPredictionRefresh(
+    {
+      standingRole: round?.standingRole ?? "operational",
+      hasForumUrl: Boolean(round?.forumUrl),
+      productionStartedAt: round?.productionStartedAt,
+      fixtures: (round?.matches ?? []).map(toPollFixture),
+    },
+    now,
+  );
+  if (!round || round.closedAt) {
+    return plan;
+  }
+  try {
+    await assertRoundMutable(roundId);
+    await prisma.round.update({
+      where: { id: roundId },
+      data: {
+        lastPredictionFetchAt: now,
+        nextPredictionFetchAt: plan.nextAt,
+        predictionFetchSummary: message,
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof RoundClosedError)) {
+      throw error;
+    }
+  }
+  return plan;
+}
+
+/**
  * Fetch one round's thread, store new and updated comments, and parse slips.
  * This does not calculate round scores. Live standings read the selected slips on the next page load.
  */
 export async function refreshRoundPredictions(
   roundId: string,
-  options?: { url?: string; now?: Date; fetchPost?: (url: string) => Promise<ForumPost> },
+  options?: { url?: string; now?: Date; claimDir?: string; fetchPost?: (url: string) => Promise<ForumPost> },
 ): Promise<PredictionRefreshReport> {
-  await assertRoundMutable(roundId);
+  if (predictionRefreshLocks.has(roundId)) {
+    return busyPredictionReport(roundId);
+  }
+  predictionRefreshLocks.add(roundId);
+  let release: (() => Promise<void>) | null = null;
+  try {
+    const claimDir = options?.claimDir ?? process.env.WORKER_LOCK_DIR;
+    if (claimDir) {
+      release = await acquireClaim(claimDir, `prediction-${roundId}`);
+      if (!release) {
+        return busyPredictionReport(roundId);
+      }
+    }
+    await assertRoundMutable(roundId);
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
@@ -117,7 +174,24 @@ export async function refreshRoundPredictions(
       predictionFetchSummary: summary,
     },
   });
-  return { roundId, seasonId: round.seasonId, number: round.number, counts, summary, plan, failed: false };
+  return { roundId, seasonId: round.seasonId, number: round.number, counts, summary, plan, failed: false, busy: false };
+  } finally {
+    predictionRefreshLocks.delete(roundId);
+    await release?.();
+  }
+}
+
+function busyPredictionReport(roundId: string): PredictionRefreshReport {
+  return {
+    roundId,
+    seasonId: "",
+    number: 0,
+    counts: emptyIngestionCounts(),
+    summary: "Skipped because another refresh holds this round.",
+    plan: { active: false, nextAt: null, reason: "busy" },
+    failed: false,
+    busy: true,
+  };
 }
 
 /**
@@ -159,23 +233,7 @@ export async function refreshDuePredictions(options?: {
         throw error;
       }
       const message = error instanceof Error ? error.message : "Prediction refresh failed";
-      const plan = planPredictionRefresh(
-        {
-          standingRole: round?.standingRole ?? "operational",
-          hasForumUrl: true,
-          productionStartedAt: round?.productionStartedAt,
-          fixtures: (round?.matches ?? []).map(toPollFixture),
-        },
-        now,
-      );
-      await prisma.round.update({
-        where: { id: roundId },
-        data: {
-          lastPredictionFetchAt: now,
-          nextPredictionFetchAt: plan.nextAt,
-          predictionFetchSummary: message,
-        },
-      });
+      const plan = await notePredictionRefreshFailure(roundId, now, message);
       reports.push({
         roundId,
         seasonId: round?.seasonId ?? "",
@@ -184,6 +242,7 @@ export async function refreshDuePredictions(options?: {
         summary: message,
         plan,
         failed: true,
+        busy: false,
       });
     }
   }
