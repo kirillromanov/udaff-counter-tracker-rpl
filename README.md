@@ -39,6 +39,6 @@ npx tsc --noEmit
 npm run dev
 ```
 
-Open `/admin`. The web process does not poll on a timer. Due checks run from the admin buttons or from `npm run results:poll` and `npm run predictions:refresh`. A separate worker exists and stays off until `WORKER_ENABLED=1`. See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Open `/admin`. The web process does not poll on a timer. Due checks run from the admin buttons or from `npm run results:poll` and `npm run predictions:refresh`. A separate worker stays off unless `WORKER_ENABLED=1`. Prediction fetches also need `PREDICTION_REFRESH_INTERVAL_MINUTES`. Result fetches also need `WORKER_RESULTS_ENABLED=1`. See [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 A login LaunchAgent can start `next start` for this checkout. That arrangement is local and is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Cloning this repository does not restore the season database.

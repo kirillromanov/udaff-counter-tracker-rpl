@@ -24,7 +24,7 @@ Transferring the current season means restoring a backup taken with `sqlite3 .ba
 
 Run one `next start` after one `next build`. Do not also run `next dev` on the same port. Do not start a second copy of the LaunchAgent. The local agent passes `--hostname 127.0.0.1`. A different host chooses its own hostname. This repository does not set that choice.
 
-There is no in-process poller. A separate worker can refresh predictions when `WORKER_ENABLED=1` and, for the loop, `WORKER_SCAN_MINUTES` is set. It does not poll results. Do not add a cron entry as well. The worker LaunchAgent is not loaded by deploying the web server. See [OPERATIONS.md](OPERATIONS.md).
+There is no in-process poller. A separate worker can refresh predictions when `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES` is set. Result checks also need `WORKER_RESULTS_ENABLED=1`. Do not add a cron entry as well. The worker LaunchAgent is not loaded by deploying the web server. See [OPERATIONS.md](OPERATIONS.md).
 
 ## Not done
 

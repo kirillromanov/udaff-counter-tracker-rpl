@@ -111,11 +111,21 @@ describe("incremental prediction comments", () => {
       intervals,
     );
     expect(upcoming.active).toBe(true);
-    expect(upcoming.nextAt?.toISOString()).toBe("2026-10-22T22:00:00.000Z");
+    expect(upcoming.nextAt).toBeNull();
     expect(live.active).toBe(true);
-    expect(live.nextAt?.toISOString()).toBe("2026-10-22T18:00:00.000Z");
+    expect(live.nextAt).toBeNull();
     expect(archived.active).toBe(false);
     expect(finalized.active).toBe(false);
+    const exhausted = planPredictionRefresh(
+      {
+        standingRole: OPERATIONAL_ROUND,
+        hasForumUrl: true,
+        fixtures: [fixture({ autoCheckAttempts: 10, autoCheckKickoffAt: fixture().kickoffAt })],
+      },
+      now,
+      intervals,
+    );
+    expect(exhausted.active).toBe(true);
 
     const due = selectDuePredictionRoundIds(
       [

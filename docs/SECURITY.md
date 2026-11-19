@@ -10,7 +10,7 @@ This application is a local admin with no authentication. That is the current im
 - `.env` is gitignored. `.env.example` has empty placeholders. `FOOTBALLDATA_API_KEY` is a secret when it is set.
 - `prisma/dev.db` is gitignored. It contains the season, comments, and scores. A clone of GitHub does not contain it.
 - Result adapters download public pages with a fixed user agent. The forum fetch does the same for the saved URL.
-- The worker has no HTTP route. Nothing in `npm start` enables it. `WORKER_ENABLED` must be the exact value `1` before it fetches. Plan mode reads scheduling columns and does not print comment text.
+- The worker has no HTTP route. Nothing in `npm start` enables it. `WORKER_ENABLED` must be the exact value `1` before it fetches. Prediction fetches also need `PREDICTION_REFRESH_INTERVAL_MINUTES`. Result fetches and score writes also need `WORKER_RESULTS_ENABLED=1`. Plan mode reads scheduling columns and does not print comment text.
 
 ## Unverified or open
 

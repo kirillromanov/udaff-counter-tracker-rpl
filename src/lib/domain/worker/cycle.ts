@@ -1,6 +1,13 @@
-import { nextPredictionDueAt, planWorker, type PlanLine, type WorkerRound } from "./plan";
+import { nextScheduledAt, planWorker, type PlanLine, type WorkerRound } from "./plan";
 import { readWorkerConfig, type WorkerConfig, type WorkerMode } from "./config";
 import { workerSleepMs } from "./sleep";
+
+export interface JobResult {
+  failed: boolean;
+  busy: boolean;
+  closed: boolean;
+  nextAt: string | null;
+}
 
 export interface CycleCounts {
   processed: number;
@@ -15,7 +22,8 @@ export interface CycleCounts {
 export interface CycleDeps {
   now: () => Date;
   loadRounds: () => Promise<readonly WorkerRound[]>;
-  refresh: (roundId: string, now: Date) => Promise<{ failed: boolean; busy: boolean; closed: boolean }>;
+  refresh: (roundId: string, now: Date) => Promise<JobResult>;
+  poll: (roundId: string, now: Date) => Promise<JobResult>;
   acquireInstance: () => Promise<(() => Promise<void>) | null>;
 }
 
@@ -24,8 +32,8 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
     return emptyCounts(config.refusal);
   }
   if (config.mode === "plan") {
-    const lines = planWorker(await deps.loadRounds(), deps.now());
-    return { ...emptyCounts(null), lines, skipped: lines.length, nextDueAt: stamp(nextPredictionDueAt(lines, deps.now())) };
+    const lines = planWorker(await deps.loadRounds(), deps.now(), undefined, { resultsEnabled: config.resultsEnabled });
+    return { ...emptyCounts(null), lines, skipped: lines.length, nextDueAt: stamp(nextScheduledAt(lines, deps.now())) };
   }
   const release = await deps.acquireInstance();
   if (!release) {
@@ -33,7 +41,7 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
   }
   try {
     const now = deps.now();
-    const lines = planWorker(await deps.loadRounds(), now);
+    const lines = planWorker(await deps.loadRounds(), now, undefined, { resultsEnabled: config.resultsEnabled });
     let processed = 0;
     let skipped = 0;
     let errors = 0;
@@ -41,11 +49,20 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
       if (signal?.aborted) {
         break;
       }
-      if (item.job !== "prediction-refresh" || item.disposition !== "run") {
+      if (item.disposition !== "run") {
         skipped += 1;
         continue;
       }
-      const result = await deps.refresh(item.roundId, now);
+      if (item.job === "prediction-refresh" && config.predictionIntervalMinutes == null) {
+        skipped += 1;
+        item.disposition = "skip";
+        item.reason = "prediction-interval-unset";
+        continue;
+      }
+      const result = item.job === "prediction-refresh" ? await deps.refresh(item.roundId, now) : await deps.poll(item.roundId, now);
+      if (result.nextAt) {
+        item.nextAt = result.nextAt;
+      }
       if (result.closed || result.busy) {
         skipped += 1;
         item.disposition = "skip";
@@ -66,7 +83,7 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
       lines,
       refusal: null,
       duplicate: false,
-      nextDueAt: stamp(nextPredictionDueAt(lines, now)),
+      nextDueAt: stamp(nextScheduledAt(lines, now)),
     };
   } finally {
     await release();
@@ -79,7 +96,7 @@ export async function runWorkerLoop(
   options: { signal: AbortSignal; sleep: (ms: number, signal: AbortSignal) => Promise<void> },
 ): Promise<CycleCounts[]> {
   const reports: CycleCounts[] = [];
-  if (config.mode === "plan" || config.refusal || config.scanMinutes == null) {
+  if (config.mode === "plan" || config.refusal) {
     reports.push(await runWorkerCycle(config, deps, options.signal));
     return reports;
   }
@@ -92,10 +109,13 @@ export async function runWorkerLoop(
     const now = deps.now();
     const wait = workerSleepMs({
       now,
-      scanMinutes: config.scanMinutes,
       nextDueAt: report.nextDueAt ? new Date(report.nextDueAt) : null,
-      hadError: report.errors > 0,
+      idleMinutes: config.predictionIntervalMinutes,
+      scanMinutes: config.scanMinutes,
     });
+    if (wait == null) {
+      break;
+    }
     await options.sleep(wait, options.signal);
   }
   return reports;

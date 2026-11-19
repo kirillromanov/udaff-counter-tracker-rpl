@@ -64,7 +64,7 @@ describe("worker eligibility", () => {
     expect(line([closed], "prediction-refresh")).toMatchObject({ eligible: false, reason: "closed" });
     expect(line([closed], "result-check")).toMatchObject({ eligible: false, reason: "closed" });
     expect(line([active], "prediction-refresh")).toMatchObject({ eligible: true, disposition: "run", reason: "due" });
-    expect(line([active], "result-check")).toMatchObject({ eligible: true, disposition: "skip", reason: "scoring-decision" });
+    expect(line([active], "result-check")).toMatchObject({ eligible: true, disposition: "skip", reason: "results-disabled" });
   });
 
   it("skips archived rounds and does not treat a missing prediction as ineligible", () => {
@@ -96,11 +96,34 @@ describe("worker eligibility", () => {
     });
     expect(line([retryDue], "prediction-refresh").disposition).toBe("run");
     const exhausted = round({ matches: [fixture({ autoCheckAttempts: 10 })] });
-    expect(line([exhausted], "prediction-refresh").reason).toBe("exhausted");
-    expect(line([exhausted], "result-check").eligible).toBe(false);
+    expect(line([exhausted], "prediction-refresh").disposition).toBe("run");
+    expect(line([exhausted], "result-check").reason).toBe("exhausted");
+    const split = round({ nextPredictionFetchAt: new Date("2026-11-21T00:00:00.000Z") });
+    expect(line([split], "prediction-refresh")).toMatchObject({ reason: "not-due", nextAt: "2026-11-21T00:00:00.000Z" });
+    expect(line([split], "result-check")).toMatchObject({
+      eligible: true,
+      reason: "results-disabled",
+      nextAt: "2026-11-20T16:00:00.000Z",
+    });
     const verified = round({ matches: [fixture({ resultState: "verified", resultResolution: "verified", actualHomeGoals: 1, actualAwayGoals: 0 })] });
     expect(line([verified], "prediction-refresh").reason).toBe("stopped");
     expect(line([verified], "result-check").reason).toBe("stopped");
+    const enabledResults = planWorker(
+      [
+        round(),
+        round({ id: "closed", number: 14, closedAt: now }),
+        round({ id: "archived", number: 13, standingRole: "archived", productionStartedAt: null }),
+      ],
+      now,
+      intervals,
+      { resultsEnabled: true },
+    );
+    const job = (id: string, name: "prediction-refresh" | "result-check") =>
+      enabledResults.find((item) => item.roundId === id && item.job === name);
+    expect(job("round-15", "result-check")).toMatchObject({ disposition: "run", reason: "due" });
+    expect(job("closed", "result-check")).toMatchObject({ disposition: "skip", reason: "closed" });
+    expect(job("archived", "result-check")?.reason).toBe("archived");
+    expect(job("round-15", "prediction-refresh")?.nextAt).not.toBe(job("round-15", "result-check")?.nextAt);
   });
 
   it("does not add a prediction deadline or a score requirement", () => {
@@ -112,13 +135,17 @@ describe("worker eligibility", () => {
 });
 
 describe("worker operating modes", () => {
-  const enabled = { WORKER_ENABLED: "1", WORKER_SCAN_MINUTES: "60" };
+  const enabled = { WORKER_ENABLED: "1", PREDICTION_REFRESH_INTERVAL_MINUTES: "60" };
+  const idle = { failed: false, busy: false, closed: false, nextAt: new Date(now.getTime() + 60 * 60_000).toISOString() };
 
-  function deps(refresh: CycleDeps["refresh"], load: CycleDeps["loadRounds"] = async () => [round()]): CycleDeps {
+  function deps(refresh: CycleDeps["refresh"], load: CycleDeps["loadRounds"] = async () => [round()], poll: CycleDeps["poll"] = async () => {
+    throw new Error("result poll");
+  }): CycleDeps {
     return {
       now: () => now,
       loadRounds: load,
       refresh,
+      poll,
       acquireInstance: async () => async () => undefined,
     };
   }
@@ -126,7 +153,9 @@ describe("worker operating modes", () => {
   it("leaves processing off unless WORKER_ENABLED is exactly 1", async () => {
     expect(readWorkerConfig({}, "supervise").refusal).toBe("disabled");
     expect(readWorkerConfig({ WORKER_ENABLED: "true" }, "once").refusal).toBe("disabled");
-    expect(readWorkerConfig(enabled, "supervise").refusal).toBeNull();
+    expect(readWorkerConfig({ WORKER_RESULTS_ENABLED: "1" }, "once")).toMatchObject({ refusal: "disabled", resultsEnabled: false });
+    expect(readWorkerConfig(enabled, "supervise")).toMatchObject({ refusal: null, resultsEnabled: false, predictionIntervalMinutes: 60 });
+    expect(readWorkerConfig({ ...enabled, WORKER_RESULTS_ENABLED: "1" }, "once").resultsEnabled).toBe(true);
     const refresh = async () => {
       throw new Error("refresh");
     };
@@ -136,11 +165,18 @@ describe("worker operating modes", () => {
     expect(report).toMatchObject({ processed: 0, errors: 0, refusal: "disabled" });
   });
 
-  it("refuses the supervised loop when the scan cap is missing or too small", () => {
-    expect(readWorkerConfig({ WORKER_ENABLED: "1" }, "supervise").refusal).toBe("scan-unset");
-    expect(readWorkerConfig({ WORKER_ENABLED: "1", WORKER_SCAN_MINUTES: "1" }, "supervise").refusal).toBe("scan-invalid");
-    expect(readWorkerConfig({ WORKER_ENABLED: "1" }, "once").refusal).toBeNull();
+  it("does not invent a prediction interval or enable results from the worker flag alone", async () => {
+    expect(readWorkerConfig({ WORKER_ENABLED: "1" }, "supervise").predictionIntervalMinutes).toBeNull();
+    expect(readWorkerConfig({ WORKER_ENABLED: "1", PREDICTION_REFRESH_INTERVAL_MINUTES: "1" }, "once").predictionIntervalMinutes).toBeNull();
+    expect(readWorkerConfig({ WORKER_ENABLED: "1" }, "once").resultsEnabled).toBe(false);
     expect(readWorkerConfig({}, "plan").refusal).toBeNull();
+    let called = 0;
+    const skipped = await runWorkerCycle(readWorkerConfig({ WORKER_ENABLED: "1" }, "once"), deps(async () => {
+      called += 1;
+      return idle;
+    }));
+    expect(called).toBe(0);
+    expect(skipped.lines.find((item) => item.job === "prediction-refresh")?.reason).toBe("prediction-interval-unset");
   });
 
   it("plans without refresh, claims, or a second pass", async () => {
@@ -154,7 +190,7 @@ describe("worker operating modes", () => {
     expect(loaded).toBe(1);
     expect(report.lines.map((item) => `${item.number}:${item.job}:${item.reason}`)).toEqual([
       "15:prediction-refresh:due",
-      "15:result-check:scoring-decision",
+      "15:result-check:results-disabled",
       "14:prediction-refresh:closed",
       "14:result-check:closed",
     ]);
@@ -162,22 +198,41 @@ describe("worker operating modes", () => {
 
   it("runs one prediction refresh and does not execute a due result check", async () => {
     const seen: string[] = [];
+    const polled: string[] = [];
     const report = await runWorkerCycle(readWorkerConfig(enabled, "once"), deps(async (roundId) => {
       seen.push(roundId);
-      return { failed: false, busy: false, closed: false };
+      return idle;
+    }, async () => [round()], async (roundId) => {
+      polled.push(roundId);
+      return idle;
     }));
     expect(seen).toEqual(["round-15"]);
+    expect(polled).toEqual([]);
     expect(report.processed).toBe(1);
-    expect(report.lines.find((item) => item.job === "result-check")?.reason).toBe("scoring-decision");
+    expect(report.lines.find((item) => item.job === "result-check")?.reason).toBe("results-disabled");
   });
 
-  it("waits out the existing retry gap after a source failure", async () => {
+  it("polls a due result only when the result flag is on", async () => {
+    const polled: string[] = [];
+    const report = await runWorkerCycle(readWorkerConfig({ ...enabled, WORKER_RESULTS_ENABLED: "1" }, "once"), deps(async () => {
+      throw new Error("prediction");
+    }, async () => [round({ nextPredictionFetchAt: new Date("2026-11-21T00:00:00.000Z") })], async (roundId) => {
+      polled.push(roundId);
+      return { ...idle, nextAt: new Date(now.getTime() + 5 * 60_000).toISOString() };
+    }));
+    expect(polled).toEqual(["round-15"]);
+    expect(report.processed).toBe(1);
+    expect(report.lines.find((item) => item.job === "prediction-refresh")?.reason).toBe("not-due");
+  });
+
+  it("waits until the persisted prediction time after a failure", async () => {
     const sleeps: number[] = [];
     const controller = new AbortController();
     let calls = 0;
+    const nextAt = new Date(now.getTime() + 60 * 60_000).toISOString();
     await runWorkerLoop(readWorkerConfig(enabled, "supervise"), deps(async () => {
       calls += 1;
-      return { failed: true, busy: false, closed: false };
+      return { failed: true, busy: false, closed: false, nextAt };
     }), {
       signal: controller.signal,
       sleep: async (ms) => {
@@ -186,21 +241,22 @@ describe("worker operating modes", () => {
       },
     });
     expect(calls).toBe(1);
-    expect(sleeps).toEqual([5 * 60_000]);
-    expect(workerSleepMs({ now, scanMinutes: 60, nextDueAt: new Date(now.getTime() + 10 * 60_000), hadError: false })).toBe(10 * 60_000);
+    expect(sleeps).toEqual([60 * 60_000]);
+    expect(workerSleepMs({ now, nextDueAt: new Date(now.getTime() + 10 * 60_000), idleMinutes: 60, scanMinutes: null })).toBe(10 * 60_000);
   });
 
-  it("uses the explicit scan cap when a successful refresh leaves the next check in the past", async () => {
+  it("sleeps until the advanced prediction time instead of a wake cap", async () => {
     const sleeps: number[] = [];
     const controller = new AbortController();
-    await runWorkerLoop(readWorkerConfig(enabled, "supervise"), deps(async () => ({ failed: false, busy: false, closed: false })), {
+    const nextAt = new Date(now.getTime() + 30 * 60_000).toISOString();
+    await runWorkerLoop(readWorkerConfig({ ...enabled, WORKER_SCAN_MINUTES: "60" }, "supervise"), deps(async () => ({ ...idle, nextAt })), {
       signal: controller.signal,
       sleep: async (ms) => {
         sleeps.push(ms);
         controller.abort();
       },
     });
-    expect(sleeps).toEqual([60 * 60_000]);
+    expect(sleeps).toEqual([30 * 60_000]);
   });
 
   it("stops on abort without another cycle and rejects a second instance", async () => {
@@ -209,14 +265,14 @@ describe("worker operating modes", () => {
     let calls = 0;
     const stopped = await runWorkerLoop(readWorkerConfig(enabled, "supervise"), deps(async () => {
       calls += 1;
-      return { failed: false, busy: false, closed: false };
+      return { failed: false, busy: false, closed: false, nextAt: null };
     }), { signal: controller.signal, sleep: async () => undefined });
     expect(stopped).toEqual([]);
     expect(calls).toBe(0);
     const duplicate = await runWorkerCycle(readWorkerConfig(enabled, "once"), {
       ...deps(async () => {
         calls += 1;
-        return { failed: false, busy: false, closed: false };
+        return { failed: false, busy: false, closed: false, nextAt: null };
       }),
       acquireInstance: async () => null,
     });
@@ -250,6 +306,7 @@ describe("worker on an isolated database", () => {
     databaseUrl = `file:${path.join(directory, "test.db")}`;
     process.env.DATABASE_URL = databaseUrl;
     process.env.WORKER_LOCK_DIR = path.join(directory, "locks");
+    process.env.PREDICTION_REFRESH_INTERVAL_MINUTES = "60";
     execFileSync(path.resolve("node_modules/.bin/prisma"), ["db", "push", "--skip-generate", "--accept-data-loss"], {
       cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: databaseUrl },
@@ -264,7 +321,7 @@ describe("worker on an isolated database", () => {
   });
 
   it("refreshes once, skips a closed write, and does not score or duplicate", async () => {
-      const [{ PrismaClient }, { refreshPredictionForWorker }, { refreshRoundPredictions }, { loadWorkerRounds }, { runWorkerCycle }, { readWorkerConfig: readConfig }, { notePredictionRefreshFailure }] = await Promise.all([
+      const [{ PrismaClient }, { refreshPredictionForWorker }, { refreshRoundPredictions }, { loadWorkerRounds }, { runWorkerCycle }, { readWorkerConfig: readConfig }, { notePredictionRefreshFailure }, { refreshRoundResults }, { acquireClaim: acquire }] = await Promise.all([
       import("@prisma/client"),
       import("@/lib/domain/worker/refresh-job"),
       import("@/lib/domain/import/refresh-predictions"),
@@ -272,11 +329,16 @@ describe("worker on an isolated database", () => {
       import("@/lib/domain/worker/cycle"),
       import("@/lib/domain/worker/config"),
       import("@/lib/domain/import/refresh-predictions"),
+      import("@/lib/domain/results/poll-run"),
+      import("@/lib/domain/worker/claims"),
     ]);
     void notePredictionRefreshFailure;
     const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     try {
       const season = await db.season.create({ data: { name: "Isolated", slug: `worker-${Date.now()}` } });
+      await db.standingsCheckpoint.create({
+        data: { seasonId: season.id, afterRoundNumber: 13, source: "manual", label: "baseline", rawText: "BASELINE_SENTINEL" },
+      });
       const stored = await db.round.create({
         data: {
           seasonId: season.id,
@@ -308,6 +370,7 @@ describe("worker on an isolated database", () => {
       });
       expect(first.busy).toBe(false);
       expect(first.failed).toBe(false);
+      expect((await db.round.findUniqueOrThrow({ where: { id: stored.id } })).nextPredictionFetchAt?.toISOString()).toBe("2026-11-20T19:00:00.000Z");
       const second = await refreshRoundPredictions(stored.id, {
         now,
         claimDir: process.env.WORKER_LOCK_DIR,
@@ -332,7 +395,9 @@ describe("worker on an isolated database", () => {
           throw new Error("source unavailable");
         },
       })).rejects.toThrow("source unavailable");
-      await notePredictionRefreshFailure(stored.id, now, "source unavailable");
+      const failedAt = new Date("2026-11-20T18:10:00.000Z");
+      await notePredictionRefreshFailure(stored.id, failedAt, "source unavailable");
+      expect((await db.round.findUniqueOrThrow({ where: { id: stored.id } })).nextPredictionFetchAt?.toISOString()).toBe("2026-11-20T19:10:00.000Z");
       expect(await db.match.findFirstOrThrow({ where: { roundId: stored.id } })).toMatchObject({ autoCheckAttempts: 0 });
       expect(await db.forumComment.count({ where: { roundId: stored.id } })).toBe(1);
 
@@ -363,6 +428,12 @@ describe("worker on an isolated database", () => {
       expect(busy.busy).toBe(true);
       releaseFetch();
       await overlapping;
+      const heldResult = await acquire(process.env.WORKER_LOCK_DIR ?? "", `result-${stored.id}`);
+      const blockedResult = await refreshRoundResults(stored.id, { automatic: true });
+      expect(blockedResult.busy).toBe(true);
+      expect(blockedResult.recalculated).toBe(false);
+      await heldResult?.();
+      expect(await db.match.findFirstOrThrow({ where: { roundId: stored.id } })).toMatchObject({ autoCheckAttempts: 0 });
 
       const before = await db.$queryRawUnsafe<{ data_version: bigint | number }[]>("PRAGMA data_version");
       const planned = await runWorkerCycle(readConfig({}, "plan"), {
@@ -374,10 +445,16 @@ describe("worker on an isolated database", () => {
         acquireInstance: async () => {
           throw new Error("claim");
         },
+        poll: async () => {
+          throw new Error("result poll");
+        },
       });
       const after = await db.$queryRawUnsafe<{ data_version: bigint | number }[]>("PRAGMA data_version");
       expect(after[0]?.data_version).toBe(before[0]?.data_version);
-      expect(planned.lines.find((item) => item.job === "result-check")?.reason).toBe("scoring-decision");
+      expect(planned.lines.find((item) => item.job === "result-check")?.reason).toBe("results-disabled");
+      expect(planned.lines.find((item) => item.job === "prediction-refresh")?.nextAt).not.toBe(
+        planned.lines.find((item) => item.job === "result-check")?.nextAt,
+      );
       expect(JSON.stringify(planned)).not.toContain("SECRET_COMMENT");
 
       const late = await refreshRoundPredictions(stored.id, {
@@ -392,7 +469,9 @@ describe("worker on an isolated database", () => {
       expect(await db.forumComment.count({ where: { roundId: stored.id } })).toBe(1);
       const workerClosed = await refreshPredictionForWorker(stored.id, now, process.env.WORKER_LOCK_DIR ?? "");
       expect(workerClosed.closed).toBe(true);
+      await expect(refreshRoundResults(stored.id, { automatic: true })).rejects.toMatchObject({ name: "RoundClosedError" });
       expect(await db.roundScore.count()).toBe(0);
+      expect(await db.standingsCheckpoint.findFirstOrThrow({ where: { seasonId: season.id } })).toMatchObject({ rawText: "BASELINE_SENTINEL" });
     } finally {
       await db.$disconnect();
     }

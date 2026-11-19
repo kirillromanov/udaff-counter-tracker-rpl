@@ -81,6 +81,19 @@ The serving checkout was then fast-forwarded to the merge of this change, rebuil
 
 `scripts/dev-up.sh --service` starts `npm run start -- --hostname 127.0.0.1 --port 3000`. `package.json` `start` stays `next start`, so a future host is not given this hostname. The check is `src/tests/ops/local-service-bind.test.ts`. Restart the existing LaunchAgent only after this command is the one in the serving checkout, and only when port 3000 is free. If that start fails, leave the agent stopped instead of returning to `npm run start -- --port 3000`.
 
+## Checks for independent schedules
+
+Run on 2026-11-20 in a worktree based on `ca6d5ee1be78add265709ca28716a1aa6ede7128`. The serving checkout was not switched, installed, or rebuilt. No seed, import, poll, refresh, recalculation, round transition, or schema push was run against `prisma/dev.db`.
+
+- `npm test`: 49 files, 333 tests passed, including `src/tests/worker/worker.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed in that worktree and printed Next.js 16.4.5. It used a disposable `DATABASE_URL`, not the serving checkout's `.next`.
+- `npm run worker:plan` was run with the live database opened read-only and a temporary claim directory. `PRAGMA data_version` stayed 2. No claim file was created. Rounds 1–13 were archived. Round 14 was closed. Round 15 prediction `nextAt` was the stored `2026-11-20T18:30:00.000Z`. Round 15 result `nextAt` was the same instant, recomputed as the earliest kickoff `2026-11-20T16:30:00.000Z` plus 120 minutes. `nextPollAt` is null and every round-15 `autoCheckAttempts` is 0. The two lines are separate rules that currently name the same instant.
+- `com.udaff.counter-tracker.worker` is not loaded. The web listener is still `127.0.0.1:3000`.
+
+`PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset. The proposed value is 60 and was not written to the live environment. `WORKER_RESULTS_ENABLED` stays off. The serving process does not share claim files until it is updated and restarted. The worker is not ready to enable.
+
 ## Checks for the worker
 
 Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. The serving checkout was not switched, installed, or rebuilt. No seed, import, poll, refresh, recalculation, or round transition was run against `prisma/dev.db`.
@@ -93,14 +106,14 @@ Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. T
 
 ## Background worker
 
-A separate process, `scripts/worker.ts`, plans both existing due jobs and runs prediction refresh only. `WORKER_ENABLED` defaults off. The supervised loop also requires `WORKER_SCAN_MINUTES`; the proposed value is 60 and is not compiled in as a default. Result checks stay unrun because `pollDueRounds` calls `recalculateRound`. The web LaunchAgent does not install or start the worker. Commands, claims, and the enable step are in [../OPERATIONS.md](../OPERATIONS.md). This handoff does not enable the worker or change the running server.
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. That variable has no default; 60 is only a proposal. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. Claims are shared by the worker, web refresh, and CLI once this code is the code those processes run. The serving process has not been updated. The worker agent is not installed. Do not enable it until the interval is accepted and the serving app has been restarted on this code. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process was rebuilt on 16.4.5 before this worker. Confirm a later checkout before assuming that build includes the worker.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. Background result checks still need a decision because they would store scores. Do not start the worker agent until that is accepted or the result half stays skipped.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` is unset on purpose. `WORKER_RESULTS_ENABLED` is off. The serving app does not yet share the claim directory. Post-kickoff comments are still eligible; do not treat that as a new deadline.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 

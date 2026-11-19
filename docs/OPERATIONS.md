@@ -40,9 +40,11 @@ Names only. Values stay in the untracked `.env`. See `.env.example`.
 | `FOOTBALLDATA_SEASON_ID` | No | Overrides season discovery |
 | `RESULT_POLL_INTERVAL_MINUTES` | No | Default 60. Passed into due selection. The fixture clock is kickoff plus 120 minutes, then 5 |
 | `RESULT_POLL_LIVE_INTERVAL_MINUTES` | No | Default 15. Same limitation as the regular interval |
-| `WORKER_ENABLED` | No | Exact `1` enables worker cycles. Any other value, including empty, does no processing |
-| `WORKER_SCAN_MINUTES` | No | Required for `worker:run` when enabled. Integer from 5 to 1440. Proposed value 60. Not a new result interval |
-| `WORKER_LOCK_DIR` | No | Claim files. The worker defaults this to `~/Library/Application Support/udaff-counter-tracker/worker-locks` |
+| `WORKER_ENABLED` | No | Exact `1` allows worker cycles. Any other value does no processing |
+| `WORKER_RESULTS_ENABLED` | No | Exact `1`, and `WORKER_ENABLED=1`, allows result checks. Off by itself |
+| `PREDICTION_REFRESH_INTERVAL_MINUTES` | No | Gap written into `nextPredictionFetchAt` after a prediction attempt. Integer from 5 to 1440. No default. Proposed value 60, not active |
+| `WORKER_SCAN_MINUTES` | No | Optional ceiling on sleep before the process looks again. It does not set a task due time |
+| `WORKER_LOCK_DIR` | No | Claim files shared by the worker, web refresh, and CLI. Default `~/Library/Application Support/udaff-counter-tracker/worker-locks` |
 
 ## Backup
 
@@ -70,8 +72,8 @@ The worker is one sequential process, `scripts/worker.ts`. It is not a Next.js t
 | Command | Effect |
 | --- | --- |
 | `npm run worker:plan` | Prints eligible and skipped rounds. Reads scheduling columns only. Creates no claim file and fetches nothing |
-| `WORKER_ENABLED=1 npm run worker:once` | One prediction-refresh cycle, then exit |
-| `WORKER_ENABLED=1 WORKER_SCAN_MINUTES=60 npm run worker:run` | Stays running. This is the proposed scan cap, not a default in the program |
+| `WORKER_ENABLED=1 PREDICTION_REFRESH_INTERVAL_MINUTES=60 npm run worker:once` | One prediction cycle. The interval is a proposal, not a default |
+| `WORKER_ENABLED=1 WORKER_RESULTS_ENABLED=1 npm run worker:once` | Also runs due result checks. Do not set this on the live database until approved |
 | `zsh scripts/worker-agent.sh install` | Writes `~/Library/LaunchAgents/com.udaff.counter-tracker.worker.plist` and does not bootstrap it |
 | `zsh scripts/worker-agent.sh start` | Bootstraps that plist. Do not run this until enablement is approved |
 | `zsh scripts/worker-agent.sh status` | `launchctl print` for the worker label |
@@ -80,13 +82,13 @@ The worker is one sequential process, `scripts/worker.ts`. It is not a Next.js t
 
 `scripts/worker-service.sh` is the program inside the plist. It does not export `WORKER_ENABLED`. A disabled process exits 0. launchd is set to restart only after a non-zero exit, so a disabled exit does not loop. Logs go to `~/Library/Logs/udaff-counter-tracker/worker.log`. The same directory is used by the web server and is not rotated here.
 
-The worker and the web server both use `DATABASE_URL` from the repo `.env`. Start the worker with the repository as its working directory. `file:./dev.db` is the same relative path the server already uses. Claim files record a pid. A dead pid is replaced on the next acquire. A second live process logs `duplicate-worker` and exits 0. `SIGINT` and `SIGTERM` stop the loop after the current round. Forum fetches already time out after 20 seconds. One round's error does not stop the process. The next look is at least 5 minutes later, which is `AUTO_RETRY_MINUTES`.
+The worker and the web server both use `DATABASE_URL` from the repo `.env`. Start the worker with the repository as its working directory. `file:./dev.db` is the same relative path the server already uses. Claim files record a pid. A dead pid is replaced on the next acquire. A second live process logs `duplicate-worker` and exits 0. `SIGINT` and `SIGTERM` stop the loop after the current round. Forum and result fetches already time out after 20 seconds. One round's error does not stop the process.
 
-`refreshRoundPredictions` can write comments and, only when the round has no fixtures, new fixtures. It does not write `RoundScore`. `pollDueRounds` and `refreshRoundResults` do write scores through `recalculateRound`. The worker does not call them. A due result check is printed as `scoring-decision` and skipped. Leave it that way until an operator decides that a background result check may store scores.
+Prediction and result times are separate. `nextPredictionFetchAt` is the only prediction due time. Null means an active round is due. After an attempt, the worker and a manual refresh write `now` plus `PREDICTION_REFRESH_INTERVAL_MINUTES` when that variable is set. They do not copy the result clock and they do not change `autoCheckAttempts`. Without the variable, a manual refresh leaves the stored prediction time unchanged and the worker does not fetch predictions. The result clock remains kickoff plus 120 minutes, then 5 minutes, up to 10 attempts, on the fixture row. `npm run worker:plan` prints one line per job.
 
-A stored `nextPredictionFetchAt` of null means the prediction refresh is due as soon as the round is active. A future value waits. Result eligibility remains the fixture clock. If a successful prediction refresh leaves that next time in the past, the loop waits `WORKER_SCAN_MINUTES` instead of fetching again immediately. Set the same `WORKER_LOCK_DIR` on the web server before expecting an admin click and the worker to share a claim. Until that restart, the file claim is taken by the worker and by new CLI calls that see the variable.
+`refreshRoundPredictions` can write comments and, only when the round has no fixtures, new fixtures. It does not write `RoundScore`. It stores a post-kickoff comment and can parse it. A manual selection is kept; an edit to that comment is flagged and does not replace the slip. There is no kickoff deadline. `refreshRoundResults`, used only when the result flag is on, writes that round's observations and scores, may set the round's calculation status, and rebuilds season snapshots from that round forward. It reads the manual baseline and does not rewrite it. It does not close a round. Archived rounds are not scored. Closed rounds are rejected before the write.
 
-Do not install or start the worker agent as part of updating the web server.
+The web process, `npm run predictions:refresh`, and `npm run results:poll` take the same claim files once they are running this code. The serving process does not until it is updated and restarted. Do not enable the worker before that restart. Do not install or start the worker agent as part of updating the web server.
 
 Restart without a second process. Boot the agent out first and wait until port 3000 is free. If a listener is still healthy, `--service` exits and leaves that listener in place, including an older all-interface process.
 

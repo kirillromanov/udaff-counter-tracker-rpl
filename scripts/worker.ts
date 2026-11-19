@@ -1,25 +1,16 @@
 import { loadEnvFile } from "node:process";
 import { prisma } from "@/lib/db/prisma";
-import { acquireClaim } from "@/lib/domain/worker/claims";
+import { acquireClaim, workerLockDirectory } from "@/lib/domain/worker/claims";
 import { workerModeFromArgv } from "@/lib/domain/worker/config";
 import { configForMode, runWorkerCycle, runWorkerLoop, type CycleCounts } from "@/lib/domain/worker/cycle";
 import { loadWorkerRounds } from "@/lib/domain/worker/load";
 import { formatWorkerLine } from "@/lib/domain/worker/log";
-import { refreshPredictionForWorker } from "@/lib/domain/worker/refresh-job";
-import os from "node:os";
-import path from "node:path";
+import { pollResultForWorker, refreshPredictionForWorker } from "@/lib/domain/worker/refresh-job";
 
 try {
   loadEnvFile();
 } catch {
   // The web server loads .env. This script also runs when that file is absent.
-}
-
-function lockDirectory(): string {
-  if (process.env.WORKER_LOCK_DIR) {
-    return process.env.WORKER_LOCK_DIR;
-  }
-  return path.join(os.homedir(), "Library/Application Support/udaff-counter-tracker/worker-locks");
 }
 
 function printReport(report: CycleCounts): void {
@@ -55,16 +46,24 @@ function printReport(report: CycleCounts): void {
 async function main(): Promise<number> {
   const mode = workerModeFromArgv(process.argv.slice(2));
   const config = configForMode(process.env, mode);
-  const claimDir = lockDirectory();
+  const claimDir = workerLockDirectory();
   if (mode !== "plan" && !config.refusal) {
     process.env.WORKER_LOCK_DIR = claimDir;
   }
-  console.log(formatWorkerLine("start", { mode, enabled: config.enabled, scanMinutes: config.scanMinutes }));
+  console.log(
+    formatWorkerLine("start", {
+      mode,
+      enabled: config.enabled,
+      results: config.resultsEnabled,
+      predictionIntervalMinutes: config.predictionIntervalMinutes,
+    }),
+  );
   const deps = {
     now: () => new Date(),
     loadRounds: loadWorkerRounds,
     acquireInstance: () => acquireClaim(claimDir, "worker-instance"),
     refresh: (roundId: string, now: Date) => refreshPredictionForWorker(roundId, now, claimDir),
+    poll: (roundId: string) => pollResultForWorker(roundId),
   };
   if (mode === "supervise" && !config.refusal) {
     const controller = new AbortController();

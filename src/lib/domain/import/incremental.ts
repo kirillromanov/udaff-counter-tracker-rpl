@@ -1,5 +1,5 @@
 import { participantKey } from "@/lib/domain/import/participant-key";
-import { planRoundPoll, pollIntervals, type PollFixture, type PollIntervals } from "@/lib/domain/results/poll";
+import { fixtureBlocksPolling, pollIntervals, type PollFixture, type PollIntervals } from "@/lib/domain/results/poll";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 
 /** How this fetch relates to comments already stored for the round. */
@@ -124,8 +124,9 @@ export function ingestionStatusLabel(status: string): string {
 }
 
 /**
- * Automatic prediction refresh follows active and upcoming production rounds.
- * It stops when result polling would stop. Archived rounds stay manual.
+ * Whether automatic prediction refresh may run.
+ * The due instant is the stored nextPredictionFetchAt, not the result-attempt clock.
+ * Archived, preparation, and fully final rounds stay out. Exhausted result attempts do not.
  */
 export function planPredictionRefresh(
   input: {
@@ -137,6 +138,7 @@ export function planPredictionRefresh(
   now: Date,
   intervals: PollIntervals = pollIntervals(),
 ): PredictionRefreshPlan {
+  void intervals;
   if (input.standingRole === ARCHIVED_ROUND) {
     return {
       active: false,
@@ -154,21 +156,21 @@ export function planPredictionRefresh(
   if (!input.hasForumUrl) {
     return { active: false, nextAt: null, reason: "Add the forum URL before predictions can be refreshed." };
   }
-  const results = planRoundPoll(input.fixtures, now, intervals);
-  if (!results.active) {
+  if (input.fixtures.length === 0) {
+    return { active: false, nextAt: null, reason: "This round has no fixtures." };
+  }
+  const open = input.fixtures.some((fixture) => fixtureBlocksPolling(fixture, now));
+  if (!open) {
     return {
       active: false,
       nextAt: null,
-      reason: "Automatic prediction refresh is stopped. Every fixture is final, or this round has no fixtures.",
+      reason: "Automatic prediction refresh is stopped. Every fixture is final.",
     };
   }
   return {
     active: true,
-    nextAt: results.nextPollAt,
-    reason:
-      results.pollStatus === "live"
-        ? "Live round. The next prediction refresh follows the live result check."
-        : "Active round. The next prediction refresh follows the result check.",
+    nextAt: null,
+    reason: "Active round. The next prediction refresh is the stored nextPredictionFetchAt.",
   };
 }
 
