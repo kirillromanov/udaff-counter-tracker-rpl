@@ -1,3 +1,32 @@
+# Agent instructions
+
+Read these before changing the application:
+
+1. This file.
+2. [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md)
+3. [docs/INDEX.md](docs/INDEX.md)
+4. [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)
+5. The subsystem document for the work, then the modules and tests it names.
+
+Inspect the checkout, branch, and database before acting. Do not treat an earlier chat summary as the current database or as proof that a feature exists.
+
+## Safety invariants
+
+- Do not recalculate stored scores, re-import production comments, replace saved fixtures, or change predictions, results, the manual baseline, or awards unless the operator asked for that exact write.
+- Do not close, reopen, start, or deactivate a real round as part of testing or documentation.
+- Do not run `npm run db:seed`, `prisma db push --force-reset`, or `--accept-data-loss` against the live database.
+- Do not upgrade dependencies unless the operator asked for that upgrade.
+- Closed rounds reject mutations in server code before parsing or fixture creation. Preparation rounds stay out of automatic due jobs and out of official season totals.
+- A missing saved prediction is not an unsaved edit.
+- Goal-difference and total-goals bonuses each require both the prediction and the actual result to cross the configured threshold. The two numbers do not have to be equal.
+- The Match of the Round multiplier is applied once to the whole fixture score.
+- Do not commit `.env`, `prisma/dev.db`, backups, logs, or `.next/`.
+- Do not force-push, rewrite history, or switch branches unless the operator asked.
+
+When behavior changes, update the relevant `docs/` page and [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md) in the same change.
+
+Authoritative code lives under `src/lib/domain/` and `prisma/schema.prisma`. Authoritative tests live under `src/tests/`. Operator entry points are `src/app/admin/` and `scripts/`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
