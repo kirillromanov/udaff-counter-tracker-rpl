@@ -5,7 +5,7 @@ This application is a local admin with no authentication. That is the current im
 ## What is true now
 
 - Server actions trust whoever can open the site. There is no session and no actor id on `closureLog`.
-- `next start --port 3000` listens on all interfaces. The LaunchAgent uses that command. Binding to localhost only is not what the running service does.
+- The local LaunchAgent runs `scripts/dev-up.sh --service`, which starts `next start --hostname 127.0.0.1 --port 3000`. A source change does not move an already running process. Confirm the live socket after restart. `npm run start` without `--hostname` still defaults to `0.0.0.0` and is not the local service command.
 - There is no TLS terminator in this repository.
 - `.env` is gitignored. `.env.example` has empty placeholders. `FOOTBALLDATA_API_KEY` is a secret when it is set.
 - `prisma/dev.db` is gitignored. It contains the season, comments, and scores. A clone of GitHub does not contain it.

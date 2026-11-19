@@ -59,8 +59,9 @@ if [[ "$MODE" == "--service" ]]; then
     log "No production build yet. Running npm run build."
     npm run build >>"$LOG_FILE" 2>&1
   fi
-  log "Starting the production server at http://localhost:3000"
-  exec npm run start -- --port 3000 >>"$LOG_FILE" 2>&1
+  log "Starting the production server at http://127.0.0.1:3000"
+  # Loopback only. Next's default hostname is 0.0.0.0. Do not drop --hostname.
+  exec npm run start -- --hostname 127.0.0.1 --port 3000 >>"$LOG_FILE" 2>&1
 fi
 
 if [[ "$MODE" != "--dev" ]]; then

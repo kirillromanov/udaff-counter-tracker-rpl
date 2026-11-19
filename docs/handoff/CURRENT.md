@@ -7,7 +7,8 @@
 - Default branch: `main`
 - Integration: pull request #12, merge commit `4bdf8a1512b77b8442a9198a9b34006e6d27e266`
 - At that merge, `main` and `cursor/participant-identity-8862` (`48402f69d389057b6eb0ff701b2ea7233f5c213f`) had the same source tree
-- The serving checkout stayed on `cursor/participant-identity-8862`. This note does not move it or name its own later commit
+- The serving checkout stayed on `cursor/participant-identity-8862` at the integration note. This note does not name its own later commit
+- Local service parent: `1df09addd8d3f1c9323f4c914d6655dfb43646d6`
 
 ## What the project does
 
@@ -59,10 +60,23 @@ Run on 2026-11-19 in a separate worktree of `4bdf8a1512b77b8442a9198a9b34006e6d2
 - `npx tsc --noEmit`: passed.
 - `npm ci` again reported 11 audit findings (8 moderate, 3 high). None were patched.
 
+## Checks for the loopback command
+
+Run on 2026-11-19 in a worktree of `1df09addd8d3f1c9323f4c914d6655dfb43646d6`, with a disposable `DATABASE_URL` and no live database. `npm run build` was not run. The serving checkout was not updated by these checks.
+
+- `npm test`: 48 files, 318 tests passed, including `src/tests/ops/local-service-bind.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm ci` reported the same 11 audit findings. None were patched.
+
+## Local bind
+
+`scripts/dev-up.sh --service` starts `npm run start -- --hostname 127.0.0.1 --port 3000`. `package.json` `start` stays `next start`, so a future host is not given this hostname. The check is `src/tests/ops/local-service-bind.test.ts`. Restart the existing LaunchAgent only after this command is the one in the serving checkout, and only when port 3000 is free. If that start fails, leave the agent stopped instead of returning to `npm run start -- --port 3000`.
+
 ## Open
 
 - Next.js 16.4.2 security advisory. A build retry is not a fix.
-- No authentication, no TLS, and one dual-stack listener on port 3000 for every address.
+- No authentication and no TLS. The supervised start command is `npm run start -- --hostname 127.0.0.1 --port 3000`. Confirm the live socket after the LaunchAgent restart. The source change does not prove the bind by itself.
 - No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).

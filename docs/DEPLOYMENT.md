@@ -22,7 +22,7 @@ Transferring the current season means restoring a backup taken with `sqlite3 .ba
 
 ## 4. Process
 
-Run one `next start` after one `next build`. Do not also run `next dev` on the same port. Do not start a second copy of the LaunchAgent.
+Run one `next start` after one `next build`. Do not also run `next dev` on the same port. Do not start a second copy of the LaunchAgent. The local agent passes `--hostname 127.0.0.1`. A different host chooses its own hostname. This repository does not set that choice.
 
 There is no in-process poller. If the host should check results without a person clicking the button, that scheduler does not exist yet. Adding cron for `npm run results:poll` would be a new operational decision. Until then, document that due work runs only when invoked.
 
@@ -30,7 +30,7 @@ There is no in-process poller. If the host should check results without a person
 
 - Authentication
 - TLS
-- Localhost-only binding
+- A chosen bind address for a non-local host
 - Off-machine backups
 - A process supervisor other than the local LaunchAgent
 - The Next.js security upgrade
