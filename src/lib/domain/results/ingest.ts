@@ -1,0 +1,303 @@
+import { prisma } from "@/lib/db/prisma";
+import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
+import { assertRoundMutableTx, closedRoundIdSet } from "@/lib/domain/rounds/round-lock-db";
+import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
+import { alignToFixture, applyResultDecision, attachResults, type AlignedObservation, type FixtureSide } from "./decide";
+import { collectSourceFetches, nextSourceHealth, resolveFixture, unavailableSources, type SourceHealth } from "./policy";
+import { RESULT_ADAPTERS, interpretSourcePage } from "./sources";
+import type { ConfidenceLevel, SourceFetchResult, SourceMatch, SourceRole } from "./types";
+
+function sourceRole(value: string): SourceRole {
+  if (value === "primary" || value === "verification") {
+    return value;
+  }
+  return "fallback";
+}
+
+function confidenceLevel(value: string): ConfidenceLevel {
+  if (value === "high" || value === "low") {
+    return value;
+  }
+  return "medium";
+}
+
+export interface IngestReport {
+  confirmed: number;
+  verified: number;
+  conflicts: number;
+  insufficient: number;
+  /** Fixtures whose stored score changed. An unchanged valid score stays zero. */
+  updated: number;
+  sources: { source: string; role: string; status: string; matchCount: number; error: string | null }[];
+}
+
+async function readSource(adapter: (typeof RESULT_ADAPTERS)[number]): Promise<SourceFetchResult> {
+  if (adapter.load) {
+    return adapter.load();
+  }
+  try {
+    const response = await fetch(adapter.url, {
+      headers: { "user-agent": "udaff-counter-tracker/0.1", accept: "text/html" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    const html = await response.text();
+    return interpretSourcePage(adapter, response.ok, html, response.ok ? null : `HTTP ${response.status}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Request failed";
+    return interpretSourcePage(adapter, false, "", message);
+  }
+}
+
+/** Automatic result writes stay on production rounds. A forced archived round can be named explicitly. */
+export function roundsWritableByIngest<T extends { id: string; standingRole: string }>(
+  rounds: readonly T[],
+  includeArchivedRoundIds: readonly string[] = [],
+): T[] {
+  const extra = new Set(includeArchivedRoundIds);
+  return rounds.filter((round) => round.standingRole !== ARCHIVED_ROUND || extra.has(round.id));
+}
+
+/** Limit a fetch to named rounds. Historical imports use this so current pages are not written onto older fixtures. */
+export function roundsSelectedForIngest<T extends { id: string; standingRole: string }>(
+  rounds: readonly T[],
+  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[] },
+): T[] {
+  if (options?.onlyRoundIds) {
+    const ids = new Set(options.onlyRoundIds);
+    return rounds.filter((round) => ids.has(round.id));
+  }
+  return roundsWritableByIngest(rounds, options?.includeArchivedRoundIds ?? []);
+}
+
+export async function ingestSeasonResults(
+  seasonId: string,
+  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[]; skipUndated?: boolean },
+): Promise<IngestReport> {
+  const rounds = await prisma.round.findMany({
+    where: { seasonId },
+    include: { matches: true },
+  });
+  const writable = roundsSelectedForIngest(rounds, options);
+  const fetches = await collectSourceFetches(RESULT_ADAPTERS, readSource);
+  const previousHealth = await prisma.resultSourceHealth.findMany();
+  const previousBySource = new Map(previousHealth.map((row) => [row.source, row]));
+  const health: SourceHealth[] = [];
+  const fetchedAt = new Date();
+  for (const fetchResult of fetches) {
+    const previous = previousBySource.get(fetchResult.source);
+    const next = nextSourceHealth(
+      previous
+        ? {
+            source: previous.source,
+            role: sourceRole(previous.role),
+            lastSuccessAt: previous.lastSuccessAt,
+            lastFailureAt: previous.lastFailureAt,
+            consecutiveFailures: previous.consecutiveFailures,
+            degraded: previous.degraded,
+            lastError: previous.lastError,
+          }
+        : null,
+      { source: fetchResult.source, role: fetchResult.role, status: fetchResult.status, error: fetchResult.error, at: fetchedAt },
+    );
+    health.push(next);
+    await prisma.resultFetchLog.create({
+      data: {
+        source: fetchResult.source,
+        url: fetchResult.url,
+        status: fetchResult.status,
+        matchCount: fetchResult.results.length,
+        error: fetchResult.error,
+        role: fetchResult.role,
+      },
+    });
+    await prisma.resultSourceHealth.upsert({
+      where: { source: next.source },
+      create: next,
+      update: {
+        role: next.role,
+        lastSuccessAt: next.lastSuccessAt,
+        lastFailureAt: next.lastFailureAt,
+        consecutiveFailures: next.consecutiveFailures,
+        degraded: next.degraded,
+        lastError: next.lastError,
+      },
+    });
+  }
+  const unavailable = unavailableSources(fetches, health);
+  const closedIds = await closedRoundIdSet(writable.map((round) => round.id));
+  if (options?.onlyRoundIds?.some((id) => closedIds.has(id))) {
+    throw new RoundClosedError();
+  }
+  const openRounds = writable.filter((round) => !closedIds.has(round.id));
+
+  const fixtures = openRounds.flatMap((round) =>
+    round.matches.map((match) => ({
+      id: match.id,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      roundNumber: round.number,
+      resultState: match.resultState,
+      resultConflict: match.resultConflict,
+      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+      actualHomeGoals: match.actualHomeGoals,
+      actualAwayGoals: match.actualAwayGoals,
+    })),
+  );
+  const byRound = new Map<number, typeof fixtures>();
+  for (const fixture of fixtures) {
+    const list = byRound.get(fixture.roundNumber) ?? [];
+    list.push(fixture);
+    byRound.set(fixture.roundNumber, list);
+  }
+
+  async function storeAttached(roundFixtures: readonly FixtureSide[], roundResults: readonly SourceMatch[]) {
+    const closedNow = await closedRoundIdSet(openRounds.map((round) => round.id));
+    if (options?.onlyRoundIds?.some((id) => closedNow.has(id))) {
+      throw new RoundClosedError();
+    }
+    const attached = attachResults(roundFixtures, roundResults);
+    for (const [matchId, observations] of attached) {
+      for (const observation of observations) {
+        const sourceRow = roundResults.find((result) => result.sourceKey === observation.sourceKey);
+        if (!sourceRow) {
+          continue;
+        }
+        await prisma.resultObservation.upsert({
+          where: { source_sourceKey: { source: sourceRow.source, sourceKey: sourceRow.sourceKey } },
+          create: {
+            source: sourceRow.source,
+            sourceKey: sourceRow.sourceKey,
+            roundNumber: sourceRow.roundNumber,
+            homeTeam: sourceRow.homeTeam,
+            awayTeam: sourceRow.awayTeam,
+            homeGoals: sourceRow.homeGoals,
+            awayGoals: sourceRow.awayGoals,
+            role: sourceRow.role,
+            confidence: sourceRow.confidence,
+            matchStatus: sourceRow.matchStatus ?? "finished",
+            completeness: sourceRow.completeness ?? "complete",
+            matchId,
+          },
+          update: {
+            roundNumber: sourceRow.roundNumber,
+            homeTeam: sourceRow.homeTeam,
+            awayTeam: sourceRow.awayTeam,
+            homeGoals: sourceRow.homeGoals,
+            awayGoals: sourceRow.awayGoals,
+            role: sourceRow.role,
+            confidence: sourceRow.confidence,
+            matchStatus: sourceRow.matchStatus ?? "finished",
+            completeness: sourceRow.completeness ?? "complete",
+            matchId,
+            fetchedAt: new Date(),
+          },
+        });
+      }
+    }
+  }
+
+  for (const fetchResult of fetches) {
+    const dated = fetchResult.results.filter((result) => result.roundNumber != null);
+    const undated = fetchResult.results.filter((result) => result.roundNumber == null);
+    for (const [roundNumber, roundFixtures] of byRound) {
+      await storeAttached(roundFixtures, dated.filter((result) => result.roundNumber === roundNumber));
+    }
+    if (!options?.skipUndated) {
+      await storeAttached(fixtures, undated);
+    }
+  }
+
+  const stored = await prisma.resultObservation.findMany({
+    where: { matchId: { in: fixtures.map((fixture) => fixture.id) } },
+  });
+  let confirmed = 0;
+  let verified = 0;
+  let conflicts = 0;
+  let insufficient = 0;
+  let updated = 0;
+  for (const fixture of fixtures) {
+    const aligned: AlignedObservation[] = stored.flatMap((row) => {
+      if (row.matchId !== fixture.id) {
+        return [];
+      }
+      const score = alignToFixture(fixture, row);
+      if (!score) {
+        return [];
+      }
+      return [{
+        source: row.source,
+        sourceKey: row.sourceKey,
+        homeTeam: row.homeTeam,
+        awayTeam: row.awayTeam,
+        homeGoals: score.homeGoals,
+        awayGoals: score.awayGoals,
+        role: sourceRole(row.role),
+        confidence: confidenceLevel(row.confidence),
+        matchStatus: row.matchStatus,
+        completeness: row.completeness,
+        fetchedAt: row.fetchedAt,
+      }];
+    });
+    const decision = resolveFixture(fixture.id, aligned, unavailable, { now: fetchedAt });
+    if (decision.outcome === "none" && decision.note === "") {
+      continue;
+    }
+    const write = applyResultDecision(fixture, decision);
+    if (write.resultResolution === "insufficient") {
+      insufficient += 1;
+    } else if (write.resultConflict) {
+      conflicts += 1;
+    } else if (write.resultState === "verified") {
+      verified += 1;
+    } else if (write.resultState === "confirmed") {
+      confirmed += 1;
+    }
+    if (write.changedGoals) {
+      updated += 1;
+    }
+    const roundId = openRounds.find((round) => round.matches.some((match) => match.id === fixture.id))?.id;
+    await prisma.$transaction(async (tx) => {
+      if (roundId) {
+        await assertRoundMutableTx(tx, roundId);
+      }
+      await tx.match.update({
+        where: { id: fixture.id },
+        data: {
+          actualHomeGoals: write.actualHomeGoals,
+          actualAwayGoals: write.actualAwayGoals,
+          resultState: write.resultState,
+          resultConflict: write.resultConflict,
+          resultResolution: write.resultResolution,
+          resultNote: write.resultNote,
+          conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
+        },
+      });
+    });
+  }
+
+  return {
+    confirmed,
+    verified,
+    conflicts,
+    insufficient,
+    updated,
+    sources: fetches.map((fetchResult) => ({
+      source: fetchResult.source,
+      role: fetchResult.role,
+      status: fetchResult.status,
+      matchCount: fetchResult.results.length,
+      error: fetchResult.error,
+    })),
+  };
+}
+
+export async function ingestRoundResults(roundId: string): Promise<IngestReport> {
+  const round = await prisma.round.findUniqueOrThrow({
+    where: { id: roundId },
+    select: { seasonId: true, standingRole: true },
+  });
+  return ingestSeasonResults(round.seasonId, {
+    onlyRoundIds: [roundId],
+    includeArchivedRoundIds: round.standingRole === ARCHIVED_ROUND ? [roundId] : [],
+  });
+}

@@ -20,6 +20,8 @@ model Season {
   participants      SeasonParticipant[]
   scoringConfig     ScoringConfig?
   standingSnapshots StandingSnapshot[]
+  checkpoints       StandingsCheckpoint[]
+  reconciliationDecisions ReconciliationDecision[]
 }
 
 model Round {
@@ -28,12 +30,47 @@ model Round {
   number    Int
   name      String?
   forumUrl  String?
+  /// When the source thread was last downloaded.
+  fetchedAt DateTime?
+  /// Plain text of the opening post. Comments keep their own raw HTML.
+  sourceSnapshot String?
+  /// Schedule notes from the last import, such as a missing Match of the Round.
+  /// A new fixture bootstrap also records source, URL, time, and fallback reason here.
+  importNotes String?
+  /// Calculation completeness for the Layer label: draft, open, partial, scored, imported, or stale.
+  /// This is not production activation. An open unscored round can already be in production.
   status    String   @default("draft")
+  /// archived: baseline source kept for parser and source checks. Excluded from production standings.
+  /// operational: production role. Activation is productionStartedAt, not this field.
+  standingRole          String    @default("operational")
+  /// scheduled, live, or finalized. Finalized rounds are left out of the next poll.
+  pollStatus            String    @default("scheduled")
+  lastPolledAt          DateTime?
+  nextPollAt            DateTime?
+  /// Highest-ranked source that returned rows on the last check.
+  lastSuccessfulSource  String?
+  /// Compact ok/failed line from the last multi-source check.
+  pollHealthSummary     String?
+  /// Last forum fetch for prediction comments. Separate from result polling.
+  lastPredictionFetchAt DateTime?
+  nextPredictionFetchAt DateTime?
+  /// Counts from the last prediction fetch: new, updated, duplicate, ignored, flagged.
+  predictionFetchSummary String?
+  /// Operator lock for a production round. Null means editing is allowed. This is not activation.
+  /// A closed activated round still counts in season totals.
+  closedAt   DateTime?
+  /// Close, reopen, and start events: [{action, at}]. This app has no signed-in actor.
+  closureLog String    @default("[]")
+  /// Null means preparation: manual review is allowed and automatic jobs skip the round.
+  /// Set when an operator starts production. Existing operational rounds are backfilled to createdAt.
+  /// Reopening does not clear this, and there is no return-to-preparation action.
+  productionStartedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   season            Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   matches           Match[]
+  forumComments     ForumComment[]
   predictionSets    PredictionSet[]
   roundScores       RoundScore[]
   standingSnapshots StandingSnapshot[]
@@ -52,33 +89,140 @@ model Match {
   isMatchOfTheRound Boolean   @default(false)
   actualHomeGoals   Int?
   actualAwayGoals   Int?
+  /// open, confirmed, verified, conflict, or manual. confirmed is a provisional acceptance. Manual scores are never replaced by a fetch.
+  resultState       String    @default("open")
+  /// Sources disagreed, or a manual score does not match the fetched sources.
+  resultConflict    Boolean   @default(false)
+  /// verified, provisional, conflict-review, insufficient, or manual. Empty until a fetch or an edit classifies the row.
+  resultResolution  String    @default("")
+  resultNote        String?
+  /// Set when an admin leaves a source conflict visible but allows the round to stop polling.
+  conflictAcknowledgedAt DateTime?
+  /// Automatic result checks used for the current kickoff. A manual refresh does not change this.
+  autoCheckAttempts   Int       @default(0)
+  /// Kickoff instant this attempt budget belongs to. A different kickoff starts a new cycle.
+  autoCheckKickoffAt  DateTime?
+  /// Next automatic check for this fixture. Empty when the fixture is verified or the budget is spent.
+  autoCheckNextAt     DateTime?
+  /// Earlier cycles replaced by a new kickoff: [{kickoffAt, attempts, endedAt}].
+  autoCheckHistory    String    @default("[]")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  predictions Prediction[]
+  round         Round                @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  predictions   Prediction[]
+  resultObservations ResultObservation[]
 
   @@index([roundId])
 }
 
-model Participant {
-  id        String   @id @default(cuid())
-  name      String
-  forumNick String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// One attempt to download a public results page. A failed source does not erase earlier rows.
+model ResultFetchLog {
+  id         String   @id @default(cuid())
+  source     String
+  url        String
+  /// ok or failed
+  status     String
+  /// primary, fallback, or verification
+  role       String   @default("fallback")
+  matchCount Int      @default(0)
+  error      String?
+  fetchedAt  DateTime @default(now())
 
+  @@index([fetchedAt])
+}
+
+/// Rolling health for one result source. A failed call updates this row and does not erase scores.
+model ResultSourceHealth {
+  source              String    @id
+  /// primary, fallback, or verification
+  role                String
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  consecutiveFailures Int       @default(0)
+  degraded            Boolean   @default(false)
+  lastError           String?
+  updatedAt           DateTime  @updatedAt
+}
+
+/// A finished score as published by one source. Re-fetching the same match updates this row.
+model ResultObservation {
+  id          String   @id @default(cuid())
+  source      String
+  sourceKey   String
+  roundNumber Int?
+  homeTeam    String
+  awayTeam    String
+  homeGoals   Int
+  awayGoals   Int
+  /// primary, fallback, or verification. Verification-only rows do not confirm a score alone.
+  role        String   @default("fallback")
+  /// high, medium, or low
+  confidence  String   @default("medium")
+  /// finished, live, scheduled, or unknown. Older rows are finished scores.
+  matchStatus String   @default("finished")
+  /// complete rows can decide a score. partial rows stay as evidence only.
+  completeness String  @default("complete")
+  matchId     String?
+  fetchedAt   DateTime @default(now())
+
+  match Match? @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceKey])
+  @@index([matchId])
+}
+
+model Participant {
+  id             String    @id @default(cuid())
+  name           String
+  forumNick      String?   @unique
+  /// participantKey(name). Together with aliases, this is the duplicate check.
+  /// Nullable so an existing database can take the column, then be reseeded.
+  normalizedName String?   @unique
+  /// Set when the person is removed from the registry. Historical scores stay.
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  aliases        ParticipantAlias[]
   seasons        SeasonParticipant[]
   predictionSets PredictionSet[]
   roundScores    RoundScore[]
   standings      StandingSnapshot[]
+  checkpointRows StandingsCheckpointRow[]
+  reconciliationDecisions ReconciliationDecision[]
+}
+
+model ParticipantAlias {
+  id            String   @id @default(cuid())
+  participantId String
+  alias         String
+  normalized    String   @unique
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+}
+
+/// A forum nick that is not a contest participant. Import stores the comment and skips predictions.
+model IgnoredForumAuthor {
+  id         String   @id @default(cuid())
+  name       String
+  normalized String   @unique
+  note       String?
+  createdAt  DateTime @default(now())
 }
 
 model SeasonParticipant {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   seasonId      String
   participantId String
-  joinedAt      DateTime @default(now())
+  /// included: active on this season roster. excluded: kept, but not active.
+  status        String    @default("included")
+  joinedAt      DateTime  @default(now())
+  excludedAt    DateTime?
 
   season      Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
@@ -86,21 +230,68 @@ model SeasonParticipant {
   @@unique([seasonId, participantId])
 }
 
+model ForumComment {
+  id         String    @id @default(cuid())
+  roundId    String
+  sourceUrl  String
+  externalId String?
+  authorName String
+  postedAt   DateTime?
+  rawHtml    String
+  rawText    String
+  /// stored, accepted, flagged, or ignored. Flagged comments stay in review.
+  reviewState String   @default("stored")
+  reviewNote  String?
+  /// Parse this comment even when the author is on the ignored list.
+  importAnyway Boolean @default(false)
+  /// new, updated, unchanged, duplicate, ignored, or flagged.
+  ingestionStatus String   @default("unchanged")
+  lastFetchedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  round          Round           @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  predictionSets PredictionSet[]
+
+  @@unique([roundId, externalId])
+  @@index([roundId, postedAt])
+}
+
 model PredictionSet {
-  id            String   @id @default(cuid())
-  roundId       String
-  participantId String
-  source        String   @default("manual")
-  rawComment    String?
-  status        String   @default("draft")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  roundId         String
+  participantId   String
+  forumCommentId  String?
+  source          String   @default("manual")
+  rawComment      String?
+  status          String   @default("draft")
+  selected        Boolean  @default(false)
+  /// auto: valid comments stay selected and are merged by fixture. manual: an admin chose this set.
+  selection       String   @default("auto")
+  confidence      Float?
+  warningsJson    String   @default("[]")
+  parsedJson      String   @default("[]")
+  manuallyEdited  Boolean  @default(false)
+  /// author, explicit-marker, commentary-heuristic, or manual.
+  attributionMethod   String @default("author")
+  attributionEvidence String @default("")
+  /// clear, probable, or review. review is not auto-selected.
+  attributionReview   String @default("clear")
+  /// Stable identity of one block inside a comment, so a reparse updates the same row.
+  blockKey            String @default("")
+  sourceExcerpt       String @default("")
+  /// JSON list of {at, field, oldValue, newValue}.
+  correctionLog       String @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  round       Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  participant Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  predictions Prediction[]
+  round        Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant  Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  forumComment ForumComment? @relation(fields: [forumCommentId], references: [id], onDelete: SetNull)
+  predictions  Prediction[]
 
-  @@unique([roundId, participantId])
+  @@index([roundId, participantId])
+  @@index([forumCommentId])
 }
 
 model Prediction {
@@ -109,6 +300,12 @@ model Prediction {
   matchId         String
   homeGoals       Int?
   awayGoals       Int?
+  ignored         Boolean  @default(false)
+  /// The comment explicitly marked this line with (МТ). Distinct from Match.isMatchOfTheRound.
+  markedAsMt      Boolean  @default(false)
+  rawLine         String?
+  confidence      Float?
+  warning         String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -158,6 +355,65 @@ model StandingSnapshot {
 
   @@unique([seasonId, roundId, participantId])
   @@index([seasonId, roundId, rank])
+}
+
+/// Trusted hand-entered season table. Separate from calculated StandingSnapshot rows.
+model StandingsCheckpoint {
+  id               String   @id @default(cuid())
+  seasonId         String
+  afterRoundNumber Int
+  source           String   @default("manual")
+  label            String
+  rawText          String
+  createdAt        DateTime @default(now())
+
+  season Season                     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  rows   StandingsCheckpointRow[]
+
+  @@unique([seasonId, afterRoundNumber, source])
+}
+
+model StandingsCheckpointRow {
+  id            String @id @default(cuid())
+  checkpointId  String
+  participantId String?
+  rank          Int
+  /// up, down, same, or new
+  movement      String
+  movementDelta Int
+  previousRank  Int?
+  displayName   String
+  totalPoints   Int
+  /// Count of ☼ markers on the forum line. In this contest those are round wins.
+  markerCount   Int
+  rawLine       String
+
+  checkpoint  StandingsCheckpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  participant Participant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([checkpointId, rank])
+  @@index([participantId])
+}
+
+/// An admin choice about one reconciliation row. Never rewrites the manual checkpoint.
+model ReconciliationDecision {
+  id               String   @id @default(cuid())
+  seasonId         String
+  afterRoundNumber Int
+  /// Checkpoint display name, or an unmatched forum author.
+  subjectName      String
+  participantId    String?
+  /// accept_computed, keep_manual, alias, or manual_correction
+  action           String
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  season      Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([seasonId, afterRoundNumber, subjectName])
+  @@index([participantId])
 }
 
 model ScoringConfig {

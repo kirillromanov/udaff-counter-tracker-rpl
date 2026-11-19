@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
-  partialPrefetching: true,
+  // Admin pages render full prediction sets. Prefetching every linked round
+  // at once exhausted the dev worker and left the loading skeleton spinning.
+  partialPrefetching: false,
   turbopack: {
     rules: {
       "*.css": {

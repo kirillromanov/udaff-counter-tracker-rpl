@@ -1,0 +1,33 @@
+import { loadEnvFile } from "node:process";
+import { prisma } from "@/lib/db/prisma";
+import { ingestAndTrack } from "@/lib/domain/results/poll-run";
+
+try {
+  loadEnvFile();
+} catch {
+  // Next.js loads .env for the app. The file is optional for this script.
+}
+
+async function main() {
+  const seasons = await prisma.season.findMany({ orderBy: { name: "asc" } });
+  if (seasons.length === 0) {
+    throw new Error("No season found.");
+  }
+  for (const season of seasons) {
+    const report = await ingestAndTrack(season.id);
+    console.log(`${season.name}: ${report.verified} verified, ${report.confirmed} provisional, ${report.conflicts} need review, ${report.insufficient} insufficient`);
+    for (const source of report.sources) {
+      console.log(`  ${source.role} ${source.source}: ${source.status} (${source.matchCount})${source.error ? ` ${source.error}` : ""}`);
+    }
+  }
+}
+
+main()
+  .then(async () => {
+    await prisma.$disconnect();
+  })
+  .catch(async (error: unknown) => {
+    console.error(error);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

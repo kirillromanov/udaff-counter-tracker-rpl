@@ -1,58 +1,44 @@
 # udaff-counter-tracker-rpl
 
-Local-first admin for a football prediction contest. This phase contains the data model, a pure scoring engine, tests, and demo seed data. The admin UI is a placeholder.
+Local admin for a football prediction contest. It imports a forum thread, reviews parsed predictions, records results, calculates a round, and exports standings. There is no login.
+
+The canonical description of the running application is in [docs/INDEX.md](docs/INDEX.md). This file is only the entry point. Where this page and `docs/` disagree, `docs/` describes the code and [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md) records the gap.
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 22 or newer
 - npm
+- The lockfile is `package-lock.json`
 
 ## Setup
 
 ```bash
 npm install
 cp .env.example .env
-npx prisma generate
-npx prisma db push
-npx prisma db seed
+npm run db:generate
+npm run db:push
 ```
 
 `DATABASE_URL` defaults to `file:./dev.db`. Prisma resolves that path relative to `prisma/`, so the SQLite file is `prisma/dev.db`.
 
-Equivalent npm scripts:
+`npm run db:seed` deletes every season and participant, then loads a demo season. Do not run it against a database that already holds a real season. See [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-```bash
-npm run db:generate
-npm run db:push
-npm run db:seed
-```
-
-Re-running the seed clears the existing seasons and participants, then loads the demo contest again.
-
-## Scoring
-
-Match points, bonuses, and the Match of the Round multiplier live in [`src/lib/config/scoring.ts`](src/lib/config/scoring.ts). The engine in `src/lib/domain/scoring` is pure: it does not import Prisma or React.
-
-- `scoreMatch` classifies one prediction and returns a point breakdown.
-- `scoreRound` sums match points, adds the round total-goals bonus, and counts categories.
-- `buildSeasonStandings` ranks a season and compares the latest round with the ranking before it.
-
-A neighbor is the same outcome and the same signed goal difference, with both teams shifted by exactly one goal. `1-0` against `2-1` is a neighbor. `2-0` against `4-2` is the same goal difference, but not a neighbor.
-
-Match bonuses apply only to rewarded categories (`exact`, `neighbor`, `diff`, `outcome`) unless `bonusesRequireRewardedBase` is turned off. A `0-0` result awards +2 instead of the +1 zero-total bonus. The Match of the Round multiplier also applies to a negative score unless `mtAppliesToNegative` is turned off.
-
-## Tests
+## Checks
 
 ```bash
 npm test
+npm run lint
+npx tsc --noEmit
 ```
 
-Vitest covers score categories, bonuses, the Match of the Round multiplier, round totals, and season movement. The tests do not need the database.
+`npm run build` writes `.next/`. Do not run it while `next start` is using that directory. Tests do not need the live database; the activation test creates its own temporary SQLite file.
 
-## App
+## Run
 
 ```bash
 npm run dev
 ```
 
-Open `/` and `/admin`. Both pages are placeholders for later phases.
+Open `/admin`. The process does not poll results or comments on a timer. Due checks run only from the admin buttons or from `npm run results:poll` and `npm run predictions:refresh`.
+
+A login LaunchAgent can start `next start` for this checkout. That arrangement is local and is documented in [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Cloning this repository does not restore the season database.
