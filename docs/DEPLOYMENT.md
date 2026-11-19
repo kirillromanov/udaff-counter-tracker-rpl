@@ -6,7 +6,7 @@ A future host has four separate steps. Completing one does not complete the othe
 
 ## 1. Source
 
-The intended Git remote is `https://github.com/kirillromanov/udaff-counter-tracker-rpl`. The verified application branch is `cursor/participant-identity-8862`. `origin/main` is an older line: it contains the pull-request merge `fca9de6` that is not an ancestor of this branch, and this branch has many commits that are not in `main`. Publishing this branch does not update `main`.
+The intended Git remote is `https://github.com/kirillromanov/udaff-counter-tracker-rpl`. Pull request #12 put the verified application and documentation on `main` at `4bdf8a1512b77b8442a9198a9b34006e6d27e266`. New work starts from current `main`. Updating the process that is already running is a separate step from merging that source.
 
 A clone has source, schema, tests, and the lockfile. It does not have `prisma/dev.db` or `.env`.
 

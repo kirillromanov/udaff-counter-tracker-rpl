@@ -52,7 +52,9 @@ Restore by stopping the server, replacing `prisma/dev.db` with the backup, and s
 
 ## Local service
 
-`scripts/install-launch-agent.sh` writes `~/Library/LaunchAgents/com.udaff.counter-tracker.plist`. The program is `scripts/dev-up.sh --service`, which runs `npm run start -- --port 3000` when nothing is already healthy on port 3000. `next start` listens on all interfaces. That is the current local binding, not a public deployment.
+`scripts/install-launch-agent.sh` writes `~/Library/LaunchAgents/com.udaff.counter-tracker.plist`. The program is `scripts/dev-up.sh --service`, which runs `npm run start -- --port 3000` when nothing is already healthy on port 3000. The command sets no hostname. A read-only socket check on 2026-11-19 showed one listener, `tcp46 *.3000`: every IPv4 and IPv6 address. There is no login page and no `middleware.ts`. That binding is the local admin, not a public deployment.
+
+The same check found no user crontab and no LaunchAgent that runs `results:poll` or `predictions:refresh`. Due comment and result checks still run only when an admin action or those npm scripts call them.
 
 Restart without a second process:
 
@@ -70,15 +72,17 @@ If a build is required, boot the agent out first, run `npm run build`, then boot
 
 ## Publish routine
 
-1. Inspect branch, status, and the live database.
-2. Implement only the requested change.
+Start each task from current `origin/main`, on a new branch. Do not continue `cursor/participant-identity-8862`.
+
+1. Fetch and inspect the branch, status, and the live database.
+2. Implement only the requested change. Use a separate worktree when the serving checkout must stay where it is.
 3. Run the checks in [TESTING.md](TESTING.md) without seed, poll, or recalculate scripts.
-4. Update `docs/` and `docs/handoff/CURRENT.md` when behavior changed.
+4. Update `docs/` and `docs/handoff/CURRENT.md` when behavior or publication status changed.
 5. Review the diff. Reject `.env`, databases, backups, logs, and `.next/`.
-6. Commit the reviewed files.
-7. Push the agreed branch with a normal push when it fast-forwards.
-8. Fetch and compare the remote SHA.
+6. Commit the reviewed files and push the task branch with a normal push.
+7. Open a pull request into `main`. Merge it when the checks pass and the operator has asked for that merge.
+8. Fetch `origin/main` and confirm the SHA.
 
-This repository's configured remote is `https://github.com/kirillromanov/udaff-counter-tracker-rpl`. The working branch is not `main`. Do not force-push, and do not merge into `main` from an agent session unless the operator asked.
+Updating the running server, rebuilding `.next`, or copying the database is a separate explicit operation. Merging `main` does not do those things.
 
-There is no commit hook in this repo that publishes or deploys.
+The configured remote is `https://github.com/kirillromanov/udaff-counter-tracker-rpl`. Do not force-push. There is no commit hook in this repo that publishes or deploys.
