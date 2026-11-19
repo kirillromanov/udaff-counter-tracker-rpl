@@ -20,7 +20,7 @@ export interface PlanLine {
   roundId: string;
   number: number;
   job: WorkerJob;
-  /** Eligible under the existing selector. Result checks stay unrun. */
+  /** Eligible under the existing selector. */
   eligible: boolean;
   disposition: "run" | "skip";
   reason: string;
@@ -28,18 +28,24 @@ export interface PlanLine {
 }
 
 /** Read-only eligibility. This does not fetch, claim, or write. */
-export function planWorker(rounds: readonly WorkerRound[], now: Date, intervals: PollIntervals = pollIntervals()): PlanLine[] {
+export function planWorker(
+  rounds: readonly WorkerRound[],
+  now: Date,
+  intervals: PollIntervals = pollIntervals(),
+  options?: { resultsEnabled?: boolean },
+): PlanLine[] {
   const lines: PlanLine[] = [];
   for (const round of rounds) {
     lines.push(predictionLine(round, now, intervals));
-    lines.push(resultLine(round, now, intervals));
+    lines.push(resultLine(round, now, intervals, options?.resultsEnabled === true));
   }
   return lines;
 }
 
-export function nextPredictionDueAt(lines: readonly PlanLine[], now: Date): Date | null {
+/** Earliest future prediction or result time. The two clocks are not combined into one field. */
+export function nextScheduledAt(lines: readonly PlanLine[], now: Date): Date | null {
   const stamps = lines.flatMap((line) => {
-    if (line.job !== "prediction-refresh" || !line.nextAt) {
+    if (!line.nextAt) {
       return [];
     }
     const at = new Date(line.nextAt);
@@ -51,7 +57,6 @@ export function nextPredictionDueAt(lines: readonly PlanLine[], now: Date): Date
 
 function predictionLine(round: WorkerRound, now: Date, intervals: PollIntervals): PlanLine {
   const due = selectDuePredictionRoundIds([round], now, intervals).includes(round.id);
-  const results = planRoundPoll(round.matches, now, intervals);
   const plan = planPredictionRefresh(
     {
       standingRole: round.standingRole,
@@ -62,22 +67,23 @@ function predictionLine(round: WorkerRound, now: Date, intervals: PollIntervals)
     now,
     intervals,
   );
+  const stored = round.nextPredictionFetchAt;
   if (due) {
-    return line(round, "prediction-refresh", true, "run", "due", plan.nextAt);
+    return line(round, "prediction-refresh", true, "run", "due", stored);
   }
   if (!round.forumUrl && !round.closedAt && round.standingRole !== ARCHIVED_ROUND && round.productionStartedAt !== null) {
     return line(round, "prediction-refresh", false, "skip", "no-forum-url", null);
   }
-  return line(round, "prediction-refresh", false, "skip", inactiveReason(round, plan.active, results.reason, plan.nextAt, round.nextPredictionFetchAt, now), plan.nextAt ?? round.nextPredictionFetchAt);
+  return line(round, "prediction-refresh", false, "skip", inactiveReason(round, plan.active, plan.reason, null, stored, now), stored);
 }
 
-function resultLine(round: WorkerRound, now: Date, intervals: PollIntervals): PlanLine {
+function resultLine(round: WorkerRound, now: Date, intervals: PollIntervals, resultsEnabled: boolean): PlanLine {
   const due = selectDueRoundIds([round], now, intervals).includes(round.id);
   const plan = planRoundPoll(round.matches, now, intervals);
   if (due) {
-    return line(round, "result-check", true, "skip", "scoring-decision", plan.nextPollAt);
+    return line(round, "result-check", true, resultsEnabled ? "run" : "skip", resultsEnabled ? "due" : "results-disabled", plan.nextPollAt);
   }
-  return line(round, "result-check", false, "skip", inactiveReason(round, plan.active, plan.reason, plan.nextPollAt, round.nextPollAt, now), plan.nextPollAt ?? round.nextPollAt);
+  return line(round, "result-check", false, "skip", inactiveReason(round, plan.active, plan.reason, plan.nextPollAt, null, now), plan.nextPollAt);
 }
 
 function inactiveReason(

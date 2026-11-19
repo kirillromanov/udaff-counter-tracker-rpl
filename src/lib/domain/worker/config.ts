@@ -1,3 +1,4 @@
+import { predictionIntervalMinutes } from "@/lib/domain/import/prediction-schedule";
 import { AUTO_RETRY_MINUTES } from "@/lib/domain/results/poll";
 
 /** Proposed wake cap. It is not applied unless the operator sets WORKER_SCAN_MINUTES. */
@@ -10,22 +11,30 @@ export type WorkerMode = "plan" | "once" | "supervise";
 export interface WorkerConfig {
   mode: WorkerMode;
   enabled: boolean;
+  /** Optional ceiling on how long to sleep before looking for a newly started round. Not a task due time. */
   scanMinutes: number | null;
-  refusal: "disabled" | "scan-unset" | "scan-invalid" | null;
+  predictionIntervalMinutes: number | null;
+  /** Requires WORKER_ENABLED=1 as well. Default off. */
+  resultsEnabled: boolean;
+  refusal: "disabled" | null;
 }
 
 export function readWorkerConfig(env: Record<string, string | undefined>, mode: WorkerMode): WorkerConfig {
   const enabled = env.WORKER_ENABLED === "1";
   const scanMinutes = parseScanMinutes(env.WORKER_SCAN_MINUTES);
+  const interval = predictionIntervalMinutes(env);
   let refusal: WorkerConfig["refusal"] = null;
   if (mode !== "plan" && !enabled) {
     refusal = "disabled";
-  } else if (mode === "supervise" && enabled && (env.WORKER_SCAN_MINUTES == null || env.WORKER_SCAN_MINUTES.trim() === "")) {
-    refusal = "scan-unset";
-  } else if (mode === "supervise" && enabled && scanMinutes == null) {
-    refusal = "scan-invalid";
   }
-  return { mode, enabled, scanMinutes, refusal };
+  return {
+    mode,
+    enabled,
+    scanMinutes,
+    predictionIntervalMinutes: interval,
+    resultsEnabled: enabled && env.WORKER_RESULTS_ENABLED === "1",
+    refusal,
+  };
 }
 
 export function parseScanMinutes(value: string | undefined): number | null {

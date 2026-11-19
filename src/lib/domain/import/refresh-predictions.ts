@@ -13,7 +13,8 @@ import {
   type IngestionCounts,
   type PredictionRefreshPlan,
 } from "./incremental";
-import { acquireClaim } from "@/lib/domain/worker/claims";
+import { nextPredictionFetchAtAfterAttempt, predictionIntervalMinutes } from "@/lib/domain/import/prediction-schedule";
+import { acquireClaim, workerLockDirectory } from "@/lib/domain/worker/claims";
 import { ensureRoundFixtures } from "./ensure-fixtures";
 import { parseStoredComments, saveForumPost } from "./persist-import";
 
@@ -79,13 +80,14 @@ export async function notePredictionRefreshFailure(roundId: string, now: Date, m
   if (!round || round.closedAt) {
     return plan;
   }
+  const interval = predictionIntervalMinutes(process.env);
   try {
     await assertRoundMutable(roundId);
     await prisma.round.update({
       where: { id: roundId },
       data: {
         lastPredictionFetchAt: now,
-        nextPredictionFetchAt: plan.nextAt,
+        ...(interval == null ? {} : { nextPredictionFetchAt: nextPredictionFetchAtAfterAttempt(now, interval) }),
         predictionFetchSummary: message,
       },
     });
@@ -111,7 +113,7 @@ export async function refreshRoundPredictions(
   predictionRefreshLocks.add(roundId);
   let release: (() => Promise<void>) | null = null;
   try {
-    const claimDir = options?.claimDir ?? process.env.WORKER_LOCK_DIR;
+    const claimDir = options?.claimDir ?? workerLockDirectory();
     if (claimDir) {
       release = await acquireClaim(claimDir, `prediction-${roundId}`);
       if (!release) {
@@ -165,12 +167,14 @@ export async function refreshRoundPredictions(
     now,
   );
   await assertRoundMutable(roundId);
+  const interval = predictionIntervalMinutes(process.env);
+  const nextPredictionFetchAt = interval == null ? round.nextPredictionFetchAt : nextPredictionFetchAtAfterAttempt(now, interval);
   await prisma.round.update({
     where: { id: roundId },
     data: {
       fetchedAt: post.fetchedAt ?? now,
       lastPredictionFetchAt: now,
-      nextPredictionFetchAt: plan.nextAt,
+      nextPredictionFetchAt,
       predictionFetchSummary: summary,
     },
   });

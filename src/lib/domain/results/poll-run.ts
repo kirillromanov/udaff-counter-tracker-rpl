@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { acquireClaim, workerLockDirectory } from "@/lib/domain/worker/claims";
 import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
 import { assertRoundMutable, assertRoundMutableTx } from "@/lib/domain/rounds/round-lock-db";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
@@ -89,21 +90,14 @@ export interface RoundRefreshReport extends IngestReport {
  */
 export async function refreshRoundResults(roundId: string, options?: { automatic?: boolean }): Promise<RoundRefreshReport> {
   if (!beginRoundRefresh(roundId)) {
-    return {
-      busy: true,
-      recalculated: false,
-      calculation: "skipped",
-      included: 0,
-      total: 0,
-      confirmed: 0,
-      verified: 0,
-      conflicts: 0,
-      insufficient: 0,
-      updated: 0,
-      sources: [],
-    };
+    return busyResultReport();
   }
+  let release: (() => Promise<void>) | null = null;
   try {
+    release = await acquireClaim(workerLockDirectory(), `result-${roundId}`);
+    if (!release) {
+      return busyResultReport();
+    }
     await assertRoundMutable(roundId);
     const report = await ingestRoundResults(roundId);
     await assertRoundMutable(roundId);
@@ -139,7 +133,24 @@ export async function refreshRoundResults(roundId: string, options?: { automatic
     }
   } finally {
     finishRoundRefresh(roundId);
+    await release?.();
   }
+}
+
+function busyResultReport(): RoundRefreshReport {
+  return {
+    busy: true,
+    recalculated: false,
+    calculation: "skipped",
+    included: 0,
+    total: 0,
+    confirmed: 0,
+    verified: 0,
+    conflicts: 0,
+    insufficient: 0,
+    updated: 0,
+    sources: [],
+  };
 }
 
 async function persistFixtureCheck(

@@ -1,5 +1,17 @@
 import { mkdir, open, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+
+/** Same directory for the worker, the web process, and the CLI. Tests set WORKER_LOCK_DIR. */
+export function workerLockDirectory(env: Record<string, string | undefined> = process.env): string {
+  if (env.WORKER_LOCK_DIR) {
+    return env.WORKER_LOCK_DIR;
+  }
+  if (env.VITEST) {
+    return path.join(os.tmpdir(), `udaff-worker-locks-${process.pid}`);
+  }
+  return path.join(os.homedir(), "Library/Application Support/udaff-counter-tracker/worker-locks");
+}
 
 export interface ClaimFile {
   pid: number;

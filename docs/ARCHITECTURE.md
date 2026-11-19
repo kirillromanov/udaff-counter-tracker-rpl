@@ -52,7 +52,7 @@ Scoring functions do not import Prisma. Loaders and actions do.
 
 There is no timer, cron, or `setInterval` in the Next.js process. `pollDueRounds` and `refreshDuePredictions` run when an admin action or `scripts/poll-results.ts` / `scripts/refresh-predictions.ts` calls them.
 
-`scripts/worker.ts` is a separate process. It is disabled unless `WORKER_ENABLED=1`. The supervised loop also requires `WORKER_SCAN_MINUTES`. The web LaunchAgent does not start it. See [OPERATIONS.md](OPERATIONS.md) and [decisions/007-background-worker.md](decisions/007-background-worker.md).
+`scripts/worker.ts` is a separate process. It is disabled unless `WORKER_ENABLED=1`. Prediction timing is `nextPredictionFetchAt`. Result timing stays on the fixture clock and runs only when `WORKER_RESULTS_ENABLED=1` as well. The web LaunchAgent does not start it. See [OPERATIONS.md](OPERATIONS.md) and [decisions/007-background-worker.md](decisions/007-background-worker.md).
 
 Running the npm scripts by hand while the server is up is another writer. The worker's claim file stops a second worker. An admin request shares that claim only when the server process has the same `WORKER_LOCK_DIR`. Avoid two servers on port 3000; `scripts/dev-up.sh --service` leaves an already healthy server in place.
 

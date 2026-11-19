@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Foreground entry for the worker LaunchAgent.
 # This does not install dependencies, build the site, or enable processing.
-# WORKER_ENABLED and WORKER_SCAN_MINUTES come from the untracked .env.
+# WORKER_ENABLED, PREDICTION_REFRESH_INTERVAL_MINUTES, and WORKER_RESULTS_ENABLED come from the untracked .env.
 
 set -euo pipefail
 
