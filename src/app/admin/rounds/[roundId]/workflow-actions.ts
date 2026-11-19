@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
-import { closeProductionRound, reopenProductionRound, assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
+import { assertRoundMutable, closeProductionRound, reopenProductionRound, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
@@ -353,6 +353,21 @@ export async function calculateRoundAction(formData: FormData): Promise<void> {
     revalidatePath(`/admin/seasons/${round.seasonId}`);
     revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
     redirect(`/admin/rounds/${roundId}/results?calculated=${calculation.participants}&included=${calculation.included}&fixtureCount=${calculation.total}`);
+  } catch (error) {
+    fail(hubPath(roundId), error);
+  }
+}
+
+export async function startProductionAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    await startProductionRound(roundId);
+    refresh(roundId);
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    if (round) {
+      revalidateSeasonRoundList(round.seasonId);
+    }
+    redirect(`${hubPath(roundId)}?started=1`);
   } catch (error) {
     fail(hubPath(roundId), error);
   }

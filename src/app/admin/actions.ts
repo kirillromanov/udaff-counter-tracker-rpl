@@ -70,6 +70,7 @@ export async function createRoundAction(formData: FormData): Promise<void> {
         name: name || null,
         status: "open",
         standingRole: standingRoleForRound(number, checkpoint?.afterRoundNumber ?? null),
+        productionStartedAt: null,
       },
     });
     revalidatePath(path);

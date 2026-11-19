@@ -196,6 +196,7 @@ export default async function RoundImportPage({
     {
       standingRole: round.standingRole,
       hasForumUrl: Boolean(round.forumUrl),
+      productionStartedAt: round.productionStartedAt,
       fixtures: round.matches.map(
         (match): PollFixture => ({
           kickoffAt: match.kickoffAt,
@@ -226,7 +227,7 @@ export default async function RoundImportPage({
             <CrumbLink href={`/admin/rounds/${round.id}`}>{round.name ?? `Round ${round.number}`}</CrumbLink>
           </>
         }
-        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} productionStartedAt={round.productionStartedAt} standingRole={round.standingRole} />}
         description="Imported parser results for this round. Accepted slips can be scored later. Flagged and unmatched rows stay unresolved."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Parser review"
@@ -259,7 +260,11 @@ export default async function RoundImportPage({
             that list until you open them. This page does not write the trusted baseline or the confirmed season total.
           </Notice>
         ) : null}
-        {round.importNotes ? <Notice tone="warning">{round.importNotes}</Notice> : null}
+        {round.importNotes ? (
+          <Notice label={round.importNotes.startsWith("Fixture source:") ? "Fixture source" : undefined} tone={round.importNotes.startsWith("Fixture source:") ? "info" : "warning"}>
+            {round.importNotes}
+          </Notice>
+        ) : null}
         {summary.conflicts > 0 ? (
           <Notice tone="warning">
             {summary.conflicts} {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Duplicate lines and

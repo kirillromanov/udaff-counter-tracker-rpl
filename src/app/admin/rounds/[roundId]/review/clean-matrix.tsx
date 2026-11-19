@@ -11,6 +11,7 @@ import { saveMatrixAction, saveMatrixResultsAction } from "../actions";
 import { fieldClass, Section } from "../../../ui";
 import { CalculateIntermediateButton } from "../calculate-intermediate-button";
 import { MatchResultsRefresh } from "../match-results-refresh";
+import { cleanMatrixTotalLabel } from "@/lib/domain/review/operator-status";
 import { classifyIntermediateFixture, exclusionLabel, isFixtureExclusion, ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 import { slipsByParticipant } from "@/lib/domain/import/effective-slip";
 import { formatMoscow } from "@/lib/domain/time/moscow";
@@ -309,7 +310,14 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                       );
                     })}
                     <td className="px-2 py-2 text-right tabular-nums">
-                      {reviewOnly ? "review" : confirmed && counted === fixtures.length ? total : stored ? `stored ${stored.totalPoints}` : "preliminary"}
+                      {cleanMatrixTotalLabel({
+                        reviewOnly,
+                        confirmed,
+                        counted,
+                        fixtureCount: fixtures.length,
+                        storedTotal: stored?.totalPoints ?? null,
+                        calculatedTotal: total,
+                      })}
                     </td>
                   </tr>
                 );

@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { assertRoundMutable } from "@/lib/domain/rounds/round-lock-db";
 import { fetchForumPost } from "@/lib/domain/forum/fetch-post";
-import { parseFixtureSchedule } from "@/lib/domain/forum/parse-schedule";
 import type { ForumPost } from "@/lib/domain/forum/types";
+import { ensureRoundFixtures } from "./ensure-fixtures";
 import { ensureKnownIdentities } from "@/lib/domain/participants/registry";
 import { AUTHOR_NOTE } from "@/lib/domain/participants/resolve-author";
 import { syncRoundStandingRoles } from "@/lib/domain/standings/sync-round-roles";
@@ -28,32 +28,6 @@ function snapshotKey(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
-async function ensureFixtures(roundId: string, post: ForumPost): Promise<{ created: boolean; count: number; notes: string[] }> {
-  const schedule = parseFixtureSchedule(post.openingText);
-  const existing = await prisma.match.count({ where: { roundId } });
-  if (existing > 0) {
-    const notes = [...schedule.warnings];
-    if (schedule.fixtures.length > 0 && schedule.fixtures.length !== existing) {
-      notes.push(`Kept ${existing} fixtures already on the round`);
-    }
-    return { created: false, count: existing, notes };
-  }
-  if (schedule.fixtures.length === 0) {
-    return { created: false, count: 0, notes: schedule.warnings };
-  }
-  await prisma.match.createMany({
-    data: schedule.fixtures.map((fixture, index) => ({
-      roundId,
-      sortOrder: index + 1,
-      homeTeam: fixture.homeTeam,
-      awayTeam: fixture.awayTeam,
-      kickoffAt: fixture.kickoffAt,
-      isMatchOfTheRound: fixture.isMatchOfTheRound,
-    })),
-  });
-  return { created: true, count: schedule.fixtures.length, notes: schedule.warnings };
-}
-
 async function importOne(
   seasonId: string,
   source: RoundSource,
@@ -73,7 +47,6 @@ async function importOne(
           name: source.name,
           forumUrl: post.sourceUrl,
           fetchedAt: post.fetchedAt ?? new Date(),
-          sourceSnapshot: post.openingText,
           status: existing.status === "scored" ? existing.status : "imported",
         },
       })
@@ -84,12 +57,11 @@ async function importOne(
           name: source.name,
           forumUrl: post.sourceUrl,
           fetchedAt: post.fetchedAt ?? new Date(),
-          sourceSnapshot: post.openingText,
           status: "imported",
         },
       });
 
-  const fixtures = await ensureFixtures(round.id, post);
+  const fixtures = await ensureRoundFixtures(round.id, post);
   const comments = (await saveForumPost(round.id, post)).saved;
   await parseStoredComments(round.id);
   const [accepted, flaggedSets, unmatchedAuthors] = await Promise.all([
@@ -104,10 +76,12 @@ async function importOne(
     }),
   ]);
   const notes = [...fixtures.notes];
-  await prisma.round.update({
-    where: { id: round.id },
-    data: { importNotes: notes.length > 0 ? notes.join("\n") : null },
-  });
+  if (fixtures.created) {
+    await prisma.round.update({
+      where: { id: round.id },
+      data: { importNotes: notes.length > 0 ? notes.join("\n") : null },
+    });
+  }
 
   return {
     snapshot: post.openingText,

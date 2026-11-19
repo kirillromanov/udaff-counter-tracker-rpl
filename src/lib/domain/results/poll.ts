@@ -334,6 +334,7 @@ export function selectDueRoundIds(
     matches: readonly PollFixture[];
     standingRole?: string;
     closedAt?: Date | null;
+    productionStartedAt?: Date | null;
   }[],
   now: Date,
   intervals: PollIntervals,
@@ -345,6 +346,9 @@ export function selectDueRoundIds(
     }
     const forced = forceRoundId === round.id;
     if (round.standingRole === "archived" && !forced) {
+      return [];
+    }
+    if (round.productionStartedAt === null && round.standingRole !== "archived") {
       return [];
     }
     const plan = planRoundPoll(round.matches, now, intervals);

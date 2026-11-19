@@ -64,6 +64,20 @@ function stripTags(value: string): string {
     .trim();
 }
 
+/** Article text. Block endings become line breaks so a heading and the schedule stay separate. */
+function articlePlainText(value: string): string {
+  return decodeHtml(
+    value
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article|header)>/gi, "\n")
+      .replace(/<[^>]+>/g, ""),
+  )
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function extractTitle(html: string): string {
   const headline = html.match(/class="post-headline"[\s\S]*?<h1[^>]*>([\s\S]*?)<\/h1>/i);
   if (headline?.[1]) {
@@ -92,7 +106,7 @@ export function extractOpeningPost(html: string): string {
   }
   const rest = html.slice(start);
   const end = rest.search(/<li\b[^>]*\bid="comment-\d+"/i);
-  return stripTags(end >= 0 ? rest.slice(0, end) : rest.slice(0, 80_000));
+  return articlePlainText(end >= 0 ? rest.slice(0, end) : rest.slice(0, 80_000));
 }
 
 /** WordPress comment-page links for this post, excluding the page that was already fetched. */

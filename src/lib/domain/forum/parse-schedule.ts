@@ -31,6 +31,44 @@ function tooWordy(value: string): boolean {
   return words.length === 0 || words.length > 4;
 }
 
+const FIXTURE_LINE =
+  /^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\s+(\d{1,2}):(\d{2})\s*-?\s*(.+?)\s+-\s+(.+?)\s*$/u;
+
+/** One schedule line, using the same team, date, and Moscow kickoff rules as the list parser. */
+export function readFixtureLine(raw: string, defaultYear = 2026): ScheduledFixture | null {
+  const line = normalizeCommentText(raw);
+  const match = line.match(FIXTURE_LINE);
+  if (!match) {
+    return null;
+  }
+  const home = cleanSide(match[6] ?? "");
+  const away = cleanSide(match[7] ?? "");
+  if (tooWordy(home.name) || tooWordy(away.name)) {
+    return null;
+  }
+  if (/\d/u.test(home.name) || /\d/u.test(away.name)) {
+    return null;
+  }
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = match[3] ? Number(match[3]) : defaultYear;
+  const kickoffAt = moscowWallClockToUtc(year, month, day, Number(match[4]), Number(match[5]));
+  if (Number.isNaN(kickoffAt.getTime())) {
+    return null;
+  }
+  const key = `${normalizeTeamName(home.name)}|${normalizeTeamName(away.name)}`;
+  if (!key || key === "|") {
+    return null;
+  }
+  return {
+    kickoffAt,
+    homeTeam: home.name,
+    awayTeam: away.name,
+    isMatchOfTheRound: home.matchOfTheRound || away.matchOfTheRound,
+    rawLine: raw.trim(),
+  };
+}
+
 /**
  * Read the dated fixture list from an opening post.
  * Lines look like `26.07.2026 19:30 — Рубин — Краснодар (МТ)` or
@@ -41,46 +79,18 @@ export function parseFixtureSchedule(text: string, defaultYear = 2026): FixtureS
   const byPair = new Map<string, ScheduledFixture>();
 
   for (const raw of text.split("\n")) {
-    const line = normalizeCommentText(raw);
-    const match = line.match(
-      /^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\s+(\d{1,2}):(\d{2})\s*-?\s*(.+?)\s+-\s+(.+?)\s*$/u,
-    );
-    if (!match) {
+    const next = readFixtureLine(raw, defaultYear);
+    if (!next) {
       continue;
     }
-    const home = cleanSide(match[6] ?? "");
-    const away = cleanSide(match[7] ?? "");
-    if (tooWordy(home.name) || tooWordy(away.name)) {
-      continue;
-    }
-    if (/\d/u.test(home.name) || /\d/u.test(away.name)) {
-      continue;
-    }
-    const day = Number(match[1]);
-    const month = Number(match[2]);
-    const year = match[3] ? Number(match[3]) : defaultYear;
-    const kickoffAt = moscowWallClockToUtc(year, month, day, Number(match[4]), Number(match[5]));
-    if (Number.isNaN(kickoffAt.getTime())) {
-      continue;
-    }
-    const key = `${normalizeTeamName(home.name)}|${normalizeTeamName(away.name)}`;
-    if (!key || key === "|") {
-      continue;
-    }
-    const next: ScheduledFixture = {
-      kickoffAt,
-      homeTeam: home.name,
-      awayTeam: away.name,
-      isMatchOfTheRound: home.matchOfTheRound || away.matchOfTheRound,
-      rawLine: raw.trim(),
-    };
+    const key = `${normalizeTeamName(next.homeTeam)}|${normalizeTeamName(next.awayTeam)}`;
     const current = byPair.get(key);
     if (!current) {
       byPair.set(key, next);
       continue;
     }
     const currentHasYear = /\d{4}/u.test(current.rawLine);
-    const nextHasYear = Boolean(match[3]);
+    const nextHasYear = /\d{1,2}\.\d{1,2}\.\d{4}/u.test(next.rawLine);
     byPair.set(key, {
       ...(nextHasYear || !currentHasYear ? next : current),
       isMatchOfTheRound: current.isMatchOfTheRound || next.isMatchOfTheRound,

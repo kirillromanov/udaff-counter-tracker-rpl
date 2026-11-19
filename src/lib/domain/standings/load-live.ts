@@ -12,7 +12,7 @@ import {
 } from "@/lib/domain/scoring/live-score";
 import { countsAsConfirmedRound } from "./intermediate";
 import { slipsByParticipant, type StoredSlipSet } from "@/lib/domain/import/effective-slip";
-import { countsTowardProduction } from "./round-role";
+import { countsTowardProduction, OPERATIONAL_ROUND } from "./round-role";
 
 function storedSlip(set: {
   id: string;
@@ -130,8 +130,14 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
   const archivedRounds: { id: string; number: number; name: string | null }[] = [];
   const verifiedUnstored: { number: number; name: string | null }[] = [];
   const seasonRounds = rounds.flatMap((round) => {
-    if (!countsTowardProduction(round.standingRole, round.number, baselineAfterRound)) {
-      archivedRounds.push({ id: round.id, number: round.number, name: round.name });
+    if (!countsTowardProduction(round.standingRole, round.number, baselineAfterRound, round.productionStartedAt)) {
+      const preparing =
+        round.standingRole === OPERATIONAL_ROUND &&
+        round.productionStartedAt == null &&
+        (baselineAfterRound == null || round.number > baselineAfterRound);
+      if (!preparing) {
+        archivedRounds.push({ id: round.id, number: round.number, name: round.name });
+      }
       return [];
     }
     const fixtures = round.matches.map(toFixture);

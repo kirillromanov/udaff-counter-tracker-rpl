@@ -290,6 +290,9 @@ export async function syncSeasonPollState(
     if (round.closedAt || (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id))) {
       continue;
     }
+    if (round.standingRole !== ARCHIVED_ROUND && round.productionStartedAt == null) {
+      continue;
+    }
     for (const match of round.matches) {
       await persistFixtureCheck(match, checkedAt, false);
     }
@@ -337,6 +340,9 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
     if (round.closedAt) {
       continue;
     }
+    if (round.standingRole !== ARCHIVED_ROUND && round.productionStartedAt == null) {
+      continue;
+    }
     if (round.standingRole === ARCHIVED_ROUND && round.id !== options?.forceRoundId) {
       continue;
     }
@@ -366,6 +372,7 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
         nextPollAt: round.nextPollAt,
         standingRole: round.standingRole,
         closedAt: round.closedAt,
+        productionStartedAt: round.productionStartedAt,
         matches: round.matches.map(toPollFixture),
       })),
       now,

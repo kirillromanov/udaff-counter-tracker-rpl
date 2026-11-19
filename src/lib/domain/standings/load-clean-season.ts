@@ -62,7 +62,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
   const liveRounds: { roundId: string; order: number; scores: { participantId: string; points: number }[] }[] = [];
 
   for (const round of season.rounds) {
-    if (!countsTowardProduction(round.standingRole, round.number, cutoff)) {
+    if (!countsTowardProduction(round.standingRole, round.number, cutoff, round.productionStartedAt)) {
       continue;
     }
     const fixtures = round.matches.map(toFixture);

@@ -118,7 +118,7 @@ export default async function ExportPage({ params }: { params: Promise<{ roundId
             </CrumbLink>
           </>
         }
-        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} productionStartedAt={round.productionStartedAt} standingRole={round.standingRole} />}
         description="Plain text for a forum post. Copy a block and paste it as-is."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Export"

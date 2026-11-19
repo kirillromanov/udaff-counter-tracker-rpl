@@ -4,6 +4,7 @@ import { selectDuePredictionRoundIds } from "@/lib/domain/import/incremental";
 import { selectDueRoundIds, type PollFixture } from "@/lib/domain/results/poll";
 import {
   CLOSED_ROUND_MESSAGE,
+  PREPARING_LABEL,
   RoundClosedError,
   appendClosureLog,
   assertOpen,
@@ -11,6 +12,7 @@ import {
   closureWarning,
   planClose,
   planReopen,
+  planStart,
   productionLockLabel,
   writableRoundIds,
 } from "@/lib/domain/rounds/round-lock";
@@ -92,14 +94,25 @@ describe("round lock transitions", () => {
 
   it("labels a closed production round Closed without changing its standing contribution", () => {
     expect(productionLockLabel("operational", null)).toBe("Production");
-    expect(productionLockLabel("operational", at)).toBe("Closed");
-    expect(productionLockLabel("archived", null)).toBe("Archived reference");
+    expect(productionLockLabel("operational", null, null)).toBe(PREPARING_LABEL);
+    expect(productionLockLabel("operational", null, at)).toBe("Production");
+    expect(productionLockLabel("operational", at, at)).toBe("Closed");
+    expect(productionLockLabel("operational", at, null)).toBe("Closed");
+    expect(productionLockLabel("archived", null, null)).toBe("Archived reference");
     expect(productionLockLabel("archived", at)).toBe("Archived reference");
     expect(countsTowardProduction("operational", 14, 13)).toBe(true);
+    expect(countsTowardProduction("operational", 15, 13, null)).toBe(false);
+    expect(countsTowardProduction("operational", 15, 13, at)).toBe(true);
 
     const seasonPage = readFileSync("src/app/admin/seasons/[seasonId]/page.tsx", "utf8");
-    expect(seasonPage).toContain("productionLockLabel(round.standingRole, round.closedAt)");
+    expect(seasonPage).toContain("productionLockLabel(round.standingRole, round.closedAt, round.productionStartedAt)");
     expect(seasonPage).toContain(">Status<");
+    expect(seasonPage).toContain(">Calculation<");
+    const reviewPage = readFileSync("src/app/admin/rounds/[roundId]/review/page.tsx", "utf8");
+    expect(reviewPage).toContain("productionStartedAt={round.productionStartedAt}");
+    expect(readFileSync("src/app/admin/rounds/[roundId]/round-lock-banner.tsx", "utf8")).toContain(
+      "productionLockLabel(standingRole, closedAt, productionStartedAt)",
+    );
     expect(seasonPage).not.toContain("standingRoleLabel");
 
     const actions = readFileSync("src/app/admin/rounds/[roundId]/workflow-actions.ts", "utf8");
@@ -112,20 +125,34 @@ describe("round lock transitions", () => {
 
   it("does not schedule or force a closed round, and reopening keeps the stored retry time", () => {
     const rounds = [
-      { id: "open", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", matches: [fixture()] },
-      { id: "closed", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", closedAt: at, matches: [fixture()] },
+      { id: "open", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", productionStartedAt: at, matches: [fixture()] },
+      { id: "closed", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", closedAt: at, productionStartedAt: at, matches: [fixture()] },
+      { id: "preparing", nextPollAt: new Date("2026-11-08T17:00:00.000Z"), standingRole: "operational", productionStartedAt: null, matches: [fixture()] },
     ];
     expect(selectDueRoundIds(rounds, new Date("2026-11-08T18:00:00.000Z"), { regularMinutes: 60, liveMinutes: 15 })).toEqual(["open"]);
     expect(selectDueRoundIds(rounds, new Date("2026-11-08T18:00:00.000Z"), { regularMinutes: 60, liveMinutes: 15 }, "closed")).toEqual(["open"]);
+    expect(selectDueRoundIds(rounds, new Date("2026-11-08T18:00:00.000Z"), { regularMinutes: 60, liveMinutes: 15 }, "preparing")).toEqual(["open"]);
     expect(
       selectDuePredictionRoundIds(
         [
-          { id: "open", standingRole: "operational", forumUrl: "https://example.test/open", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), matches: [fixture()] },
-          { id: "closed", standingRole: "operational", forumUrl: "https://example.test/closed", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), closedAt: at, matches: [fixture()] },
+          { id: "open", standingRole: "operational", forumUrl: "https://example.test/open", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), productionStartedAt: at, matches: [fixture()] },
+          { id: "closed", standingRole: "operational", forumUrl: "https://example.test/closed", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), closedAt: at, productionStartedAt: at, matches: [fixture()] },
+          { id: "preparing", standingRole: "operational", forumUrl: "https://example.test/preparing", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), productionStartedAt: null, matches: [fixture()] },
         ],
         new Date("2026-11-08T18:00:00.000Z"),
         { regularMinutes: 60, liveMinutes: 15 },
         "closed",
+      ),
+    ).toEqual(["open"]);
+    expect(
+      selectDuePredictionRoundIds(
+        [
+          { id: "open", standingRole: "operational", forumUrl: "https://example.test/open", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), productionStartedAt: at, matches: [fixture()] },
+          { id: "preparing", standingRole: "operational", forumUrl: "https://example.test/preparing", nextPredictionFetchAt: new Date("2026-11-08T17:00:00.000Z"), productionStartedAt: null, matches: [fixture()] },
+        ],
+        new Date("2026-11-08T18:00:00.000Z"),
+        { regularMinutes: 60, liveMinutes: 15 },
+        "preparing",
       ),
     ).toEqual(["open"]);
     const attempts = 2;
@@ -134,5 +161,30 @@ describe("round lock transitions", () => {
     expect(reopened.changed).toBe(true);
     expect(attempts).toBe(2);
     expect(nextPollAt?.toISOString()).toBe("2026-11-08T17:00:00.000Z");
+    const reopenedState = {
+      standingRole: "operational",
+      closedAt: null,
+      closureLog: reopened.closureLog,
+      productionStartedAt: at,
+    };
+    expect(reopenedState.productionStartedAt).toBe(at);
+    expect(planStart({
+      standingRole: "operational",
+      closedAt: null,
+      closureLog: "[]",
+      productionStartedAt: null,
+      forumUrl: "https://example.test/16",
+      fixtureCount: 1,
+      matchOfTheRoundCount: 0,
+    }, at)).toMatchObject({ changed: true, productionStartedAt: at });
+    expect(planStart({
+      standingRole: "operational",
+      closedAt: null,
+      closureLog: appendClosureLog("[]", "started", at),
+      productionStartedAt: at,
+      forumUrl: "https://example.test/16",
+      fixtureCount: 1,
+      matchOfTheRoundCount: 1,
+    }, new Date("2026-11-08T21:00:00.000Z")).changed).toBe(false);
   });
 });

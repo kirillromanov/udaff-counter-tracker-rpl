@@ -95,7 +95,7 @@ export default async function RoundResultsPage({
             : "Live points follow the fixtures that have a result. A stored production total is written only after every fixture is verified."
         }
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
-        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} productionStartedAt={round.productionStartedAt} standingRole={round.standingRole} />}
         title="Round results"
       />
       <PageBody>

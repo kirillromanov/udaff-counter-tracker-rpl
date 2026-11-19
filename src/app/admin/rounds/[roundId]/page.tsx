@@ -36,7 +36,7 @@ export default async function RoundPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; closed?: string; reopened?: string }>;
+  searchParams: Promise<{ error?: string; closed?: string; reopened?: string; started?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -55,6 +55,7 @@ export default async function RoundPage({
     notFound();
   }
 
+  const preparing = round.standingRole !== ARCHIVED_ROUND && round.productionStartedAt == null && !isRoundClosed(round.closedAt);
   const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
   const scoredFixtures = round.matches.filter(
     (match) => match.actualHomeGoals != null && match.actualAwayGoals != null,
@@ -78,7 +79,7 @@ export default async function RoundPage({
         badges={
           <>
             <StatusBadge status={round.status} />
-            <RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />
+            <RoundLockBadge closedAt={round.closedAt} productionStartedAt={round.productionStartedAt} standingRole={round.standingRole} />
           </>
         }
         crumbs={
@@ -91,15 +92,27 @@ export default async function RoundPage({
         description={
           archived
             ? "Archived reference round. Use it for parser checks, source checks, and debugging. Its points stay out of production standings."
-            : "Production round. A verified calculation is added on top of the trusted baseline."
+            : preparing
+              ? "Preparation. Load the source and fixtures, then start production. Automatic checks stay off, and this round is not in the season total yet."
+              : "Production round. A verified calculation is added on top of the trusted baseline."
         }
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title={`${round.number}. ${round.name ?? "Round"}`}
       />
       <PageBody>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
+        {query.started ? (
+          <Notice tone="success">
+            Production started. Nothing was fetched or calculated. The existing scheduler can include this round on its next cycle.
+          </Notice>
+        ) : null}
         {query.closed ? <Notice tone="success">Round closed. Saved data is unchanged.</Notice> : null}
         {query.reopened ? <Notice tone="success">Production reopened. Nothing was fetched or recalculated.</Notice> : null}
+        {round.importNotes?.startsWith("Fixture source:") && round.status !== "imported" ? (
+          <Notice label="Fixture source" tone="info">
+            {round.importNotes}
+          </Notice>
+        ) : null}
         <RoundLockPanel roundId={round.id} />
         {archived ? (
           <Notice label="Archived reference" tone="info">

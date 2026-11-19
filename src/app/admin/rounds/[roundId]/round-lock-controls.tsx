@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { hasUnsavedFieldEdits, snapshotFormControl, type FieldSnapshot } from "@/lib/domain/results/refresh-status";
 import { buttonClass } from "../../ui";
-import { closeRoundAction, reopenRoundAction } from "./workflow-actions";
+import { closeRoundAction, reopenRoundAction, startProductionAction } from "./workflow-actions";
+
+const START_TEXT = [
+  "Start production?",
+  "This round becomes eligible for the existing automatic comment refresh and result checks.",
+  "Nothing is fetched, parsed, or calculated now.",
+  "The next check follows the current kickoff schedule and retry rules.",
+  "Missing predictions do not need to be filled in.",
+].join("\n\n");
 
 const CLOSE_TEXT = [
   "Automatic and manual imports and result refreshes will stop.",
@@ -16,6 +24,7 @@ const REOPEN_TEXT = [
   "Editing and normal operational scheduling are restored.",
   "This does not fetch sources or recalculate scores.",
   "Retry counters stay as they are.",
+  "The round stays in production. Start production is not required again.",
 ].join("\n\n");
 
 function unsavedEdits(): boolean {
@@ -30,16 +39,16 @@ function unsavedEdits(): boolean {
 
 export function RoundLockControls({
   roundId,
-  closed,
+  mode,
   warning,
 }: {
   roundId: string;
-  closed: boolean;
+  mode: "start" | "close" | "reopen";
   warning: string | null;
 }) {
   const [blocked, setBlocked] = useState<string | null>(null);
 
-  if (closed) {
+  if (mode === "reopen") {
     return (
       <form
         action={reopenRoundAction}
@@ -57,24 +66,29 @@ export function RoundLockControls({
     );
   }
 
+  const starting = mode === "start";
   return (
     <form
-      action={closeRoundAction}
+      action={starting ? startProductionAction : closeRoundAction}
       onSubmit={(event) => {
         if (unsavedEdits()) {
           event.preventDefault();
-          setBlocked("Save or cancel the open edits before closing this round.");
+          setBlocked(
+            starting
+              ? "Save or cancel the open edits before starting production."
+              : "Save or cancel the open edits before closing this round.",
+          );
           return;
         }
-        const message = warning ? `${CLOSE_TEXT}\n\n${warning}` : CLOSE_TEXT;
-        if (!window.confirm(`Close round?\n\n${message}`)) {
+        const message = starting ? START_TEXT : warning ? `Close round?\n\n${CLOSE_TEXT}\n\n${warning}` : `Close round?\n\n${CLOSE_TEXT}`;
+        if (!window.confirm(message)) {
           event.preventDefault();
         }
       }}
     >
       <input name="roundId" type="hidden" value={roundId} />
-      <button className={buttonClass("secondary")} type="submit">
-        Close round
+      <button className={buttonClass(starting ? "primary" : "secondary")} type="submit">
+        {starting ? "Start production" : "Close round"}
       </button>
       {blocked ? <p className="mt-2 text-sm text-amber-800">{blocked}</p> : null}
     </form>

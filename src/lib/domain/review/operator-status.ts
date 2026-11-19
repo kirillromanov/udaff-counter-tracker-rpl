@@ -167,6 +167,30 @@ export function rowInReconciliationView(
   return row.status !== "exact";
 }
 
+/**
+ * The clean-matrix total. "preliminary" means no stored round total and the
+ * fixtures are not all verified. It does not mean the slip failed to parse.
+ */
+export function cleanMatrixTotalLabel(input: {
+  reviewOnly: boolean;
+  confirmed: boolean;
+  counted: number;
+  fixtureCount: number;
+  storedTotal: number | null;
+  calculatedTotal: number;
+}): string {
+  if (input.reviewOnly) {
+    return "review";
+  }
+  if (input.confirmed && input.counted === input.fixtureCount) {
+    return String(input.calculatedTotal);
+  }
+  if (input.storedTotal != null) {
+    return `stored ${input.storedTotal}`;
+  }
+  return "preliminary";
+}
+
 export function roundLayerLabel(
   status: string,
   scoredParticipants: number,

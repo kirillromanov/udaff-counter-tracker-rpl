@@ -144,7 +144,7 @@ export default async function FixturesPage({
         }
         description="One match can be the official Match of the Round. Fetched scores stay empty until a source reports the match finished."
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
-        badges={<RoundLockBadge closedAt={round.closedAt} standingRole={round.standingRole} />}
+        badges={<RoundLockBadge closedAt={round.closedAt} productionStartedAt={round.productionStartedAt} standingRole={round.standingRole} />}
         title="Fixtures and results"
       />
       <PageBody>

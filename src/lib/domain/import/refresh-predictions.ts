@@ -13,6 +13,7 @@ import {
   type IngestionCounts,
   type PredictionRefreshPlan,
 } from "./incremental";
+import { ensureRoundFixtures } from "./ensure-fixtures";
 import { parseStoredComments, saveForumPost } from "./persist-import";
 
 export interface PredictionRefreshReport {
@@ -72,6 +73,7 @@ export async function refreshRoundPredictions(
   const now = options?.now ?? new Date();
   const load = options?.fetchPost ?? fetchForumPost;
   const post = await load(url);
+  const fixtures = await ensureRoundFixtures(roundId, post);
   const saved = await saveForumPost(roundId, post);
   await parseStoredComments(roundId);
   const comments = await prisma.forumComment.findMany({
@@ -85,8 +87,24 @@ export async function refreshRoundPredictions(
     ),
   );
   const summary = formatIngestionCounts(counts);
+  const scheduled = fixtures.createdFixtures.map((fixture) =>
+    toPollFixture({
+      kickoffAt: fixture.kickoffAt,
+      actualHomeGoals: null,
+      actualAwayGoals: null,
+      resultState: "open",
+      resultResolution: "",
+      resultConflict: false,
+      conflictAcknowledgedAt: null,
+    }),
+  );
   const plan = planPredictionRefresh(
-    { standingRole: round.standingRole, hasForumUrl: true, fixtures: round.matches.map(toPollFixture) },
+    {
+      standingRole: round.standingRole,
+      hasForumUrl: true,
+      productionStartedAt: round.productionStartedAt,
+      fixtures: fixtures.created ? scheduled : round.matches.map(toPollFixture),
+    },
     now,
   );
   await assertRoundMutable(roundId);
@@ -124,6 +142,7 @@ export async function refreshDuePredictions(options?: {
       forumUrl: round.forumUrl,
       nextPredictionFetchAt: round.nextPredictionFetchAt,
       closedAt: round.closedAt,
+      productionStartedAt: round.productionStartedAt,
       matches: round.matches.map(toPollFixture),
     })),
     now,
@@ -144,6 +163,7 @@ export async function refreshDuePredictions(options?: {
         {
           standingRole: round?.standingRole ?? "operational",
           hasForumUrl: true,
+          productionStartedAt: round?.productionStartedAt,
           fixtures: (round?.matches ?? []).map(toPollFixture),
         },
         now,

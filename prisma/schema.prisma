@@ -35,10 +35,13 @@ model Round {
   /// Plain text of the opening post. Comments keep their own raw HTML.
   sourceSnapshot String?
   /// Schedule notes from the last import, such as a missing Match of the Round.
+  /// A new fixture bootstrap also records source, URL, time, and fallback reason here.
   importNotes String?
+  /// Calculation completeness for the Layer label: draft, open, partial, scored, imported, or stale.
+  /// This is not production activation. An open unscored round can already be in production.
   status    String   @default("draft")
   /// archived: baseline source kept for parser and source checks. Excluded from production standings.
-  /// operational: active production round. Finalized points are added on top of the trusted baseline.
+  /// operational: production role. Activation is productionStartedAt, not this field.
   standingRole          String    @default("operational")
   /// scheduled, live, or finalized. Finalized rounds are left out of the next poll.
   pollStatus            String    @default("scheduled")
@@ -53,10 +56,15 @@ model Round {
   nextPredictionFetchAt DateTime?
   /// Counts from the last prediction fetch: new, updated, duplicate, ignored, flagged.
   predictionFetchSummary String?
-  /// Operator lock for a production round. Null means editing and scheduled jobs are allowed.
+  /// Operator lock for a production round. Null means editing is allowed. This is not activation.
+  /// A closed activated round still counts in season totals.
   closedAt   DateTime?
-  /// Close and reopen events: [{action, at}]. This app has no signed-in actor.
+  /// Close, reopen, and start events: [{action, at}]. This app has no signed-in actor.
   closureLog String    @default("[]")
+  /// Null means preparation: manual review is allowed and automatic jobs skip the round.
+  /// Set when an operator starts production. Existing operational rounds are backfilled to createdAt.
+  /// Reopening does not clear this, and there is no return-to-preparation action.
+  productionStartedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

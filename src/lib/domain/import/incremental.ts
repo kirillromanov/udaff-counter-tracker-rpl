@@ -128,7 +128,12 @@ export function ingestionStatusLabel(status: string): string {
  * It stops when result polling would stop. Archived rounds stay manual.
  */
 export function planPredictionRefresh(
-  input: { standingRole: string; hasForumUrl: boolean; fixtures: readonly PollFixture[] },
+  input: {
+    standingRole: string;
+    hasForumUrl: boolean;
+    fixtures: readonly PollFixture[];
+    productionStartedAt?: Date | null;
+  },
   now: Date,
   intervals: PollIntervals = pollIntervals(),
 ): PredictionRefreshPlan {
@@ -137,6 +142,13 @@ export function planPredictionRefresh(
       active: false,
       nextAt: null,
       reason: "Archived round. Use Refresh predictions on this page for a reference fetch.",
+    };
+  }
+  if (input.productionStartedAt === null) {
+    return {
+      active: false,
+      nextAt: null,
+      reason: "Preparation. Automatic comment and result checks start after Start production.",
     };
   }
   if (!input.hasForumUrl) {
@@ -181,6 +193,7 @@ export function selectDuePredictionRoundIds(
     nextPredictionFetchAt: Date | null;
     matches: readonly PollFixture[];
     closedAt?: Date | null;
+    productionStartedAt?: Date | null;
   }[],
   now: Date,
   intervals: PollIntervals = pollIntervals(),
@@ -191,7 +204,12 @@ export function selectDuePredictionRoundIds(
       return [];
     }
     const plan = planPredictionRefresh(
-      { standingRole: round.standingRole, hasForumUrl: Boolean(round.forumUrl), fixtures: round.matches },
+      {
+        standingRole: round.standingRole,
+        hasForumUrl: Boolean(round.forumUrl),
+        productionStartedAt: round.productionStartedAt,
+        fixtures: round.matches,
+      },
       now,
       intervals,
     );

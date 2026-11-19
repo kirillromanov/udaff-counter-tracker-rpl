@@ -222,6 +222,7 @@ function RoundGroup({
     status: string;
     standingRole: string;
     closedAt: Date | null;
+    productionStartedAt: Date | null;
     _count: { roundScores: number; matches: number };
   }[];
   acceptedByRound: Map<string, number>;
@@ -243,7 +244,7 @@ function RoundGroup({
               <tr className="border-b border-zinc-200 text-left text-xs tracking-wide text-zinc-500 uppercase">
                 <th className="py-2 pr-3 font-medium">Round</th>
                 <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2 pr-3 font-medium">Layer</th>
+                <th className="py-2 pr-3 font-medium">Calculation</th>
                 <th className="py-2 pr-3 font-medium">Fixtures</th>
                 <th className="py-2 pr-3 font-medium">Accepted</th>
                 <th className="py-2 pr-3 font-medium">Flagged</th>
@@ -254,7 +255,7 @@ function RoundGroup({
               {rounds.map((round) => {
                 const layer = roundLayerLabel(round.status, round._count.roundScores, round.standingRole);
                 const flagged = flaggedByRound.get(round.id) ?? 0;
-                const status = productionLockLabel(round.standingRole, round.closedAt);
+                const status = productionLockLabel(round.standingRole, round.closedAt, round.productionStartedAt);
                 return (
                   <tr className="border-b border-zinc-100 last:border-0" key={round.id}>
                     <td className="py-2.5 pr-3">
@@ -263,7 +264,7 @@ function RoundGroup({
                       </Link>
                     </td>
                     <td className="py-2.5 pr-3">
-                      <Badge tone={status === "Archived reference" ? "neutral" : status === "Closed" ? "warning" : "info"}>{status}</Badge>
+                      <Badge tone={status === "Closed" ? "warning" : status === "Production" ? "info" : "neutral"}>{status}</Badge>
                     </td>
                     <td className="py-2.5 pr-3">
                       <Badge tone={layer === "Confirmed round" || layer === "Reference total" ? "info" : layer === "Imported raw" ? "warning" : "neutral"}>{layer}</Badge>

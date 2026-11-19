@@ -100,7 +100,11 @@ export async function rebuildSeasonSnapshots(seasonId: string, throughRoundNumbe
     include: { rows: true },
   });
   const operational = rounds.filter(
-    (round) => round.standingRole === OPERATIONAL_ROUND && countsAsConfirmedRound(round.status) && round.roundScores.length > 0,
+    (round) =>
+      round.standingRole === OPERATIONAL_ROUND &&
+      round.productionStartedAt != null &&
+      countsAsConfirmedRound(round.status) &&
+      round.roundScores.length > 0,
   );
   const affected = operational.filter((round) => round.number >= throughRoundNumber);
   const participants = [...names.entries()].map(([id, name]) => ({ id, name }));
