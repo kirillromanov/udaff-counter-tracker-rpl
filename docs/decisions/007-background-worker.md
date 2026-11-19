@@ -6,6 +6,6 @@ Recorded 2026-11-20. The Next.js process still has no timer. `scripts/worker.ts`
 
 The worker calls `refreshRoundPredictions` for rounds `selectDuePredictionRoundIds` already selects. Result checks call `refreshRoundResults` only when `WORKER_RESULTS_ENABLED` is also `1`. That flag is off. `WORKER_ENABLED` alone does not fetch results or store scores.
 
-`nextPredictionFetchAt` is the prediction clock. A successful or failed attempt moves it forward by `PREDICTION_REFRESH_INTERVAL_MINUTES` when that variable is set. There is no default. The proposed value is 60 and is not active. Result attempts stay on the fixture fields: kickoff plus 120 minutes, then 5 minutes, at most 10. A prediction refresh does not change those fields.
+`nextPredictionFetchAt` is the prediction clock. A successful or failed attempt moves it forward by `PREDICTION_REFRESH_INTERVAL_MINUTES` when that variable is set. There is no default. The accepted initial value is 60 minutes. It is not configured, and setting it later does not by itself replace a time already stored. Result attempts stay on the fixture fields: kickoff plus 120 minutes, then 5 minutes, at most 10. A prediction refresh does not change those fields.
 
-The same claim directory is `WORKER_LOCK_DIR`, or `~/Library/Application Support/udaff-counter-tracker/worker-locks` when that variable is unset. The web process uses it only after it is updated and restarted. Do not enable the worker before that.
+The same claim directory is `WORKER_LOCK_DIR`. The live web process sets it to the absolute path of `~/Library/Application Support/udaff-counter-tracker/worker-locks`. Do not enable the worker while post-kickoff acceptance is undecided.
