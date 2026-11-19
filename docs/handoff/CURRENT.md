@@ -75,7 +75,7 @@ Run on 2026-11-19 in a worktree of `1df09addd8d3f1c9323f4c914d6655dfb43646d6`, w
 
 `npm audit` went from 11 findings (8 moderate, 3 high) to 10 (7 moderate, 3 high). The `next` finding is gone. Prisma and `minimatch` remain, as [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md) records.
 
-The running checkout is still the previous build until the LaunchAgent is stopped, the checkout is fast-forwarded, dependencies are installed, and a new production build is started with the loopback command.
+The serving checkout was then fast-forwarded to the merge of this change, rebuilt while the agent was stopped, and started again through the same LaunchAgent. The running process is `next-server` 16.4.5, build `IBgEizLdzmK0LBx66x82Q`, listening on `127.0.0.1:3000`.
 
 ## Local bind
 
@@ -84,7 +84,7 @@ The running checkout is still the previous build until the LaunchAgent is stoppe
 ## Open
 
 - Prisma 6 remains on a high advisory whose npm fix is Prisma 7. `minimatch` remains through TypeScript ESLint. Neither was upgraded here.
-- This commit updates the lockfile. It does not by itself prove the running process has been rebuilt.
+- The running process was rebuilt on 16.4.5 after publication. Confirm a later checkout before assuming that build is still the one being served.
 - No authentication and no TLS. The supervised start command is `npm run start -- --hostname 127.0.0.1 --port 3000`. Confirm the live socket after the LaunchAgent restart. The source change does not prove the bind by itself.
 - No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
