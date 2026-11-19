@@ -13,7 +13,16 @@ This application is a local admin with no authentication. That is the current im
 
 ## Unverified or open
 
-- `next` and `eslint-config-next` are pinned at 16.4.5. That is the first release after the vulnerable range `<=16.4.4`. A clean `next build` of 16.4.5 completed on the first attempt. The old `SecurityFatalError` was Next's upgrade nudge for an affected install, not a patch. See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for the advisories and the findings that remain.
+- `next` and `eslint-config-next` are pinned at 16.4.5. That closes the Next.js advisories whose range ended at 16.4.4. It does not close the two remaining `npm audit` groups below.
+
+## Remaining audit findings
+
+Reproduced from the lockfile on `main` with `npm ci` and `npm audit`. Ten reported entries are two vulnerabilities. Neither was changed in that review.
+
+- [GHSA-ggr8-5vv4-36mx](https://github.com/advisories/GHSA-ggr8-5vv4-36mx) is one high finding reported three times: `deepmerge-ts` 7.1.5, `@prisma/config` 6.19.3, and the direct dev dependency `prisma` 6.19.3. `deepmerge()` can throw `RangeError` when two object graphs cycle through the same key. Plain JSON cannot form that cycle. `@prisma/config` passes `deepmerge` to its config loader. This repository has no `prisma.config.ts`. Application code uses `@prisma/client`, which does not reference `deepmerge`. Forum text is not passed to that loader. The latest Prisma 6 release is still 6.19.3, inside the affected range. The patched library is `deepmerge-ts` 8.0.0, and the audit's fix is Prisma 7.10.1. That major upgrade was not applied.
+- [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) is one moderate finding reported seven times through `typescript-eslint` 8.72.0. The vulnerable copy is `minimatch` 10.2.6, used when ESLint compares a source path with an `allowDefaultProject` pattern. A hostile glob can waste CPU and memory. Forum comments are not lint inputs. `minimatch` 3.1.5, also installed, is outside this range. `typescript-eslint` 8.73.0 depends on `minimatch` `^11.0.1` and fits `eslint-config-next`'s existing `^8.56.0` range. That bump was not applied.
+
+These two findings do not block a later decision to schedule external imports. The import path does not call either function. A scheduler is still a separate operational decision.
 - No third-party secret scanner is configured. Publication checks are the targeted searches recorded in the handoff.
 - Network deployment is not approved. Putting this process on a public host without authentication, TLS, a private database volume, and backups would expose the admin.
 
