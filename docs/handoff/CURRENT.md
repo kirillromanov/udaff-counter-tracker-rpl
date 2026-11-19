@@ -3,10 +3,11 @@
 ## Revision
 
 - Date: 2026-11-19
-- Branch: `cursor/participant-identity-8862`
 - Remote: `https://github.com/kirillromanov/udaff-counter-tracker-rpl`
-- Parent already on that remote: `0aed0b5d1e59b957ce7f2cbf5d59b70b35804ebb`
-- This handoff is the documentation commit on top of that parent. The published SHA is the commit that adds `docs/handoff/CURRENT.md`. Confirm it with `git rev-parse HEAD` after fetch. It is not on `origin/main`.
+- Default branch: `main`
+- Integration: pull request #12, merge commit `4bdf8a1512b77b8442a9198a9b34006e6d27e266`
+- At that merge, `main` and `cursor/participant-identity-8862` (`48402f69d389057b6eb0ff701b2ea7233f5c213f`) had the same source tree
+- The serving checkout stayed on `cursor/participant-identity-8862`. This note does not move it or name its own later commit
 
 ## What the project does
 
@@ -20,7 +21,7 @@ Local admin for a football prediction contest: forum import, fixture bootstrap, 
 4. `docs/KNOWN-ISSUES.md`
 5. The subsystem page named by the task, then the modules and tests it cites
 
-## Implemented in the parent commit
+## Implemented at the integration commit
 
 Verified by reading the modules and their tests, and by the check run recorded below:
 
@@ -48,12 +49,22 @@ A separate temporary copy used `npm ci` from `package-lock.json`, `prisma genera
 
 The live round counts above were read again after the checkout tests and were unchanged. No migration and no service restart were part of writing docs.
 
+## Checks for this integration note
+
+Run on 2026-11-19 in a separate worktree of `4bdf8a1512b77b8442a9198a9b34006e6d27e266`. The serving checkout was not switched. `npm run build` was not run. No seed, import, poll, refresh, recalculation, or round transition.
+
+- Relative links in `README.md`, `docs/`, and `.cursor/` resolved.
+- `npm test`: 47 files, 316 tests passed.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm ci` again reported 11 audit findings (8 moderate, 3 high). None were patched.
+
 ## Open
 
 - Next.js 16.4.2 security advisory. A build retry is not a fix.
-- No authentication, no TLS, `next start` on all interfaces.
-- No timer for due polls.
-- `origin/main` has diverged. Do not merge or force-push it from this work.
+- No authentication, no TLS, and one dual-stack listener on port 3000 for every address.
+- No timer for due polls. No user crontab and no second LaunchAgent runs the poll scripts.
+- The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
 ## Do not do next
@@ -69,4 +80,13 @@ See [../TESTING.md](../TESTING.md). The ones that must not move casually are the
 
 ## Publication
 
-The parent feature commit was already on `origin/cursor/participant-identity-8862`. This documentation commit is published only after a normal push of that same branch and a fetch that shows the same SHA. `main` is not updated by that push.
+Pull request #12 merged the verified application and documentation into `main` at `4bdf8a1512b77b8442a9198a9b34006e6d27e266`. That is the integration commit. The feature branch remains at `48402f69d389057b6eb0ff701b2ea7233f5c213f` and is not the starting point for the next task.
+
+## Workflow
+
+1. Start a new branch from current `origin/main`.
+2. Test, update `docs/` and this handoff, review the diff, commit, and push that branch.
+3. Integrate through a pull request into `main`.
+4. Treat updating the running application as a separate explicit operation. A merge does not restart the server, rebuild `.next`, or replace `prisma/dev.db`.
+
+Details are in [../OPERATIONS.md](../OPERATIONS.md).
