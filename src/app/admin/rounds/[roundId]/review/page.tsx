@@ -290,7 +290,7 @@ export default async function RoundImportPage({
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
         <Section
-          description="Refresh reads the thread again. A repeated comment stays stored once. An edited comment updates its slip unless you already edited that slip by hand."
+          description="Refresh reads the thread again. A repeated comment stays stored once. A new comment updates only the fixtures it names, and only when it was published before that kickoff. An edited comment replaces a fixture only when its edit time is before that kickoff. A change without an edit time stays in review and leaves the stored predictions."
           id="import"
           title="Prediction refresh"
         >

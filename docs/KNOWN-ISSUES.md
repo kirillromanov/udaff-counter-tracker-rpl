@@ -5,7 +5,7 @@
 - **Next.js 16.4.2 advisories are patched in 16.4.5.** That patch does not clear the two remaining audit groups.
 - **Two audit groups remain, and neither is a forum-import bug.** `npm audit` reports ten entries. They are [GHSA-ggr8-5vv4-36mx](https://github.com/advisories/GHSA-ggr8-5vv4-36mx) (`deepmerge-ts` 7.1.5 through the Prisma 6 CLI) and [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (`minimatch` 10.2.6 through TypeScript ESLint 8.72.0). There is no patched Prisma 6 release; the latest 6.19.3 is still affected, and the audit fix is Prisma 7.10.1. The ESLint finding has a compatible later 8.73.0 release that was not installed. Details and the reachability limits are in [SECURITY.md](SECURITY.md). Neither finding is a reason to delay a scheduler by itself.
 - **No authentication.** The local service binds `127.0.0.1` only. Anyone who can open that address on this Mac can use the admin. There is still no login. A future host that runs `next start` without `--hostname` listens on `0.0.0.0`. See [SECURITY.md](SECURITY.md) and [DEPLOYMENT.md](DEPLOYMENT.md).
-- **The worker is implemented and not enabled.** The accepted prediction interval is 60 minutes, and `PREDICTION_REFRESH_INTERVAL_MINUTES` is still unset. Configuring it does not rewrite an existing `nextPredictionFetchAt`. `WORKER_RESULTS_ENABLED` defaults off. The serving web process uses the shared claim directory. Post-kickoff acceptance is undecided, so the first live prediction refresh stays unrun. See [OPERATIONS.md](OPERATIONS.md).
+- **The worker is implemented and not enabled.** The accepted prediction interval is 60 minutes, and `PREDICTION_REFRESH_INTERVAL_MINUTES` is still unset. Configuring it does not rewrite an existing `nextPredictionFetchAt`. `WORKER_RESULTS_ENABLED` defaults off. The serving web process uses the shared claim directory. The per-fixture deadline is in source and has not been applied to the running app or to live selections. See [OPERATIONS.md](OPERATIONS.md).
 - **Schema history.** There is no `prisma/migrations` directory. A new environment is `db push` plus, for an existing operational database, `scripts/backfill-production-started.ts` if `productionStartedAt` is still null. Running the backfill twice is safe. Running `db:seed` is not.
 - **The running checkout can lag `main`.** Pull request #12 put the verified source on `main`. That merge does not switch the serving checkout, rebuild `.next`, or restart the LaunchAgent. Do those only when the operator asks. See [OPERATIONS.md](OPERATIONS.md).
 - **Two manual checkpoints can exist.** Loaders use the latest `source = manual` row by `afterRoundNumber`. An older checkpoint remains stored and is not the production baseline.
@@ -21,6 +21,6 @@
 
 - Return to preparation after Start.
 - A signed-in actor on close, reopen, or start.
-- Prediction deadlines beyond "latest scored comment".
+- A forum edit time when the theme HTML has only the permalink timestamp. Those edits stay in review.
 - Automatic polling inside the Next.js process.
 - Public deployment, TLS, and authenticated admin.

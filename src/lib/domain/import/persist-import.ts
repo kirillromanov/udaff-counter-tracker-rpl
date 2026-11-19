@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { assertRoundMutable, assertRoundsMutable } from "@/lib/domain/rounds/round-lock-db";
+import { commentEditEvidence } from "@/lib/domain/forum/comment-edit";
 import type { ForumPost } from "@/lib/domain/forum/types";
 import { attributeComment } from "@/lib/domain/parser/attribute-blocks";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/domain/participants/registry";
 import { AUTHOR_NOTE, effectiveAuthorResolution } from "@/lib/domain/participants/resolve-author";
 import { importNeedsReview, isAcceptableImport } from "./accept-import";
+import { EDIT_AFTER_KICKOFF_NOTE, EDIT_TIME_UNKNOWN_NOTE, editWritePlan } from "./fixture-deadline";
 import {
   authorIdentityKey,
   DUPLICATE_COMMENT_NOTE,
@@ -230,6 +232,18 @@ export async function parseStoredComments(
       }
       continue;
     }
+    const editEvidence = content === "updated" ? commentEditEvidence(comment.rawHtml, comment.postedAt) : { editedAt: null };
+    if (content === "updated" && editEvidence.editedAt == null) {
+      await prisma.forumComment.update({
+        where: { id: comment.id },
+        data: {
+          ingestionStatus: "flagged",
+          reviewState: "flagged",
+          reviewNote: EDIT_TIME_UNKNOWN_NOTE,
+        },
+      });
+      continue;
+    }
 
     const resolution = effectiveAuthorResolution(comment.authorName, catalog, comment.importAnyway);
     if (resolution.kind !== "participant" && resolution.kind !== "alias") {
@@ -253,6 +267,7 @@ export async function parseStoredComments(
       continue;
     }
 
+    let editRefused = false;
     const blocks = attributeComment({
       raw: comment.rawText,
       authorName: resolution.canonicalName ?? comment.authorName,
@@ -272,7 +287,18 @@ export async function parseStoredComments(
       }
       const parsed = parseComment(block.text, fixtures);
       const warnings = [...block.warnings, ...parsed.warnings];
-      const rows = rowsForStorage(parsed).map(predictionData);
+      const parsedRows = rowsForStorage(parsed).map(predictionData);
+      const plan = editEvidence.editedAt
+        ? editWritePlan({
+            editedAt: editEvidence.editedAt,
+            fixtures: round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
+            incomingMatchIds: parsedRows.map((row) => row.matchId),
+          })
+        : { writeMatchIds: parsedRows.map((row) => row.matchId), note: null };
+      if (plan.note) {
+        editRefused = true;
+      }
+      const rows = editEvidence.editedAt ? parsedRows.filter((row) => plan.writeMatchIds.includes(row.matchId)) : parsedRows;
       if (rows.length === 0) {
         continue;
       }
@@ -292,7 +318,12 @@ export async function parseStoredComments(
       };
       const current = autoSets.find((set) => set.blockKey === block.blockKey);
       if (current) {
-        await prisma.prediction.deleteMany({ where: { predictionSetId: current.id } });
+        await prisma.prediction.deleteMany({
+          where: {
+            predictionSetId: current.id,
+            ...(editEvidence.editedAt ? { matchId: { in: rows.map((row) => row.matchId) } } : {}),
+          },
+        });
         await prisma.predictionSet.update({
           where: { id: current.id },
           data: { ...shared, predictions: { create: rows } },
@@ -311,16 +342,19 @@ export async function parseStoredComments(
       }
     }
     const stale = autoSets.filter((set) => !keptIds.has(set.id));
-    if (stale.length > 0) {
+    if (content !== "updated" && stale.length > 0) {
       await prisma.predictionSet.deleteMany({ where: { id: { in: stale.map((set) => set.id) } } });
     }
     await prisma.forumComment.update({
       where: { id: comment.id },
       data: {
-        ingestionStatus: resolveIngestionStatus(content, resolution.kind, manualSets.length > 0),
-        reviewNote: blocks.some((block) => block.review === "review")
-          ? "A prediction block needs an owner check"
-          : null,
+        ingestionStatus: editRefused ? "flagged" : resolveIngestionStatus(content, resolution.kind, manualSets.length > 0),
+        reviewState: editRefused ? "flagged" : undefined,
+        reviewNote: editRefused
+          ? EDIT_AFTER_KICKOFF_NOTE
+          : blocks.some((block) => block.review === "review")
+            ? "A prediction block needs an owner check"
+            : null,
       },
     });
     parsedCount += 1;

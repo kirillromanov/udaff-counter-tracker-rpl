@@ -4,7 +4,11 @@ import { mergePredictionCells, submissionLabel } from "@/lib/domain/import/merge
 import { resolveSelections, type SelectableSet } from "@/lib/domain/import/select-sets";
 import { scoreIntermediateRound, type IntermediateFixture } from "@/lib/domain/standings/intermediate";
 
-const fixtures = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"];
+const kickoff = new Date("2026-11-20T16:30:00.000Z");
+const fixtures = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"].map((id) => ({ id, kickoffAt: kickoff }));
+function pair(ids: string[]) {
+  return ids.map((id) => ({ id, kickoffAt: kickoff }));
+}
 
 function prediction(matchId: string, home: number, away: number) {
   return { matchId, home, away, ignored: false, warning: null };
@@ -61,17 +65,17 @@ describe("incremental prediction slips", () => {
     expect(kept?.state === "selected" ? kept.setId : null).toBe("a");
   });
 
-  it("reviews only the conflicting fixture", () => {
-    const cells = mergePredictionCells(["m1", "m2"], [
+  it("lets a later eligible comment replace only the fixture it contains", () => {
+    const cells = mergePredictionCells(pair(["m1", "m2"]), [
       { id: "a", postedAt: new Date("2026-11-05T10:00:00Z"), manual: false, predictions: [prediction("m1", 1, 0), prediction("m2", 0, 1)] },
       { id: "b", postedAt: new Date("2026-11-05T12:00:00Z"), manual: false, predictions: [prediction("m1", 2, 0)] },
     ]);
-    expect(cells.find((cell) => cell.matchId === "m1")?.state).toBe("review");
+    expect(cells.find((cell) => cell.matchId === "m1")).toMatchObject({ state: "selected", home: 2, away: 0, setId: "b" });
     expect(cells.find((cell) => cell.matchId === "m2")).toMatchObject({ state: "selected", home: 0, away: 1, setId: "a" });
   });
 
   it("keeps a manual slip ahead of a later import", () => {
-    const cells = mergePredictionCells(["m1", "m2"], [
+    const cells = mergePredictionCells(pair(["m1", "m2"]), [
       { id: "manual", postedAt: new Date("2026-11-05T09:00:00Z"), manual: true, predictions: [prediction("m1", 3, 1)] },
       { id: "auto", postedAt: new Date("2026-11-05T18:00:00Z"), manual: false, predictions: [prediction("m1", 0, 0), prediction("m2", 1, 1)] },
     ]);

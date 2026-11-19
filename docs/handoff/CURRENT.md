@@ -117,16 +117,27 @@ Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. T
 - `npm run build`: passed in that worktree and printed Next.js 16.4.5. It did not use the serving checkout's `.next`.
 - `npm run worker:plan` was then run with the live database opened read-only. `PRAGMA data_version` stayed 2. No claim file was created. Rounds 1–13 were archived, round 14 was closed, and round 15 was not due. The worker LaunchAgent was not installed.
 
+## Checks for the per-fixture deadline
+
+Run on 2026-11-20 in a worktree of `8867c64cc67e35bfb901aaf29f99356f0039d7f5`. The serving checkout was not switched, rebuilt, or restarted. No seed, import, poll, refresh, recalculation, round transition, or schema push was run against `prisma/dev.db`. The worker was not installed or enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` was not set.
+
+- `npm test`: 50 files, 342 tests passed, including `src/tests/import/fixture-deadline.test.ts`, `src/tests/import/merge-predictions.test.ts`, and `src/tests/worker/worker.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed in that worktree and printed Next.js 16.4.5. It used a disposable `DATABASE_URL`, not the serving checkout's `.next`.
+
+The rule compares stored publication time with stored kickoff. A comment at the kickoff instant is late for that fixture. Fetch time is not used. A later eligible comment replaces only the fixtures it names. An edit without one reliable metadata timestamp leaves stored predictions and is flagged. Live selections were not rewritten.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Do not enable it while post-kickoff acceptance is undecided. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. A prediction counts for a fixture only when the source comment was published before that fixture's kickoff. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker, and do not refresh round 15, until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Post-kickoff acceptance is undecided. Do not run the round-15 prediction refresh until that decision is made.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. The per-fixture deadline is implemented in source and has not been deployed. Deploying it changes the slips the pages read without rewriting stored prediction rows. Do not run the round-15 prediction refresh as part of that deploy.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -137,7 +148,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
-- Do not call `refreshRoundPredictions` for round 15 until post-kickoff acceptance is decided. That call is the approved shape for the first prediction-only check: one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time.
+- Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15 in this change. The deadline is already decided. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests

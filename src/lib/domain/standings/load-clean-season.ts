@@ -47,7 +47,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
         include: {
           matches: true,
           roundScores: true,
-          predictionSets: { where: { selected: true }, include: { predictions: true, forumComment: { select: { postedAt: true } } } },
+          predictionSets: { where: { selected: true }, include: { predictions: true, forumComment: { select: { postedAt: true, rawHtml: true } } } },
         },
       },
     },
@@ -75,7 +75,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
       continue;
     }
     const slips = slipsByParticipant(
-      fixtures.map((fixture) => fixture.matchId),
+      round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
       round.predictionSets.map((set) => ({
         id: set.id,
         participantId: set.participantId,
@@ -83,6 +83,7 @@ export async function loadCleanSeason(seasonId: string): Promise<CleanSeasonTabl
         manuallyEdited: set.manuallyEdited,
         createdAt: set.createdAt,
         postedAt: set.forumComment?.postedAt ?? null,
+        rawHtml: set.forumComment?.rawHtml ?? null,
         predictions: set.predictions,
       })),
     );

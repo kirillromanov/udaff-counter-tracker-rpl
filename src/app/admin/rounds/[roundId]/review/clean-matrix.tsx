@@ -211,7 +211,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                 const selectedSets = owned.filter((set) => set.selected);
                 const selected = [...selectedSets].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ?? null;
                 const slip = slipsByParticipant(
-                  fixtures.map((match) => match.id),
+                  fixtures.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
                   selectedSets.map((set) => ({
                     id: set.id,
                     participantId: set.participantId,
@@ -219,6 +219,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                     manuallyEdited: set.manuallyEdited,
                     createdAt: set.createdAt,
                     postedAt: set.forumComment?.postedAt ?? null,
+                    rawHtml: set.forumComment?.rawHtml ?? null,
                     predictions: set.predictions,
                   })),
                 )[0];

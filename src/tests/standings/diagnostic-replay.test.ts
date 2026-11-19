@@ -13,6 +13,7 @@ const catalog: IdentityCatalog = {
 
 const fixture = {
   id: "m1",
+  kickoffAt: new Date("2026-10-23T16:30:00.000Z"),
   homeTeam: "Ахмат",
   awayTeam: "Оренбург",
   isMatchOfTheRound: false,
