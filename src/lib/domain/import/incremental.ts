@@ -1,3 +1,4 @@
+import { EDIT_TIME_UNKNOWN_NOTE } from "@/lib/domain/import/fixture-deadline";
 import { participantKey } from "@/lib/domain/import/participant-key";
 import { fixtureBlocksPolling, pollIntervals, type PollFixture, type PollIntervals } from "@/lib/domain/results/poll";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
@@ -91,6 +92,35 @@ export function resolveIngestionStatus(content: ContentClass, authorKind: string
     return "unchanged";
   }
   return content;
+}
+
+export type StoredEditSignal = "none" | "stale-label" | "body-differs";
+
+/**
+ * A stored "updated" or edit-warning label is not evidence of a new edit.
+ * The slip text is the body that was parsed. A difference from the current
+ * comment body is a retained unresolved edit. Matching text is a stale label.
+ */
+export function storedEditSignal(input: {
+  commentText: string;
+  slipText: string | null;
+  storedStatus: string;
+  reviewNote: string | null;
+}): StoredEditSignal {
+  const differs = input.slipText != null && commentFingerprint(input.slipText) !== commentFingerprint(input.commentText);
+  if (differs) {
+    return "body-differs";
+  }
+  if (input.slipText == null) {
+    return "none";
+  }
+  if (input.storedStatus === "updated") {
+    return "stale-label";
+  }
+  if (input.storedStatus === "flagged" && input.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
+    return "stale-label";
+  }
+  return "none";
 }
 
 /** A manual edit is kept. An unchanged comment is parsed only when no slip is stored yet. */

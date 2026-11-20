@@ -24,6 +24,7 @@ import {
   MANUAL_PREDICTION_NOTE,
   resolveIngestionStatus,
   shouldReplaceStoredSlip,
+  storedEditSignal,
   classifyIncomingComment,
   type ContentClass,
   type StoredCommentShape,
@@ -216,7 +217,24 @@ export async function parseStoredComments(
       });
       continue;
     }
-    if (!options?.force && !shouldReplaceStoredSlip(content, false, existingSets.length > 0)) {
+    const slipText = autoSets.find((set) => (set.rawComment ?? "").length > 0)?.rawComment ?? null;
+    const editSignal = storedEditSignal({
+      commentText: comment.rawText,
+      slipText,
+      storedStatus: comment.ingestionStatus,
+      reviewNote: comment.reviewNote,
+    });
+    if (editSignal === "stale-label") {
+      await prisma.forumComment.update({
+        where: { id: comment.id },
+        data: {
+          ingestionStatus: "unchanged",
+          ...(comment.reviewNote === EDIT_TIME_UNKNOWN_NOTE ? { reviewNote: null, reviewState: "accepted" } : {}),
+        },
+      });
+      continue;
+    }
+    if (editSignal !== "body-differs" && !options?.force && !shouldReplaceStoredSlip(content, false, existingSets.length > 0)) {
       continue;
     }
     if (!options?.force && autoSets.length === 0 && manualSets.length > 0) {
@@ -232,8 +250,10 @@ export async function parseStoredComments(
       }
       continue;
     }
-    const editEvidence = content === "updated" ? commentEditEvidence(comment.rawHtml, comment.postedAt) : { editedAt: null };
-    if (content === "updated" && editEvidence.editedAt == null) {
+    const editEvidence = editSignal === "body-differs" || content === "updated"
+      ? commentEditEvidence(comment.rawHtml, comment.postedAt)
+      : { editedAt: null };
+    if ((editSignal === "body-differs" || content === "updated") && editEvidence.editedAt == null) {
       await prisma.forumComment.update({
         where: { id: comment.id },
         data: {
@@ -442,6 +462,9 @@ export async function applyAutoSelection(
         where: { id: set.id },
         data: { selected, status },
       });
+    }
+    if (set.forumComment?.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
+      continue;
     }
     if (set.forumCommentId && !set.manuallyEdited && (!options?.commentId || set.forumCommentId === options.commentId)) {
       await prisma.forumComment.update({

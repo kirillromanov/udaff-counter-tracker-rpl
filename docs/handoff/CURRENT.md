@@ -182,6 +182,21 @@ The fetch reported `5 new, 0 updated, 13 unchanged, 0 duplicate, 0 ignored, 1 fl
 
 `lastPredictionFetchAt` is `2026-11-20T01:25:34.762Z`. `nextPredictionFetchAt` is that instant plus 60 minutes, `2026-11-20T02:25:34.762Z`. Result attempts, result scheduling, kickoffs, scores, and checkpoints were unchanged. Comment 5707's stored text changed and its predictions were kept because the edit has no reliable edit time. Comment 5701's text did not change; its ingestion label moved from updated to flagged for the same reason. Both selected slips stayed accepted.
 
+## Comment-change detection
+
+A later read of the pre-refresh backup and the live rows separated the three comments. 5701's text, HTML, publication time, and parsed slip are identical; the only difference is the historical `updated` label, which the parser then treated as a new edit. That warning is a false positive. 5703's text and publication time are identical; the four-byte HTML difference is the chunk boundary (`</li><!-- #comment-## -->` versus the start of `ul class="children"`), not the comment body. 5707's parsed slip still includes the reply form and page footer that the previous extraction kept after the last comment. The current comment text does not. The score lines were not replaced. There is no edit timestamp, so that difference stays unresolved until an explicit review. The live labels were not changed.
+
+`storedEditSignal` compares the current body with the slip text. A matching body with a historical `updated` label is stale and is not a new warning. A body difference stays `body-differs` on a later identical reading, and the selection pass does not clear that note. The reply form and comment-list marker are outside the extracted body. Markup inside a comment paragraph is still extracted. Deadline, scoring, attribution, and selection are unchanged. This source change is not deployed, and the live round was not refreshed or reparsed.
+
+## Checks for comment-change detection
+
+Run on 2026-11-20 from `fix/comment-change-detection`. No live database, refresh, reparse, or process restart.
+
+- `npm test`: 54 files, 361 tests passed, including `src/tests/import/incremental.test.ts` and `src/tests/forum/extract-comments.test.ts`.
+- `npx tsc --noEmit`: passed.
+- ESLint on the touched import, extraction, and test files: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
+
 ## Background worker
 
 Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment. Round 15's stored prediction time is `2026-11-20T02:25:34.762Z` after the one authorized refresh. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Round 15's publication times are normalized; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker. Details are in [../OPERATIONS.md](../OPERATIONS.md).
@@ -204,6 +219,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
 - Do not run another round-15 prediction refresh unless the operator asks. The one authorized refresh already advanced `nextPredictionFetchAt` by 60 minutes. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
+- Do not clear the live 5701 or 5707 labels from this note. 5701 can be set from `flagged` back to `unchanged` only by an explicit review write; its slip already matches. 5707 stays pending until that review accepts or replaces the slip.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests
