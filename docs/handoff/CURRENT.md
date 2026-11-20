@@ -159,18 +159,31 @@ WordPress REST schema text calls `date` the site timezone and `date_gmt` GMT. Re
 - `npx tsc --noEmit`: passed.
 - ESLint on the changed source and tests: passed.
 
-The legacy correction is a separate approved write: set `postedAt` to the normalized UTC instant where `rawHtml` still shows the old encoding. It was not run.
+## Round 15 publication-time correction
+
+The operator confirmed that offset-less forum timestamps are Moscow time. The correction used the current deadline branch and a consistent snapshot of the live database. It did not fetch the forum again.
+
+Round 15 (`cmwntxbcj0001fyq6efpbp3hn`) had 14 source comments, 9 selected sets, 58 predictions, and 0 stored scores. All 14 comments had their own offset-less permalink, and each `postedAt` matched the permalink minute read as UTC. None was already normalized. No other field stores a publication instant, so the write set only `ForumComment.postedAt` to that minute read as UTC+3. `rawHtml`, comment bodies, prediction rows, manual selections, kickoffs, `nextPredictionFetchAt`, result attempts, scores, and every other round stayed unchanged.
+
+On the isolated corrected snapshot the live cells were 58 accepted, 0 uncertain, 0 late, 0 ambiguous, and 14 missing. The 14 missing cells have no prediction on the selected sets. The 58 accepted scorelines are the same 58 selected cells counted before the deadline treated the legacy encoding as uncertain. No comment is in a kickoff minute. The latest corrected instant is `2026-11-19T18:55:00.000Z`; the first kickoff remains `2026-11-20T16:30:00.000Z`.
+
+The live write used one compare-and-set transaction. A following read-only plan proposes 0 further corrections and 14 already-normalized rows, with the same 58 accepted and 14 missing cells. Rounds 1–14 still have uncorrected legacy timestamps. Their saved calculations were not rewritten. `scripts/correct-legacy-publication.ts` is read-only unless `--round-id`, `--apply`, and `--manifest` are all given.
+
+- `npm test`: 54 files, 358 tests passed, including `src/tests/import/legacy-publication.test.ts`.
+- `npx tsc --noEmit`: passed.
+- ESLint on the correction source, script, and test: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
 
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. The per-fixture deadline is in pull request #21 and is not merged. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker, do not merge that pull request, and do not refresh round 15, until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. The per-fixture deadline is in pull request #21. Round 15's publication times are corrected; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker and do not refresh round 15 until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Pull request #21 is not merged. Saved calculations stay on the stored breakdown. Legacy publication times on the open round stay uncertain. Do not deploy it, do not correct `postedAt`, and do not run the round-15 prediction refresh.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's 14 comment times are corrected. Comments on other rounds keep the legacy encoding. Do not shift those remaining times, and do not run the round-15 prediction refresh.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -181,7 +194,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
-- Do not merge pull request #21 or deploy it. Do not recalculate archived or closed rounds. Do not bulk-shift `postedAt`. A legacy publication time stays uncertain until the operator asks for that correction.
+- Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
 - Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
