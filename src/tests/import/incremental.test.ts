@@ -7,12 +7,11 @@ import {
   planPredictionRefresh,
   resolveIngestionStatus,
   selectDuePredictionRoundIds,
-  MANUAL_PREDICTION_NOTE,
+  planCommentParse,
   shouldReplaceStoredSlip,
   storedEditSignal,
   type StoredCommentShape,
 } from "@/lib/domain/import/incremental";
-import { EDIT_TIME_UNKNOWN_NOTE } from "@/lib/domain/import/fixture-deadline";
 import { ARCHIVED_ROUND, OPERATIONAL_ROUND } from "@/lib/domain/standings/round-role";
 import type { PollFixture } from "@/lib/domain/results/poll";
 
@@ -72,39 +71,54 @@ describe("incremental prediction comments", () => {
     expect(ingestionStatusLabel("ignored")).toBe("Ignored user");
   });
 
-  it("does not treat a historical updated label as a new edit when the slip text matches", () => {
-    const same = {
-      commentText: "Ростов — Крылья Советов 2-1",
-      slipText: "Ростов — Крылья Советов 2-1",
-      storedStatus: "updated",
-      reviewNote: null,
-    };
-    expect(storedEditSignal(same)).toBe("stale-label");
-    expect(storedEditSignal(same)).toBe("stale-label");
-    expect(storedEditSignal({ ...same, storedStatus: "flagged", reviewNote: null })).toBe("none");
+  it("does not treat a historical label as the current fetch", () => {
     expect(storedEditSignal({
       commentText: "Ростов — Крылья Советов 2-1",
       slipText: "Ростов — Крылья Советов 2-1",
-      storedStatus: "flagged",
-      reviewNote: MANUAL_PREDICTION_NOTE,
     })).toBe("none");
-  });
-
-  it("keeps a body difference unresolved across an identical reading", () => {
-    const changed = {
-      commentText: "Ростов — Крылья Советов 1-0",
-      slipText: "Ростов — Крылья Советов 2-1",
-      storedStatus: "flagged",
-      reviewNote: EDIT_TIME_UNKNOWN_NOTE,
-    };
-    expect(storedEditSignal(changed)).toBe("body-differs");
-    expect(storedEditSignal({ ...changed, storedStatus: "unchanged", reviewNote: EDIT_TIME_UNKNOWN_NOTE })).toBe("body-differs");
     expect(storedEditSignal({
       commentText: "Ростов — Крылья Советов 1-0",
-      slipText: "Ростов — Крылья Советов 1-0",
-      storedStatus: "flagged",
-      reviewNote: EDIT_TIME_UNKNOWN_NOTE,
-    })).toBe("stale-label");
+      slipText: "Ростов — Крылья Советов 2-1",
+    })).toBe("body-differs");
+    const equivalent = {
+      fetch: "unchanged" as const,
+      force: false,
+      bodyDiffersFromSlip: false,
+      hasReliableEditTime: false,
+      equivalentPredictions: true,
+      hasAutoSlip: true,
+      hasManualSlip: false,
+      disposed: false,
+    };
+    expect(planCommentParse(equivalent)).toEqual({ action: "leave" });
+    expect(planCommentParse({ ...equivalent, fetch: "updated" })).toEqual({ action: "parse", reason: "changed" });
+    expect(planCommentParse({ ...equivalent, fetch: null, force: true })).toEqual({ action: "leave" });
+    expect(planCommentParse({
+      ...equivalent,
+      equivalentPredictions: false,
+      hasAutoSlip: false,
+    })).toEqual({ action: "parse", reason: "recovery" });
+    expect(planCommentParse({
+      ...equivalent,
+      bodyDiffersFromSlip: true,
+    })).toEqual({ action: "protect-unresolved" });
+    expect(planCommentParse({
+      ...equivalent,
+      fetch: "updated",
+      bodyDiffersFromSlip: true,
+      hasReliableEditTime: true,
+    })).toEqual({ action: "parse", reason: "changed" });
+    expect(planCommentParse({
+      ...equivalent,
+      fetch: "updated",
+      bodyDiffersFromSlip: true,
+      hasAutoSlip: false,
+      hasManualSlip: true,
+    })).toEqual({ action: "manual-hold" });
+    expect(planCommentParse({ ...equivalent, fetch: "new", equivalentPredictions: false, hasAutoSlip: false })).toEqual({
+      action: "parse",
+      reason: "created",
+    });
   });
 
   it("counts a refetch of the same text as unchanged even when the stored status is still new", () => {

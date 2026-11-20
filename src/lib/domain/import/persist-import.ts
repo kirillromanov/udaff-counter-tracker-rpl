@@ -19,12 +19,11 @@ import { importNeedsReview, isAcceptableImport } from "./accept-import";
 import { EDIT_AFTER_KICKOFF_NOTE, EDIT_TIME_UNKNOWN_NOTE, editWritePlan } from "./fixture-deadline";
 import {
   authorIdentityKey,
+  commentFingerprint,
   DUPLICATE_COMMENT_NOTE,
-  isContentClass,
   MANUAL_PREDICTION_NOTE,
+  planCommentParse,
   resolveIngestionStatus,
-  shouldReplaceStoredSlip,
-  storedEditSignal,
   classifyIncomingComment,
   type ContentClass,
   type StoredCommentShape,
@@ -170,9 +169,84 @@ function predictionData(line: ReturnType<typeof rowsForStorage>[number]) {
   };
 }
 
+function samePredictionValues(
+  existing: { homeGoals: number | null; awayGoals: number | null; markedAsMt: boolean; rawLine: string | null },
+  incoming: { homeGoals: number | null; awayGoals: number | null; markedAsMt: boolean; rawLine: string | null },
+): boolean {
+  return existing.homeGoals === incoming.homeGoals
+    && existing.awayGoals === incoming.awayGoals
+    && existing.markedAsMt === incoming.markedAsMt
+    && (existing.rawLine ?? "") === (incoming.rawLine ?? "");
+}
+
+async function writeCommentState(
+  comment: { id: string; ingestionStatus: string; reviewState: string; reviewNote: string | null },
+  data: { ingestionStatus?: string; reviewState?: string; reviewNote?: string | null },
+): Promise<void> {
+  const ingestionStatus = data.ingestionStatus ?? comment.ingestionStatus;
+  const reviewState = data.reviewState ?? comment.reviewState;
+  const reviewNote = data.reviewNote === undefined ? comment.reviewNote : data.reviewNote;
+  if (
+    ingestionStatus === comment.ingestionStatus
+    && reviewState === comment.reviewState
+    && reviewNote === comment.reviewNote
+  ) {
+    return;
+  }
+  await prisma.forumComment.update({
+    where: { id: comment.id },
+    data: { ingestionStatus, reviewState, reviewNote },
+  });
+}
+
+async function syncPredictions(
+  setId: string,
+  existing: { id: string; matchId: string; homeGoals: number | null; awayGoals: number | null; markedAsMt: boolean; rawLine: string | null }[],
+  incoming: ReturnType<typeof predictionData>[],
+  partialMatchIds: ReadonlySet<string> | null,
+): Promise<void> {
+  const rows = partialMatchIds ? incoming.filter((row) => partialMatchIds.has(row.matchId)) : incoming;
+  for (const row of rows) {
+    const current = existing.find((item) => item.matchId === row.matchId);
+    if (!current) {
+      await prisma.prediction.create({ data: { predictionSetId: setId, ...row } });
+      continue;
+    }
+    if (!samePredictionValues(current, row)) {
+      await prisma.prediction.update({
+        where: { id: current.id },
+        data: {
+          homeGoals: row.homeGoals,
+          awayGoals: row.awayGoals,
+          markedAsMt: row.markedAsMt,
+          rawLine: row.rawLine,
+          confidence: row.confidence,
+          warning: row.warning,
+        },
+      });
+    }
+  }
+  const kept = new Set(rows.map((row) => row.matchId));
+  const remove = existing.filter((item) => {
+    if (partialMatchIds && !partialMatchIds.has(item.matchId)) {
+      return false;
+    }
+    return !kept.has(item.matchId);
+  });
+  if (remove.length > 0) {
+    await prisma.prediction.deleteMany({ where: { id: { in: remove.map((item) => item.id) } } });
+  }
+}
+
 export async function parseStoredComments(
   roundId: string,
-  options?: { authorKey?: string; force?: boolean; commentId?: string },
+  options?: {
+    authorKey?: string;
+    force?: boolean;
+    commentId?: string;
+    /** Outcomes from the fetch that just saved these comments. Omit for an explicit reparse. */
+    outcomes?: readonly { externalId: string; content: ContentClass }[];
+  },
 ): Promise<number> {
   await assertRoundMutable(roundId);
   await ensureKnownIdentities();
@@ -189,6 +263,7 @@ export async function parseStoredComments(
 
   let parsedCount = 0;
   const touchedParticipants = new Set<string>();
+  const outcomes = options?.outcomes ? new Map(options.outcomes.map((row) => [row.externalId, row.content])) : null;
   for (const comment of round.forumComments) {
     if (options?.commentId && comment.id !== options.commentId) {
       continue;
@@ -197,70 +272,66 @@ export async function parseStoredComments(
     if (options?.authorKey && authorKey !== options.authorKey) {
       continue;
     }
+    if (outcomes && (!comment.externalId || !outcomes.has(comment.externalId))) {
+      continue;
+    }
+    const fetchOutcome = outcomes ? outcomes.get(comment.externalId ?? "") ?? null : null;
     const existingSets = await prisma.predictionSet.findMany({
       where: { forumCommentId: comment.id },
+      include: { predictions: true },
     });
-    const content: ContentClass = isContentClass(comment.ingestionStatus) ? comment.ingestionStatus : existingSets.length > 0 ? "unchanged" : "new";
     const manualSets = existingSets.filter((set) => set.manuallyEdited || set.selection === "manual");
     const autoSets = existingSets.filter((set) => !set.manuallyEdited && set.selection !== "manual");
-    if (content === "duplicate") {
+    const slipText = autoSets.find((set) => (set.rawComment ?? "").length > 0)?.rawComment ?? null;
+    const bodyDiffers = slipText != null && commentFingerprint(slipText) !== commentFingerprint(comment.rawText);
+    const editEvidence = bodyDiffers || fetchOutcome === "updated"
+      ? commentEditEvidence(comment.rawHtml, comment.postedAt)
+      : { editedAt: null };
+    const provisional = parseComment(comment.rawText, fixtures);
+    const provisionalRows = rowsForStorage(provisional).map(predictionData);
+    const storedRows = autoSets.flatMap((set) => set.predictions);
+    const equivalentPredictions = provisionalRows.length === storedRows.length
+      && provisionalRows.every((row) => storedRows.some((stored) => stored.matchId === row.matchId && samePredictionValues(stored, row)));
+    const plan = planCommentParse({
+      fetch: fetchOutcome,
+      force: options?.force === true,
+      bodyDiffersFromSlip: bodyDiffers,
+      hasReliableEditTime: editEvidence.editedAt != null,
+      equivalentPredictions,
+      hasAutoSlip: autoSets.length > 0,
+      hasManualSlip: manualSets.length > 0,
+      disposed: (comment.ingestionStatus === "duplicate" || comment.ingestionStatus === "ignored") && autoSets.length === 0,
+    });
+    if (plan.action === "leave") {
+      if (!bodyDiffers && comment.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
+        await writeCommentState(comment, { reviewNote: null, reviewState: "accepted" });
+      }
+      continue;
+    }
+    if (plan.action === "protect-unresolved") {
+      await writeCommentState(comment, {
+        ingestionStatus: "flagged",
+        reviewState: "flagged",
+        reviewNote: EDIT_TIME_UNKNOWN_NOTE,
+      });
+      continue;
+    }
+    if (plan.action === "manual-hold") {
+      await writeCommentState(comment, {
+        ingestionStatus: "flagged",
+        reviewState: "flagged",
+        reviewNote: MANUAL_PREDICTION_NOTE,
+      });
+      continue;
+    }
+    if (plan.action === "duplicate") {
       if (autoSets.length > 0) {
         await prisma.predictionSet.deleteMany({ where: { id: { in: autoSets.map((set) => set.id) } } });
       }
-      await prisma.forumComment.update({
-        where: { id: comment.id },
-        data: {
-          ingestionStatus: "duplicate",
-          reviewState: "ignored",
-          reviewNote: DUPLICATE_COMMENT_NOTE,
-        },
-      });
-      continue;
-    }
-    const slipText = autoSets.find((set) => (set.rawComment ?? "").length > 0)?.rawComment ?? null;
-    const editSignal = storedEditSignal({
-      commentText: comment.rawText,
-      slipText,
-      storedStatus: comment.ingestionStatus,
-      reviewNote: comment.reviewNote,
-    });
-    if (editSignal === "stale-label") {
-      await prisma.forumComment.update({
-        where: { id: comment.id },
-        data: {
-          ingestionStatus: "unchanged",
-          ...(comment.reviewNote === EDIT_TIME_UNKNOWN_NOTE ? { reviewNote: null, reviewState: "accepted" } : {}),
-        },
-      });
-      continue;
-    }
-    if (editSignal !== "body-differs" && !options?.force && !shouldReplaceStoredSlip(content, false, existingSets.length > 0)) {
-      continue;
-    }
-    if (!options?.force && autoSets.length === 0 && manualSets.length > 0) {
-      if (content === "updated") {
-        await prisma.forumComment.update({
-          where: { id: comment.id },
-          data: {
-            ingestionStatus: "flagged",
-            reviewState: "flagged",
-            reviewNote: MANUAL_PREDICTION_NOTE,
-          },
-        });
-      }
-      continue;
-    }
-    const editEvidence = editSignal === "body-differs" || content === "updated"
-      ? commentEditEvidence(comment.rawHtml, comment.postedAt)
-      : { editedAt: null };
-    if ((editSignal === "body-differs" || content === "updated") && editEvidence.editedAt == null) {
-      await prisma.forumComment.update({
-        where: { id: comment.id },
-        data: {
-          ingestionStatus: "flagged",
-          reviewState: "flagged",
-          reviewNote: EDIT_TIME_UNKNOWN_NOTE,
-        },
+      await writeCommentState(comment, {
+        ingestionStatus: "duplicate",
+        reviewState: "ignored",
+        reviewNote: DUPLICATE_COMMENT_NOTE,
       });
       continue;
     }
@@ -273,7 +344,7 @@ export async function parseStoredComments(
       await prisma.forumComment.update({
         where: { id: comment.id },
         data: {
-          ingestionStatus: resolveIngestionStatus(content, resolution.kind, false),
+          ingestionStatus: resolveIngestionStatus(fetchOutcome ?? "unchanged", resolution.kind, false),
           reviewState: resolution.kind === "ignored" ? "ignored" : "flagged",
           reviewNote:
             resolution.kind === "ignored"
@@ -308,25 +379,25 @@ export async function parseStoredComments(
       const parsed = parseComment(block.text, fixtures);
       const warnings = [...block.warnings, ...parsed.warnings];
       const parsedRows = rowsForStorage(parsed).map(predictionData);
-      const plan = editEvidence.editedAt
+      const deadline = editEvidence.editedAt
         ? editWritePlan({
             editedAt: editEvidence.editedAt,
             fixtures: round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
             incomingMatchIds: parsedRows.map((row) => row.matchId),
           })
         : { writeMatchIds: parsedRows.map((row) => row.matchId), note: null };
-      if (plan.note) {
+      if (deadline.note) {
         editRefused = true;
       }
-      const rows = editEvidence.editedAt ? parsedRows.filter((row) => plan.writeMatchIds.includes(row.matchId)) : parsedRows;
-      if (rows.length === 0) {
+      const partial = editEvidence.editedAt != null;
+      const rows = partial ? parsedRows.filter((row) => deadline.writeMatchIds.includes(row.matchId)) : parsedRows;
+      if (partial && rows.length === 0) {
         continue;
       }
       const shared = {
         participantId: owner.participantId,
         rawComment: sqliteText(comment.rawText),
         source: "import",
-        status: "parsed",
         confidence: block.confidence,
         warningsJson: sqliteText(JSON.stringify(warnings)),
         parsedJson: sqliteText(JSON.stringify(parsed.lines)),
@@ -336,24 +407,31 @@ export async function parseStoredComments(
         blockKey: sqliteText(block.blockKey),
         sourceExcerpt: sqliteText(block.excerpt),
       };
-      const current = autoSets.find((set) => set.blockKey === block.blockKey);
+      const owned = autoSets.filter((set) => set.participantId === owner.participantId);
+      const current = autoSets.find((set) => set.blockKey === block.blockKey) ?? (owned.length === 1 ? owned[0] : undefined);
       if (current) {
-        await prisma.prediction.deleteMany({
-          where: {
-            predictionSetId: current.id,
-            ...(editEvidence.editedAt ? { matchId: { in: rows.map((row) => row.matchId) } } : {}),
-          },
-        });
-        await prisma.predictionSet.update({
-          where: { id: current.id },
-          data: { ...shared, predictions: { create: rows } },
-        });
+        await syncPredictions(current.id, current.predictions, parsedRows, partial ? new Set(deadline.writeMatchIds) : null);
+        const changed = current.participantId !== shared.participantId
+          || (current.rawComment ?? "") !== shared.rawComment
+          || current.confidence !== shared.confidence
+          || current.warningsJson !== shared.warningsJson
+          || current.parsedJson !== shared.parsedJson
+          || current.attributionMethod !== shared.attributionMethod
+          || current.attributionEvidence !== shared.attributionEvidence
+          || current.attributionReview !== shared.attributionReview
+          || current.blockKey !== shared.blockKey
+          || current.sourceExcerpt !== shared.sourceExcerpt
+          || current.source !== shared.source;
+        if (changed) {
+          await prisma.predictionSet.update({ where: { id: current.id }, data: shared });
+        }
         keptIds.add(current.id);
-      } else {
+      } else if (rows.length > 0) {
         const created = await prisma.predictionSet.create({
           data: {
             roundId,
             forumCommentId: comment.id,
+            status: "parsed",
             ...shared,
             predictions: { create: rows },
           },
@@ -362,20 +440,22 @@ export async function parseStoredComments(
       }
     }
     const stale = autoSets.filter((set) => !keptIds.has(set.id));
-    if (content !== "updated" && stale.length > 0) {
+    if (!editEvidence.editedAt && stale.length > 0) {
       await prisma.predictionSet.deleteMany({ where: { id: { in: stale.map((set) => set.id) } } });
     }
-    await prisma.forumComment.update({
-      where: { id: comment.id },
-      data: {
-        ingestionStatus: editRefused ? "flagged" : resolveIngestionStatus(content, resolution.kind, manualSets.length > 0),
-        reviewState: editRefused ? "flagged" : undefined,
-        reviewNote: editRefused
-          ? EDIT_AFTER_KICKOFF_NOTE
-          : blocks.some((block) => block.review === "review")
-            ? "A prediction block needs an owner check"
-            : null,
-      },
+    const ownerReview = blocks.some((block) => block.review === "review");
+    await writeCommentState(comment, {
+      ingestionStatus: editRefused
+        ? "flagged"
+        : resolveIngestionStatus(fetchOutcome ?? "unchanged", resolution.kind, manualSets.length > 0),
+      reviewState: editRefused ? "flagged" : ownerReview ? "flagged" : comment.reviewState,
+      reviewNote: editRefused
+        ? EDIT_AFTER_KICKOFF_NOTE
+        : ownerReview
+          ? "A prediction block needs an owner check"
+          : comment.reviewNote === EDIT_TIME_UNKNOWN_NOTE || comment.reviewNote === MANUAL_PREDICTION_NOTE
+            ? null
+            : comment.reviewNote,
     });
     parsedCount += 1;
   }
@@ -463,16 +543,22 @@ export async function applyAutoSelection(
         data: { selected, status },
       });
     }
-    if (set.forumComment?.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
+    const keptNote = set.forumComment?.reviewNote === EDIT_TIME_UNKNOWN_NOTE
+      || set.forumComment?.reviewNote === EDIT_AFTER_KICKOFF_NOTE
+      || set.forumComment?.reviewNote === MANUAL_PREDICTION_NOTE
+      || set.forumComment?.reviewNote === "A prediction block needs an owner check";
+    if (keptNote) {
       continue;
     }
     if (set.forumCommentId && !set.manuallyEdited && (!options?.commentId || set.forumCommentId === options.commentId)) {
+      const reviewState = status === "accepted" ? "accepted" : status === "flagged" ? "flagged" : "stored";
+      const reviewNote = status === "flagged" ? "Needs review before it can be accepted" : null;
+      if (set.forumComment?.reviewState === reviewState && set.forumComment.reviewNote === reviewNote) {
+        continue;
+      }
       await prisma.forumComment.update({
         where: { id: set.forumCommentId },
-        data: {
-          reviewState: status === "accepted" ? "accepted" : status === "flagged" ? "flagged" : "stored",
-          reviewNote: status === "flagged" ? "Needs review before it can be accepted" : null,
-        },
+        data: { reviewState, reviewNote },
       });
     }
   }
