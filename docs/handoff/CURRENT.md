@@ -243,7 +243,7 @@ Pull request #26 merged to `main` at `c12c410ac859cfa74f19afb34a9ca8a23feccca4`.
 
 The read-only plan and one `worker:once` both ran at `2026-11-20T07:02Z` with `WORKER_ENABLED=1`, `PREDICTION_REFRESH_INTERVAL_MINUTES=60`, and `WORKER_RESULTS_ENABLED` unset. The only active round was 15. Its prediction job was `not-due` until `2026-11-20T07:34:15.738Z` (10:34 UTC+3). Result jobs were skipped, including round 15 until `2026-11-20T18:30:00.000Z`. The once cycle processed 0 jobs, skipped 30, and made no database change. Round 15 stayed at 20 comments, 14 sets, and 91 predictions, with the same ids, scores, selections, and timestamps. Comments 5707 and 5713 stayed flagged with the unresolved-edit note. 5714 stayed one set. Scores stayed 350 with the same point sum. Result attempts stayed 0. Both checkpoints stayed. That skipped cycle did not fetch the forum and does not test the import.
 
-After that skip, the live `.env` gained `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60`. `WORKER_RESULTS_ENABLED` and `WORKER_SCAN_MINUTES` are unset. `WORKER_LOCK_DIR` is still the shared absolute directory. `zsh scripts/worker-agent.sh install` wrote the worker plist and did not load it. The plist working directory is this checkout, the program is `scripts/worker-service.sh`, `RunAtLoad` is false, and the plist has no environment of its own. `zsh scripts/worker-agent.sh start` loaded it, and `launchctl kickstart` started it because `RunAtLoad` is false. Launchd reports one job, state running, pid 94177, one run, never exited. The web listener stayed PID 93921. The start line is `mode=supervise enabled=true results=false predictionIntervalMinutes=60`. The claim directory was empty after the cycle. The process is sleeping until the stored prediction time. The first fetch on this build has not run.
+After that skip, the live `.env` gained `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60`. `WORKER_RESULTS_ENABLED` and `WORKER_SCAN_MINUTES` stayed unset. `WORKER_LOCK_DIR` stayed the shared absolute directory. `zsh scripts/worker-agent.sh install` wrote the worker plist and did not load it. That plist had `RunAtLoad` false and no environment of its own. `zsh scripts/worker-agent.sh start` loaded it, and `launchctl kickstart` started it because `RunAtLoad` was false. Launchd reported one job, pid 94177. The web listener stayed PID 93921. The start line was `mode=supervise enabled=true results=false predictionIntervalMinutes=60`. The claim directory was empty after the cycle. The first fetch had not run yet; the verified fetch is in the next section.
 
 Prediction and result clocks stay separate. Result checks stay off. Round 15's publication times are normalized; other rounds are not. See [../OPERATIONS.md](../OPERATIONS.md).
 
@@ -256,16 +256,44 @@ Run on 2026-11-20 in a worktree of `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. T
 - `npx tsc --noEmit`: passed.
 - `npm run build` was not run again. The serving build remains `-ViUojczofhfmwOlfN68r`.
 
+## Verified unattended fetch
+
+The supervised worker fetched round 15 at `2026-11-20T07:34:15.744Z` (10:34:15 UTC+3), 6 milliseconds after the stored due time. The forum download time is `2026-11-20T07:34:16.469Z`. The summary was `0 new, 0 updated, 20 unchanged, 0 duplicate, 0 ignored, 0 flagged`. Compared with the baseline taken before activation, all 91 prediction ids, scorelines, and timestamps stayed, and all 14 set ids and selections stayed. Comments 5707 and 5713 kept the unresolved-edit note. Result attempts stayed 0. Scores and checkpoints stayed. No other round's prediction clock moved. The process log did not show the cycle, because that build printed reports only when the loop exited.
+
+A later attempt was stored at `2026-11-20T09:07:13.765Z` (12:07:13 UTC+3), again `0 new, 0 updated, 20 unchanged`. The same 91 prediction ids and 14 set ids were still present. The Mac had been asleep across the 11:34 UTC+3 due time and fully awake again at 11:52. That delay is an observation of this machine. The code had armed one wait until the stored due time; this change does not claim that macOS timer behavior from that one delay.
+
+## Worker recheck
+
+The supervised loop waits at most 60 seconds, then reads the wall clock and the persisted due times. The 60 seconds are a local recheck, not the prediction interval and not a forum poll. An overdue eligible round is fetched once. Missed intervals are not replayed. `nextPredictionFetchAt` still moves by `PREDICTION_REFRESH_INTERVAL_MINUTES` after the attempt. Result clocks and attempts are unchanged. Idle rechecks are not logged. A cycle that fetches, fails, or is at least one recheck late writes its start, counts, fetch summary, and next due time immediately.
+
+`RunAtLoad` is true, so user login and `zsh scripts/worker-agent.sh start` start the process. A reboot does not start it until that user logs in. `zsh scripts/worker-agent.sh stop` unloads the job and leaves it stopped. A non-zero exit, including missing `.env` or `node_modules`, is restarted after the 60-second `ThrottleInterval`. A disabled worker exits 0 and is not restarted. One instance claim rejects a second process. Logs are `~/Library/Logs/udaff-counter-tracker/worker.log`. The web command does not install or start the worker. `WORKER_RESULTS_ENABLED` stays unset. See [../OPERATIONS.md](../OPERATIONS.md).
+
+## Checks for the worker recheck
+
+Run on 2026-11-20 in a worktree of `8b1f4efdc6842051ddae9826729b86a20d97be9b`. The serving processes were left running for these checks. No seed, refresh, parse, poll, or score write ran for them.
+
+- `npm test`: 55 files passed, 1 skipped, 363 tests passed, including `src/tests/worker/worker.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The live environment sets that interval to 60. Round 15's next prediction fetch remains `2026-11-20T07:34:15.738Z` because the controlled cycle was not due and did not fetch. `WORKER_RESULTS_ENABLED` is unset, so the running worker does not fetch results or store scores. One supervised worker is loaded. A login does not start it by itself: the plist has `RunAtLoad` false, so a later start is `zsh scripts/worker-agent.sh start` and then `launchctl kickstart "gui/$(id -u)/com.udaff.counter-tracker.worker"`. See [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The live environment sets that interval to 60. `WORKER_RESULTS_ENABLED` is unset. The loop rechecks eligibility at most every 60 seconds and does not wake the Mac. Status and stop:
+
+```bash
+zsh scripts/worker-agent.sh status
+zsh scripts/worker-agent.sh stop
+```
+
+See [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running web process is Next.js 16.4.5 build `-ViUojczofhfmwOlfN68r` from merge `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The first fetch on this build is still pending at `2026-11-20T07:34:15.738Z` (10:34 UTC+3). Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
+- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -275,9 +303,8 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not set `WORKER_RESULTS_ENABLED=1`. Do not add cron, a web-process timer, or a second worker. Stop the existing worker with `zsh scripts/worker-agent.sh stop`.
-- Do not force a prediction refresh before `2026-11-20T07:34:15.738Z`. The skipped cycle did not fetch. Do not use `forceRoundId` to make that pending fetch happen early.
+- Do not force a prediction refresh with `forceRoundId`. The supervised worker fetches a round when `nextPredictionFetchAt` is due. Do not rewrite that timestamp by hand.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
-- Do not force another round-15 prediction refresh. The supervised worker may take the fetch due at `2026-11-20T07:34:15.738Z`. That fetch is one round, the shared claim, and no result or score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`. Do not bulk-relabel stored `new` comments, and do not restore prediction ids from an older copy.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 

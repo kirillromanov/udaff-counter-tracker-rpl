@@ -1,22 +1,29 @@
 /**
- * Wait until the next persisted prediction or result time.
- * A missing time uses the explicit prediction interval or the optional scan cap.
- * Neither value rewrites a task's due time.
+ * Local eligibility recheck. This is not the prediction-fetch interval and
+ * not a result retry. A sleeping Mac can delay the timer; the cap only limits
+ * how long an executing process waits before reading the clocks again.
+ */
+export const RECHECK_MS = 60_000;
+
+/**
+ * Wait at most one recheck before reading wall-clock time and persisted due
+ * times again. A sooner due time waits only until that time. An overdue or
+ * empty schedule waits one recheck, not the prediction interval.
  */
 export function workerSleepMs(input: {
   now: Date;
   nextDueAt: Date | null;
-  idleMinutes: number | null;
   scanMinutes: number | null;
-}): number | null {
-  const cap = input.scanMinutes == null ? null : input.scanMinutes * 60_000;
+}): number {
+  let cap = RECHECK_MS;
+  if (input.scanMinutes != null) {
+    cap = Math.min(cap, input.scanMinutes * 60_000);
+  }
   if (input.nextDueAt) {
     const delta = input.nextDueAt.getTime() - input.now.getTime();
     if (delta > 0) {
-      return cap == null ? delta : Math.min(cap, delta);
+      return Math.min(cap, delta);
     }
   }
-  const idle = input.idleMinutes == null ? null : input.idleMinutes * 60_000;
-  const fallback = idle ?? cap;
-  return fallback;
+  return cap;
 }

@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { acquireClaim } from "@/lib/domain/worker/claims";
-import { readWorkerConfig } from "@/lib/domain/worker/config";
-import { runWorkerCycle, runWorkerLoop, type CycleDeps } from "@/lib/domain/worker/cycle";
+import { readWorkerConfig, workerStartupFailure } from "@/lib/domain/worker/config";
+import { runWorkerCycle, runWorkerLoop, workerReportIsQuiet, type CycleDeps } from "@/lib/domain/worker/cycle";
+import { emitWorkerLine, formatWorkerLine } from "@/lib/domain/worker/log";
 import { planWorker, type WorkerRound } from "@/lib/domain/worker/plan";
-import { workerSleepMs } from "@/lib/domain/worker/sleep";
+import { nextPredictionFetchAtAfterAttempt } from "@/lib/domain/import/prediction-schedule";
+import { RECHECK_MS, workerSleepMs } from "@/lib/domain/worker/sleep";
 import type { PollFixture } from "@/lib/domain/results/poll";
 
 const now = new Date("2026-11-20T18:00:00.000Z");
@@ -225,8 +227,9 @@ describe("worker operating modes", () => {
     expect(report.lines.find((item) => item.job === "prediction-refresh")?.reason).toBe("not-due");
   });
 
-  it("waits until the persisted prediction time after a failure", async () => {
+  it("rechecks within 60 seconds after a failure instead of sleeping the prediction interval", async () => {
     const sleeps: number[] = [];
+    const reports: string[] = [];
     const controller = new AbortController();
     let calls = 0;
     const nextAt = new Date(now.getTime() + 60 * 60_000).toISOString();
@@ -239,13 +242,16 @@ describe("worker operating modes", () => {
         sleeps.push(ms);
         controller.abort();
       },
+      onReport: () => reports.push("report"),
     });
     expect(calls).toBe(1);
-    expect(sleeps).toEqual([60 * 60_000]);
-    expect(workerSleepMs({ now, nextDueAt: new Date(now.getTime() + 10 * 60_000), idleMinutes: 60, scanMinutes: null })).toBe(10 * 60_000);
+    expect(reports).toEqual(["report"]);
+    expect(sleeps).toEqual([RECHECK_MS]);
+    expect(workerSleepMs({ now, nextDueAt: new Date(now.getTime() + 10 * 60_000), scanMinutes: null })).toBe(RECHECK_MS);
+    expect(workerSleepMs({ now, nextDueAt: new Date(now.getTime() + 20_000), scanMinutes: null })).toBe(20_000);
   });
 
-  it("sleeps until the advanced prediction time instead of a wake cap", async () => {
+  it("caps the wait at the recheck bound even when a scan cap is longer", async () => {
     const sleeps: number[] = [];
     const controller = new AbortController();
     const nextAt = new Date(now.getTime() + 30 * 60_000).toISOString();
@@ -256,18 +262,82 @@ describe("worker operating modes", () => {
         controller.abort();
       },
     });
-    expect(sleeps).toEqual([30 * 60_000]);
+    expect(sleeps).toEqual([RECHECK_MS]);
+  });
+
+  it("runs one overdue fetch after several missed intervals and does not fetch on the recheck", async () => {
+    let clock = new Date("2026-11-20T12:00:00.000Z");
+    let storedNext = new Date("2026-11-20T08:00:00.000Z");
+    let fetches = 0;
+    let inFlight = false;
+    const sequence: string[] = [];
+    const controller = new AbortController();
+    await runWorkerLoop(readWorkerConfig(enabled, "supervise"), {
+      now: () => clock,
+      loadRounds: async () => [
+        round({ nextPredictionFetchAt: storedNext }),
+        round({ id: "closed", number: 14, closedAt: clock, nextPredictionFetchAt: storedNext }),
+      ],
+      acquireInstance: async () => async () => undefined,
+      refresh: async (roundId) => {
+        if (inFlight) {
+          throw new Error("overlap");
+        }
+        if (roundId !== "round-15") {
+          throw new Error("unexpected round");
+        }
+        inFlight = true;
+        fetches += 1;
+        storedNext = nextPredictionFetchAtAfterAttempt(clock, 60);
+        inFlight = false;
+        return { failed: false, busy: false, closed: false, nextAt: storedNext.toISOString(), detail: "0 new, 1 unchanged" };
+      },
+      poll: async () => {
+        throw new Error("result poll");
+      },
+    }, {
+      signal: controller.signal,
+      onStart: () => sequence.push("start"),
+      onReport: (report) => sequence.push(workerReportIsQuiet(report) ? "quiet" : "report"),
+      sleep: async (ms) => {
+        sequence.push("sleep");
+        expect(ms).toBeLessThanOrEqual(RECHECK_MS);
+        clock = new Date(clock.getTime() + ms);
+        if (sequence.filter((item) => item === "sleep").length >= 2) {
+          controller.abort();
+        }
+      },
+    });
+    expect(fetches).toBe(1);
+    expect(storedNext.toISOString()).toBe("2026-11-20T13:00:00.000Z");
+    expect(sequence).toEqual(["start", "report", "sleep", "quiet", "sleep"]);
+  });
+
+  it("emits a cycle line immediately and refuses a missing prediction interval", () => {
+    const lines: string[] = [];
+    emitWorkerLine(formatWorkerLine("cycle", { processed: 1, results: false, nextDueAt: "2026-11-20T13:00:00.000Z" }), (text) => lines.push(text));
+    expect(lines).toEqual([expect.stringMatching(/worker cycle processed=1 results=false nextDueAt=2026-11-20T13:00:00.000Z\n$/)]);
+    expect(workerStartupFailure(readWorkerConfig({ WORKER_ENABLED: "1" }, "supervise"))).toBe("prediction-interval-unset");
+    expect(workerStartupFailure(readWorkerConfig(enabled, "supervise"))).toBeNull();
+    expect(workerStartupFailure(readWorkerConfig({}, "supervise"))).toBeNull();
   });
 
   it("stops on abort without another cycle and rejects a second instance", async () => {
     const controller = new AbortController();
     controller.abort();
     let calls = 0;
-    const stopped = await runWorkerLoop(readWorkerConfig(enabled, "supervise"), deps(async () => {
+    let reports = 0;
+    await runWorkerLoop(readWorkerConfig(enabled, "supervise"), deps(async () => {
       calls += 1;
       return { failed: false, busy: false, closed: false, nextAt: null };
-    }), { signal: controller.signal, sleep: async () => undefined });
-    expect(stopped).toEqual([]);
+    }), {
+      signal: controller.signal,
+      sleep: async () => undefined,
+      onReport: () => {
+        reports += 1;
+      },
+    });
+    expect(reports).toBe(0);
     expect(calls).toBe(0);
     const duplicate = await runWorkerCycle(readWorkerConfig(enabled, "once"), {
       ...deps(async () => {
@@ -490,6 +560,11 @@ describe("worker scripts stay out of web startup", () => {
     expect(agent).toContain('LABEL="com.udaff.counter-tracker.worker"');
     expect(agent).toContain("launchctl bootstrap");
     expect(agent).toContain("<key>SuccessfulExit</key>");
+    expect(agent).toContain("<true/>");
+    expect(agent).toContain("<key>ThrottleInterval</key>");
+    expect(agent).toContain("launchctl bootout");
+    expect(readFileSync("scripts/worker-service.sh", "utf8")).toContain("exit 1");
+    expect(readFileSync("scripts/worker-service.sh", "utf8")).not.toContain("exit 0");
     expect(service).not.toContain("worker");
     expect(pkg.scripts.start).toBe("next start");
     expect(pkg.scripts["worker:plan"]).toBe("tsx scripts/worker.ts --plan");
