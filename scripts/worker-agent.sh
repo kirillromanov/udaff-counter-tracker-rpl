@@ -32,12 +32,14 @@ write_plist() {
     <string>${ROOT}/scripts/worker-service.sh</string>
   </array>
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
   <key>KeepAlive</key>
   <dict>
     <key>SuccessfulExit</key>
     <false/>
   </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
   <key>StandardOutPath</key>
   <string>${LOG_DIR}/worker.log</string>
   <key>StandardErrorPath</key>
@@ -51,8 +53,9 @@ case "$ACTION" in
   install)
     write_plist
     print -r -- "Wrote ${PLIST}"
-    print -r -- "Not loaded. Start it only after WORKER_ENABLED=1 and WORKER_SCAN_MINUTES are set."
-    print -r -- "Start: zsh scripts/worker-agent.sh start"
+    print -r -- "Not loaded. Start: zsh scripts/worker-agent.sh start"
+    print -r -- "RunAtLoad starts it when the agent is loaded, including user login."
+    print -r -- "Stop unloads it and leaves it stopped: zsh scripts/worker-agent.sh stop"
     ;;
   start)
     if [[ ! -f "$PLIST" ]]; then

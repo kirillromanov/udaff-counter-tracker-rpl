@@ -1,10 +1,11 @@
 import { loadEnvFile } from "node:process";
 import { prisma } from "@/lib/db/prisma";
 import { acquireClaim, workerLockDirectory } from "@/lib/domain/worker/claims";
-import { workerModeFromArgv } from "@/lib/domain/worker/config";
-import { configForMode, runWorkerCycle, runWorkerLoop, type CycleCounts } from "@/lib/domain/worker/cycle";
+import { workerModeFromArgv, workerStartupFailure } from "@/lib/domain/worker/config";
+import { configForMode, runWorkerCycle, runWorkerLoop, workerReportIsQuiet, type CycleCounts } from "@/lib/domain/worker/cycle";
 import { loadWorkerRounds } from "@/lib/domain/worker/load";
-import { formatWorkerLine } from "@/lib/domain/worker/log";
+import { emitWorkerLine, formatWorkerLine } from "@/lib/domain/worker/log";
+import { RECHECK_MS } from "@/lib/domain/worker/sleep";
 import { pollResultForWorker, refreshPredictionForWorker } from "@/lib/domain/worker/refresh-job";
 
 try {
@@ -13,33 +14,42 @@ try {
   // The web server loads .env. This script also runs when that file is absent.
 }
 
-function printReport(report: CycleCounts): void {
+function emit(event: string, fields: Record<string, string | number | boolean | null> = {}): void {
+  emitWorkerLine(formatWorkerLine(event, fields));
+}
+
+function printReport(report: CycleCounts, mode: "plan" | "once" | "supervise", resultsEnabled: boolean): void {
+  if (mode === "supervise" && workerReportIsQuiet(report)) {
+    return;
+  }
   if (report.refusal) {
-    console.log(formatWorkerLine("refused", { reason: report.refusal }));
+    emit("refused", { reason: report.refusal, results: resultsEnabled });
     return;
   }
   if (report.duplicate) {
-    console.log(formatWorkerLine("stop", { reason: "duplicate-worker" }));
+    emit("stop", { reason: "duplicate-worker" });
     return;
   }
-  console.log(
-    formatWorkerLine("cycle", {
-      processed: report.processed,
-      skipped: report.skipped,
-      errors: report.errors,
-      nextDueAt: report.nextDueAt,
-    }),
-  );
+  emit("cycle", {
+    processed: report.processed,
+    skipped: report.skipped,
+    errors: report.errors,
+    nextDueAt: report.nextDueAt,
+    ...(report.overdueMs >= RECHECK_MS ? { overdueMs: report.overdueMs } : {}),
+    results: resultsEnabled,
+  });
   for (const line of report.lines) {
-    console.log(
-      formatWorkerLine(line.disposition, {
-        round: line.number,
-        job: line.job,
-        eligible: line.eligible,
-        reason: line.reason,
-        nextAt: line.nextAt,
-      }),
-    );
+    if (mode === "supervise" && line.disposition !== "run" && line.reason !== "error") {
+      continue;
+    }
+    emit(line.disposition, {
+      round: line.number,
+      job: line.job,
+      eligible: line.eligible,
+      reason: line.reason,
+      nextAt: line.nextAt,
+      ...(line.outcome ? { outcome: line.outcome } : {}),
+    });
   }
 }
 
@@ -50,14 +60,17 @@ async function main(): Promise<number> {
   if (mode !== "plan" && !config.refusal) {
     process.env.WORKER_LOCK_DIR = claimDir;
   }
-  console.log(
-    formatWorkerLine("start", {
-      mode,
-      enabled: config.enabled,
-      results: config.resultsEnabled,
-      predictionIntervalMinutes: config.predictionIntervalMinutes,
-    }),
-  );
+  const startupFailure = workerStartupFailure(config);
+  emit("start", {
+    mode,
+    enabled: config.enabled,
+    results: config.resultsEnabled,
+    predictionIntervalMinutes: config.predictionIntervalMinutes,
+  });
+  if (startupFailure) {
+    emit("stop", { reason: startupFailure });
+    return 1;
+  }
   const deps = {
     now: () => new Date(),
     loadRounds: loadWorkerRounds,
@@ -70,7 +83,8 @@ async function main(): Promise<number> {
     const stop = () => controller.abort();
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
-    const reports = await runWorkerLoop(config, deps, {
+    let duplicate = false;
+    await runWorkerLoop(config, deps, {
       signal: controller.signal,
       sleep: (ms, signal) => new Promise((resolve) => {
         const timer = setTimeout(resolve, ms);
@@ -79,18 +93,21 @@ async function main(): Promise<number> {
           resolve();
         }, { once: true });
       }),
+      onStart: ({ due }) => emit("cycle-start", { due, results: config.resultsEnabled }),
+      onReport: (report) => {
+        duplicate = report.duplicate;
+        printReport(report, "supervise", config.resultsEnabled);
+      },
     });
-    for (const report of reports) {
-      printReport(report);
-    }
-    const last = reports.at(-1);
-    const reason = controller.signal.aborted ? "signal" : last?.duplicate ? "duplicate-worker" : "complete";
-    console.log(formatWorkerLine("stop", { reason }));
+    const reason = controller.signal.aborted ? "signal" : duplicate ? "duplicate-worker" : "complete";
+    emit("stop", { reason });
     return 0;
   }
-  const report = await runWorkerCycle(config, deps);
-  printReport(report);
-  console.log(formatWorkerLine("stop", { reason: report.refusal ?? (report.duplicate ? "duplicate-worker" : "complete") }));
+  const report = await runWorkerCycle(config, deps, undefined, {
+    onStart: ({ due }) => emit("cycle-start", { due, results: config.resultsEnabled }),
+  });
+  printReport(report, mode, config.resultsEnabled);
+  emit("stop", { reason: report.refusal ?? (report.duplicate ? "duplicate-worker" : "complete") });
   return 0;
 }
 
@@ -100,8 +117,7 @@ main()
     process.exit(code);
   })
   .catch(async (error: unknown) => {
-    console.error(formatWorkerLine("stop", { reason: "failed" }));
-    console.error(error instanceof Error ? error.name : "Error");
+    emit("stop", { reason: "failed", error: error instanceof Error ? error.name : "Error" });
     await prisma.$disconnect();
     process.exit(1);
   });

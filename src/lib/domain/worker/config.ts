@@ -1,7 +1,7 @@
 import { predictionIntervalMinutes } from "@/lib/domain/import/prediction-schedule";
 import { AUTO_RETRY_MINUTES } from "@/lib/domain/results/poll";
 
-/** Proposed wake cap. It is not applied unless the operator sets WORKER_SCAN_MINUTES. */
+/** Historical proposal. The supervise loop does not read it; sleep.ts caps the wait at 60 seconds. */
 export const PROPOSED_SCAN_MINUTES = 60;
 export const MIN_SCAN_MINUTES = AUTO_RETRY_MINUTES;
 export const MAX_SCAN_MINUTES = 24 * 60;
@@ -49,6 +49,14 @@ export function parseScanMinutes(value: string | undefined): number | null {
     return null;
   }
   return parsed;
+}
+
+/** Enabled supervision without the prediction interval cannot schedule fetches. */
+export function workerStartupFailure(config: WorkerConfig): "prediction-interval-unset" | null {
+  if (config.mode === "supervise" && config.enabled && config.predictionIntervalMinutes == null) {
+    return "prediction-interval-unset";
+  }
+  return null;
 }
 
 export function workerModeFromArgv(argv: readonly string[]): WorkerMode {

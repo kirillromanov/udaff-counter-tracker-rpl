@@ -8,7 +8,13 @@ import type { JobResult } from "@/lib/domain/worker/cycle";
 export async function refreshPredictionForWorker(roundId: string, now: Date, claimDir: string): Promise<JobResult> {
   try {
     const report = await refreshRoundPredictions(roundId, { now, claimDir });
-    return { failed: report.failed, busy: report.busy, closed: false, nextAt: await predictionNext(roundId) };
+    return {
+      failed: report.failed,
+      busy: report.busy,
+      closed: false,
+      nextAt: await predictionNext(roundId),
+      detail: report.summary,
+    };
   } catch (error) {
     if (error instanceof RoundClosedError) {
       return { failed: false, busy: false, closed: true, nextAt: null };

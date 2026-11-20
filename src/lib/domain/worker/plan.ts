@@ -25,6 +25,8 @@ export interface PlanLine {
   disposition: "run" | "skip";
   reason: string;
   nextAt: string | null;
+  /** Count summary from a fetch that just ran. Absent on a plan-only line. */
+  outcome?: string;
 }
 
 /** Read-only eligibility. This does not fetch, claim, or write. */

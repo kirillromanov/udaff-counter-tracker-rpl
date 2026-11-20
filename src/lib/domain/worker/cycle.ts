@@ -1,12 +1,14 @@
 import { nextScheduledAt, planWorker, type PlanLine, type WorkerRound } from "./plan";
 import { readWorkerConfig, type WorkerConfig, type WorkerMode } from "./config";
-import { workerSleepMs } from "./sleep";
+import { RECHECK_MS, workerSleepMs } from "./sleep";
 
 export interface JobResult {
   failed: boolean;
   busy: boolean;
   closed: boolean;
   nextAt: string | null;
+  /** Short fetch summary. Callers must not put comment text here. */
+  detail?: string;
 }
 
 export interface CycleCounts {
@@ -17,6 +19,8 @@ export interface CycleCounts {
   refusal: WorkerConfig["refusal"];
   duplicate: boolean;
   nextDueAt: string | null;
+  /** Largest lateness among jobs selected to run, in milliseconds. */
+  overdueMs: number;
 }
 
 export interface CycleDeps {
@@ -27,7 +31,16 @@ export interface CycleDeps {
   acquireInstance: () => Promise<(() => Promise<void>) | null>;
 }
 
-export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, signal?: AbortSignal): Promise<CycleCounts> {
+export interface WorkerCycleEvents {
+  onStart?: (info: { due: number; resultsEnabled: boolean }) => void;
+}
+
+export async function runWorkerCycle(
+  config: WorkerConfig,
+  deps: CycleDeps,
+  signal?: AbortSignal,
+  events?: WorkerCycleEvents,
+): Promise<CycleCounts> {
   if (config.mode !== "plan" && config.refusal) {
     return emptyCounts(config.refusal);
   }
@@ -42,9 +55,14 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
   try {
     const now = deps.now();
     const lines = planWorker(await deps.loadRounds(), now, undefined, { resultsEnabled: config.resultsEnabled });
+    const due = lines.filter((item) => item.disposition === "run");
+    if (due.length > 0) {
+      events?.onStart?.({ due: due.length, resultsEnabled: config.resultsEnabled });
+    }
     let processed = 0;
     let skipped = 0;
     let errors = 0;
+    let overdueMs = 0;
     for (const item of lines) {
       if (signal?.aborted) {
         break;
@@ -59,7 +77,13 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
         item.reason = "prediction-interval-unset";
         continue;
       }
+      if (item.nextAt) {
+        overdueMs = Math.max(overdueMs, now.getTime() - new Date(item.nextAt).getTime());
+      }
       const result = item.job === "prediction-refresh" ? await deps.refresh(item.roundId, now) : await deps.poll(item.roundId, now);
+      if (result.detail) {
+        item.outcome = result.detail;
+      }
       if (result.nextAt) {
         item.nextAt = result.nextAt;
       }
@@ -84,25 +108,39 @@ export async function runWorkerCycle(config: WorkerConfig, deps: CycleDeps, sign
       refusal: null,
       duplicate: false,
       nextDueAt: stamp(nextScheduledAt(lines, now)),
+      overdueMs: Math.max(0, overdueMs),
     };
   } finally {
     await release();
   }
 }
 
+export function workerReportIsQuiet(report: CycleCounts): boolean {
+  return !report.refusal
+    && !report.duplicate
+    && report.processed === 0
+    && report.errors === 0
+    && report.overdueMs < RECHECK_MS;
+}
+
 export async function runWorkerLoop(
   config: WorkerConfig,
   deps: CycleDeps,
-  options: { signal: AbortSignal; sleep: (ms: number, signal: AbortSignal) => Promise<void> },
-): Promise<CycleCounts[]> {
-  const reports: CycleCounts[] = [];
+  options: {
+    signal: AbortSignal;
+    sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+    onStart?: WorkerCycleEvents["onStart"];
+    onReport?: (report: CycleCounts) => void;
+  },
+): Promise<void> {
+  const events = { onStart: options.onStart };
   if (config.mode === "plan" || config.refusal) {
-    reports.push(await runWorkerCycle(config, deps, options.signal));
-    return reports;
+    options.onReport?.(await runWorkerCycle(config, deps, options.signal, events));
+    return;
   }
   while (!options.signal.aborted) {
-    const report = await runWorkerCycle(config, deps, options.signal);
-    reports.push(report);
+    const report = await runWorkerCycle(config, deps, options.signal, events);
+    options.onReport?.(report);
     if (report.duplicate || config.mode === "once") {
       break;
     }
@@ -110,15 +148,10 @@ export async function runWorkerLoop(
     const wait = workerSleepMs({
       now,
       nextDueAt: report.nextDueAt ? new Date(report.nextDueAt) : null,
-      idleMinutes: config.predictionIntervalMinutes,
       scanMinutes: config.scanMinutes,
     });
-    if (wait == null) {
-      break;
-    }
     await options.sleep(wait, options.signal);
   }
-  return reports;
 }
 
 export function configForMode(env: Record<string, string | undefined>, mode: WorkerMode): WorkerConfig {
@@ -126,7 +159,7 @@ export function configForMode(env: Record<string, string | undefined>, mode: Wor
 }
 
 function emptyCounts(refusal: WorkerConfig["refusal"]): CycleCounts {
-  return { processed: 0, skipped: 0, errors: 0, lines: [], refusal, duplicate: false, nextDueAt: null };
+  return { processed: 0, skipped: 0, errors: 0, lines: [], refusal, duplicate: false, nextDueAt: null, overdueMs: 0 };
 }
 
 function stamp(value: Date | null): string | null {

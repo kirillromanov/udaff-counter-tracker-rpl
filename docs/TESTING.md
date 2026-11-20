@@ -20,7 +20,7 @@
 | Start on an isolated database, idempotent second start, reopen keeps activation | `src/tests/rounds/production-activation.test.ts` |
 | Opening post stops at the first comment; eight-fixture parse | `src/tests/import/batch-import.test.ts` |
 | Moscow kickoff conversion | `src/tests/time/moscow.test.ts` |
-| Disabled worker, dry-run, due rules, claims, and no automatic scoring | `src/tests/worker/worker.test.ts` |
+| Disabled worker, 60-second recheck, one overdue fetch, claims, logs, LaunchAgent, and no automatic scoring | `src/tests/worker/worker.test.ts` |
 | Repeated prediction refresh keeps equivalent prediction ids | `src/tests/import/refresh-idempotency.test.ts` |
 
 A passing test run does not prove the live SQLite file is unchanged. Compare a read-only `PRAGMA integrity_check` and row counts before and after any command that might write, and do not run import, poll, refresh, seed, or recalculate scripts as part of a documentation or test pass.

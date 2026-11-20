@@ -26,6 +26,8 @@ Run one `next start` after one `next build`. Do not also run `next dev` on the s
 
 There is no in-process poller. A separate worker can refresh predictions when `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES` is set. Result checks also need `WORKER_RESULTS_ENABLED=1`. Do not add a cron entry as well. The worker LaunchAgent is not loaded by deploying the web server. See [OPERATIONS.md](OPERATIONS.md).
 
+A worker-only source change does not require a web rebuild. Stop the worker with `zsh scripts/worker-agent.sh stop` before updating the checkout it runs from, so an old process does not refresh during the update. Fast-forward that checkout, run `zsh scripts/worker-agent.sh install` to rewrite the plist, then `zsh scripts/worker-agent.sh start` once. `RunAtLoad` starts the process; do not kickstart it as well. A reboot starts this user agent only after that user logs in. `zsh scripts/worker-agent.sh stop` unloads it and leaves it stopped. Logs stay at `~/Library/Logs/udaff-counter-tracker/worker.log`. Missing `.env` or `node_modules` exits 1 and is retried after the 60-second throttle, not reported as a healthy exit.
+
 ## Not done
 
 - Authentication
