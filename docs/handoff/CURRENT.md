@@ -174,16 +174,24 @@ The live write used one compare-and-set transaction. A following read-only plan 
 - ESLint on the correction source, script, and test: passed.
 - `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
 
+## Round 15 prediction refresh
+
+One prediction-only refresh ran on 2026-11-20 for round 15 (`cmwntxbcj0001fyq6efpbp3hn`). The process set `PREDICTION_REFRESH_INTERVAL_MINUTES=60` for that process only and called `refreshDuePredictions({ forceRoundId })`. No other round was due. `WORKER_ENABLED` and `WORKER_RESULTS_ENABLED` were not set. The worker was not installed. The web process was not rebuilt or restarted.
+
+The fetch reported `5 new, 0 updated, 13 unchanged, 0 duplicate, 0 ignored, 1 flagged`. Comments went from 14 to 19, selected sets from 9 to 13, and prediction rows from 58 to 83. Live cells went from 58 accepted and 14 missing to 83 accepted, 0 uncertain, 0 late, 0 ambiguous, and 21 missing. The previous 58 selected scorelines are unchanged. The 25 new accepted cells are new eligible comments: Doctor Livesey (5708), Askvit (5710, one fixture), Йош! (5712), and Hordi Cruyff (5713). Comment 5709 stored no prediction set. All 19 publication times match the Moscow permalink normalization. None needed another correction.
+
+`lastPredictionFetchAt` is `2026-11-20T01:25:34.762Z`. `nextPredictionFetchAt` is that instant plus 60 minutes, `2026-11-20T02:25:34.762Z`. Result attempts, result scheduling, kickoffs, scores, and checkpoints were unchanged. Comment 5707's stored text changed and its predictions were kept because the edit has no reliable edit time. Comment 5701's text did not change; its ingestion label moved from updated to flagged for the same reason. Both selected slips stayed accepted.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. The per-fixture deadline is in pull request #21. Round 15's publication times are corrected; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker and do not refresh round 15 until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment. Round 15's stored prediction time is `2026-11-20T02:25:34.762Z` after the one authorized refresh. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Round 15's publication times are normalized; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is Next.js 16.4.5 build `Ru5U-D_p4OO-D5HaeBrJT` from merge `fcc95006c0eddbb9f3cbb0e3054d986581754338`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's 14 comment times are corrected. Comments on other rounds keep the legacy encoding. Do not shift those remaining times, and do not run the round-15 prediction refresh.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the five comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T02:25:34.762Z`. Do not shift the remaining legacy times.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -195,7 +203,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
-- Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
+- Do not run another round-15 prediction refresh unless the operator asks. The one authorized refresh already advanced `nextPredictionFetchAt` by 60 minutes. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests
