@@ -186,7 +186,28 @@ The fetch reported `5 new, 0 updated, 13 unchanged, 0 duplicate, 0 ignored, 1 fl
 
 A later read of the pre-refresh backup and the live rows separated the three comments. 5701's text, HTML, publication time, and parsed slip are identical; the only difference is the historical `updated` label, which the parser then treated as a new edit. That warning is a false positive. 5703's text and publication time are identical; the four-byte HTML difference is the chunk boundary (`</li><!-- #comment-## -->` versus the start of `ul class="children"`), not the comment body. 5707's parsed slip still includes the reply form and page footer that the previous extraction kept after the last comment. The current comment text does not. The score lines were not replaced. There is no edit timestamp, so that difference stays unresolved until an explicit review. The live labels were not changed.
 
-`storedEditSignal` compares the current body with the slip text. A matching body with a historical `updated` label is stale and is not a new warning. A body difference stays `body-differs` on a later identical reading, and the selection pass does not clear that note. The reply form and comment-list marker are outside the extracted body. Markup inside a comment paragraph is still extracted. Deadline, scoring, attribution, and selection are unchanged. This source change is not deployed, and the live round was not refreshed or reparsed.
+`storedEditSignal` compares the current body with the slip text. A matching body with a historical `updated` label is stale and is not a new warning. A body difference stays `body-differs` on a later identical reading, and the selection pass does not clear that note. The reply form and comment-list marker are outside the extracted body. Markup inside a comment paragraph is still extracted. Deadline, scoring, attribution, and selection are unchanged.
+
+## Edit-detection deploy and one prediction cycle
+
+On 2026-11-20 the serving checkout fast-forwarded from `6b0e8bd22ec6d2952086242c828ee4a159ba0941` to `32740ec7b4a2e449f64fef7283653a898a986b92`. The lockfile was unchanged, so dependencies were not reinstalled. The web LaunchAgent was stopped, `npm run build` produced Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI`, and the same agent was started again. The compiled server output contains `body-differs`. The listener is PID 91149 on `127.0.0.1:3000` only. No schema push, seed, or score calculation ran.
+
+Comment 5701 (`cmwntypbw000hfyq6u3rcbrq8`) was the only round-15 row for that forum id. Its body matched the retained slip exactly, the review note was empty, and the status was `flagged`. One compare-and-set changed `ingestionStatus` to `unchanged` and left the review state, note, selection, and prediction rows. The comment list no longer shows 5701. Its set stays in Accepted. That status change does not by itself empty the parser-review queue: the queue was already empty because the set status was accepted.
+
+One `worker:once` process then ran with `WORKER_ENABLED=1`, `PREDICTION_REFRESH_INTERVAL_MINUTES=60`, and `WORKER_RESULTS_ENABLED` unset. The read-only plan before it had one runnable job: round 15 prediction refresh. Every result job was skipped. The cycle processed that one job, released its claim, and wrote `lastPredictionFetchAt` `2026-11-20T06:34:15.738Z` and `nextPredictionFetchAt` exactly 60 minutes later, `2026-11-20T07:34:15.738Z` (10:34 UTC+3). The page reports `1 new, 0 updated, 18 unchanged, 0 duplicate, 0 ignored, 1 flagged`.
+
+Round 15 went from 19 comments, 13 sets, and 83 predictions to 20, 14, and 91. The new comment is 5714, published `2026-11-20T06:26:00Z` (09:26 UTC+3), with one selected accepted set of 8 predictions. Existing set ids stayed. Existing scorelines and selected flags stayed. Comments 5707 and 5713 kept their prediction rows. Both now show Needs review with the unresolved-edit note, because their slips still differ from the current body and neither has an edit time. 5713's stored text shortened by the reply-form tail that the previous last-comment extraction had kept. The parser-review queue still says nothing is waiting, because those sets remain status accepted. The visible warning is the comment badge and note.
+
+Comments whose stored status is still `new` had their prediction rows deleted and recreated with the same scores, even though this fetch classified the text as unchanged. A stored `new` label is still treated as a current content class. The worker LaunchAgent was not installed and the live `.env` was not given `WORKER_ENABLED` or `PREDICTION_REFRESH_INTERVAL_MINUTES`. Result attempts stayed 0, result logs stayed 155, observations stayed 320, scores stayed 350 with the same point sum, and both checkpoints stayed. Other rounds' comment counts, prediction counts, publication sums, and clocks were unchanged.
+
+Web status and stop:
+
+```bash
+launchctl print "gui/$(id -u)/com.udaff.counter-tracker"
+launchctl bootout "gui/$(id -u)/com.udaff.counter-tracker"
+```
+
+The worker label `com.udaff.counter-tracker.worker` is not loaded. Do not bootstrap it until the stored-`new` rewrite is fixed. `zsh scripts/worker-agent.sh status` and `zsh scripts/worker-agent.sh stop` are the commands for that label after a future install.
 
 ## Checks for comment-change detection
 
@@ -199,14 +220,14 @@ Run on 2026-11-20 from `fix/comment-change-detection`. No live database, refresh
 
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment. Round 15's stored prediction time is `2026-11-20T02:25:34.762Z` after the one authorized refresh. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Round 15's publication times are normalized; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment. Round 15's stored prediction time is `2026-11-20T07:34:15.738Z` after the one due worker cycle. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process uses the shared claim directory. The worker agent is not installed. Round 15's publication times are normalized; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running process is Next.js 16.4.5 build `Ru5U-D_p4OO-D5HaeBrJT` from merge `fcc95006c0eddbb9f3cbb0e3054d986581754338`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
+- The running process is Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI` from merge `32740ec7b4a2e449f64fef7283653a898a986b92`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the five comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T02:25:34.762Z`. Do not shift the remaining legacy times.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T07:34:15.738Z`. Do not shift the remaining legacy times. A stored `new` label still causes an identical later fetch to recreate prediction rows.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -215,11 +236,11 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
-- Do not install, load, or start `com.udaff.counter-tracker.worker`.
+- Do not install, load, or start `com.udaff.counter-tracker.worker`. The one due cycle already ran. Another unattended cycle would recreate prediction rows for comments whose stored status is still `new`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
-- Do not run another round-15 prediction refresh unless the operator asks. The one authorized refresh already advanced `nextPredictionFetchAt` by 60 minutes. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
-- Do not clear the live 5701 or 5707 labels from this note. 5701 can be set from `flagged` back to `unchanged` only by an explicit review write; its slip already matches. 5707 stays pending until that review accepts or replaces the slip.
+- Do not run another round-15 prediction refresh unless the operator asks. The due cycle on 2026-11-20 advanced `nextPredictionFetchAt` to `2026-11-20T07:34:15.738Z`. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
+- Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests
