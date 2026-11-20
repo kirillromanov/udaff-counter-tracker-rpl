@@ -7,9 +7,12 @@ import {
   planPredictionRefresh,
   resolveIngestionStatus,
   selectDuePredictionRoundIds,
+  MANUAL_PREDICTION_NOTE,
   shouldReplaceStoredSlip,
+  storedEditSignal,
   type StoredCommentShape,
 } from "@/lib/domain/import/incremental";
+import { EDIT_TIME_UNKNOWN_NOTE } from "@/lib/domain/import/fixture-deadline";
 import { ARCHIVED_ROUND, OPERATIONAL_ROUND } from "@/lib/domain/standings/round-role";
 import type { PollFixture } from "@/lib/domain/results/poll";
 
@@ -67,6 +70,41 @@ describe("incremental prediction comments", () => {
     expect(shouldReplaceStoredSlip("updated", false, true)).toBe(true);
     expect(ingestionStatusLabel("duplicate")).toBe("Duplicate comment");
     expect(ingestionStatusLabel("ignored")).toBe("Ignored user");
+  });
+
+  it("does not treat a historical updated label as a new edit when the slip text matches", () => {
+    const same = {
+      commentText: "Ростов — Крылья Советов 2-1",
+      slipText: "Ростов — Крылья Советов 2-1",
+      storedStatus: "updated",
+      reviewNote: null,
+    };
+    expect(storedEditSignal(same)).toBe("stale-label");
+    expect(storedEditSignal(same)).toBe("stale-label");
+    expect(storedEditSignal({ ...same, storedStatus: "flagged", reviewNote: null })).toBe("none");
+    expect(storedEditSignal({
+      commentText: "Ростов — Крылья Советов 2-1",
+      slipText: "Ростов — Крылья Советов 2-1",
+      storedStatus: "flagged",
+      reviewNote: MANUAL_PREDICTION_NOTE,
+    })).toBe("none");
+  });
+
+  it("keeps a body difference unresolved across an identical reading", () => {
+    const changed = {
+      commentText: "Ростов — Крылья Советов 1-0",
+      slipText: "Ростов — Крылья Советов 2-1",
+      storedStatus: "flagged",
+      reviewNote: EDIT_TIME_UNKNOWN_NOTE,
+    };
+    expect(storedEditSignal(changed)).toBe("body-differs");
+    expect(storedEditSignal({ ...changed, storedStatus: "unchanged", reviewNote: EDIT_TIME_UNKNOWN_NOTE })).toBe("body-differs");
+    expect(storedEditSignal({
+      commentText: "Ростов — Крылья Советов 1-0",
+      slipText: "Ростов — Крылья Советов 1-0",
+      storedStatus: "flagged",
+      reviewNote: EDIT_TIME_UNKNOWN_NOTE,
+    })).toBe("stale-label");
   });
 
   it("counts a refetch of the same text as unchanged even when the stored status is still new", () => {

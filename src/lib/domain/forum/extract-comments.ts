@@ -79,8 +79,14 @@ function extractTitle(html: string): string {
 }
 
 function commentBody(chunk: string): { html: string; text: string } {
-  const beforeChildren = chunk.split(/<ul[^>]*class="children"/i)[0] ?? chunk;
-  const paragraphs = [...beforeChildren.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(
+  const boundaries = [
+    chunk.search(/<ul[^>]*class="children"/i),
+    chunk.search(/<div[^>]*id="respond"/i),
+    chunk.search(/<!--\s*\/\s*Comment List\s*-->/i),
+  ].filter((index) => index >= 0);
+  const end = boundaries.length > 0 ? Math.min(...boundaries) : chunk.length;
+  const body = chunk.slice(0, end);
+  const paragraphs = [...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(
     (match) => match[1] ?? "",
   );
   const html = paragraphs.join("\n");

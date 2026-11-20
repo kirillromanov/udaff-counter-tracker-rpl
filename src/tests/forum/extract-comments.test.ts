@@ -59,6 +59,23 @@ describe("extractForumPost", () => {
     expect(pages).toEqual(["https://canadaru.net/udaff_afterlife/sport/football/rpl/2763/comment-page-2/"]);
   });
 
+  it("ignores the reply form and keeps markup inside the comment body", () => {
+    const post = extractForumPost(
+      `<ul class="commentlist"><li id="comment-5707">
+<div class="comment-meta"><a href="#comment-5707">19/11/2026 at 21:55</a></div>
+<p>Ростов — Крылья Советов <del>1-0</del> 2-1</p>
+</li></ul>
+<div id="respond" class="comment-respond"><p><label>Name (required)</label></p>
+<p>Email (will not be published)</p></div>
+<!-- / Comment List -->`,
+      "https://canadaru.net/udaff_afterlife/sport/football/rpl/3397/",
+    );
+    expect(post.comments[0]?.rawText).toContain("2-1");
+    expect(post.comments[0]?.rawText).toContain("1-0");
+    expect(post.comments[0]?.rawText).not.toContain("Name");
+    expect(post.comments[0]?.rawText).not.toContain("Email");
+  });
+
   it("parses the forum timestamp", () => {
     expect(parseForumTimestamp("16/10/2026 at 10:10")?.toISOString()).toBe("2026-10-16T10:10:00.000Z");
     expect(parseForumTimestamp("not a date")).toBeNull();
