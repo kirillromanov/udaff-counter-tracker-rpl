@@ -277,6 +277,14 @@ Run on 2026-11-20 in a worktree of `8b1f4efdc6842051ddae9826729b86a20d97be9b`. T
 - `npx tsc --noEmit`: passed.
 - `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
 
+## First cycle on the recheck build
+
+Pull request #28 merged to `main` at `fbcde8d061ad78e825132dd67f73a8cdcc855276`. The serving checkout fast-forwarded to that commit. The lockfile was unchanged, so dependencies were not reinstalled and the web build was not replaced. The listener stayed PID 93921 on `127.0.0.1:3000`, build `-ViUojczofhfmwOlfN68r`. The previous worker was stopped before the fast-forward. `zsh scripts/worker-agent.sh install` rewrote the plist with `RunAtLoad` true, `KeepAlive` `SuccessfulExit` false, and `ThrottleInterval` 60. `zsh scripts/worker-agent.sh start` loaded it once. Launchd reports one job, pid 98451, one run, never exited. The start line is `2026-11-20T09:21:03.641Z worker start mode=supervise enabled=true results=false predictionIntervalMinutes=60`.
+
+Nothing was due at startup. No idle recheck lines were written. The lines stamped `2026-11-20T09:19:51Z` are the previous process flushing buffered reports as it stopped. They are not extra fetches.
+
+The due cycle logged `cycle-start` at `2026-11-20T10:07:14.359Z`, under a second after the stored time `2026-11-20T10:07:13.765Z`. It processed one prediction job, skipped 29, and recorded `4 new, 0 updated, 20 unchanged, 0 duplicate, 0 ignored, 0 flagged`. Comments 5715, 5716, 5717, and 5718 were added, with 3 new sets and 24 new predictions. The previous 91 prediction ids and 14 set ids stayed, including selections and timestamps. Comments 5707 and 5713 stayed flagged. Compared with the backup taken before the restart, scores stayed 350 summing to 4575, result attempts stayed 0, result logs stayed 155, observations stayed 320, both checkpoints stayed, and round 14's manual flags stayed. Only round 15's prediction clock moved. The next time is `2026-11-20T11:07:13.781Z` (14:07 UTC+3). This machine was awake, so that timing is not a sleep-resume test.
+
 ## Background worker
 
 Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The live environment sets that interval to 60. `WORKER_RESULTS_ENABLED` is unset. The loop rechecks eligibility at most every 60 seconds and does not wake the Mac. Status and stop:
@@ -293,7 +301,7 @@ See [../OPERATIONS.md](../OPERATIONS.md).
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running web process is Next.js 16.4.5 build `-ViUojczofhfmwOlfN68r` from merge `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
+- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. The 13:07 UTC+3 cycle added comments 5715–5718 without changing those rows. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
