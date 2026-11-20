@@ -211,7 +211,7 @@ The worker label `com.udaff.counter-tracker.worker` is not loaded. Do not bootst
 
 ## Prediction-refresh idempotency
 
-This change is not merged and not deployed. The running process is still Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI` from `32740ec7b4a2e449f64fef7283653a898a986b92`. No live refresh, reparse, poll, score, relabel, or database restore ran for it. The worker agent was not installed.
+The following paragraphs record the verification before merge. The deploy section below is the running state.
 
 `saveForumPost` classifies the current fetch: a comment was created, its extracted text changed, or the text was unchanged. That class is what `refreshRoundPredictions` and batch import pass to `parseStoredComments`. A stored `new`, `updated`, `unchanged`, or `duplicate` value is only the last saved disposition. An explicit reparse omits the fetch class and compares the body with the stored slip. `planCommentParse` does not treat the historical label as the fetch.
 
@@ -237,16 +237,35 @@ Run on 2026-11-20 from `fix/comment-change-detection`. No live database, refresh
 - ESLint on the touched import, extraction, and test files: passed.
 - `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
 
+## Idempotency deploy and supervised worker
+
+Pull request #26 merged to `main` at `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. Its parents are `4ce3bf1bbdcd310eb782e0f04a67c1f2be4df5d8` and `089be24783d87d37583e4460de74de0de837a42f`. The serving checkout fast-forwarded to that merge. The lockfile was unchanged, so dependencies were not reinstalled. The web LaunchAgent was stopped, `npm run build` produced Next.js 16.4.5 build `-ViUojczofhfmwOlfN68r`, and the same agent was started again. The compiled output contains `protect-unresolved`. The listener is PID 93921 on `127.0.0.1:3000` only. No schema push, seed, refresh, parse, or score calculation ran during the deploy.
+
+The read-only plan and one `worker:once` both ran at `2026-11-20T07:02Z` with `WORKER_ENABLED=1`, `PREDICTION_REFRESH_INTERVAL_MINUTES=60`, and `WORKER_RESULTS_ENABLED` unset. The only active round was 15. Its prediction job was `not-due` until `2026-11-20T07:34:15.738Z` (10:34 UTC+3). Result jobs were skipped, including round 15 until `2026-11-20T18:30:00.000Z`. The once cycle processed 0 jobs, skipped 30, and made no database change. Round 15 stayed at 20 comments, 14 sets, and 91 predictions, with the same ids, scores, selections, and timestamps. Comments 5707 and 5713 stayed flagged with the unresolved-edit note. 5714 stayed one set. Scores stayed 350 with the same point sum. Result attempts stayed 0. Both checkpoints stayed. That skipped cycle did not fetch the forum and does not test the import.
+
+After that skip, the live `.env` gained `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60`. `WORKER_RESULTS_ENABLED` and `WORKER_SCAN_MINUTES` are unset. `WORKER_LOCK_DIR` is still the shared absolute directory. `zsh scripts/worker-agent.sh install` wrote the worker plist and did not load it. The plist working directory is this checkout, the program is `scripts/worker-service.sh`, `RunAtLoad` is false, and the plist has no environment of its own. `zsh scripts/worker-agent.sh start` loaded it, and `launchctl kickstart` started it because `RunAtLoad` is false. Launchd reports one job, state running, pid 94177, one run, never exited. The web listener stayed PID 93921. The start line is `mode=supervise enabled=true results=false predictionIntervalMinutes=60`. The claim directory was empty after the cycle. The process is sleeping until the stored prediction time. The first fetch on this build has not run.
+
+Prediction and result clocks stay separate. Result checks stay off. Round 15's publication times are normalized; other rounds are not. See [../OPERATIONS.md](../OPERATIONS.md).
+
+## Checks for this activation note
+
+Run on 2026-11-20 in a worktree of `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. The serving processes were left running. No seed, refresh, parse, poll, or score write ran for the note.
+
+- `npm test`: 55 files passed, 1 skipped, 361 tests passed. The snapshot test stayed skipped because no private snapshot path was set.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build` was not run again. The serving build remains `-ViUojczofhfmwOlfN68r`.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment. Round 15's stored prediction time is `2026-11-20T07:34:15.738Z` after the one due worker cycle. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process uses the shared claim directory. The worker agent is not installed. Round 15's publication times are normalized; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The live environment sets that interval to 60. Round 15's next prediction fetch remains `2026-11-20T07:34:15.738Z` because the controlled cycle was not due and did not fetch. `WORKER_RESULTS_ENABLED` is unset, so the running worker does not fetch results or store scores. One supervised worker is loaded. A login does not start it by itself: the plist has `RunAtLoad` false, so a later start is `zsh scripts/worker-agent.sh start` and then `launchctl kickstart "gui/$(id -u)/com.udaff.counter-tracker.worker"`. See [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running process is Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI` from merge `32740ec7b4a2e449f64fef7283653a898a986b92`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
+- The running web process is Next.js 16.4.5 build `-ViUojczofhfmwOlfN68r` from merge `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T07:34:15.738Z`. Do not shift the remaining legacy times. The idempotency fix is unmerged. The running build still recreates prediction rows when a stored label is `new`. Live comments were not relabeled, and the replaced prediction ids were not restored.
+- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The first fetch on this build is still pending at `2026-11-20T07:34:15.738Z` (10:34 UTC+3). Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -255,10 +274,10 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
-- Do not install, load, or start `com.udaff.counter-tracker.worker`. The one due cycle already ran. The serving build would recreate prediction rows for comments whose stored status is still `new`. This branch's fix stays unmerged until the evidence report is accepted. Do not deploy or restart the serving application to pick it up.
-- Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
+- Do not set `WORKER_RESULTS_ENABLED=1`. Do not add cron, a web-process timer, or a second worker. Stop the existing worker with `zsh scripts/worker-agent.sh stop`.
+- Do not force a prediction refresh before `2026-11-20T07:34:15.738Z`. The skipped cycle did not fetch. Do not use `forceRoundId` to make that pending fetch happen early.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
-- Do not run another round-15 prediction refresh unless the operator asks. The due cycle on 2026-11-20 advanced `nextPredictionFetchAt` to `2026-11-20T07:34:15.738Z`. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
+- Do not force another round-15 prediction refresh. The supervised worker may take the fetch due at `2026-11-20T07:34:15.738Z`. That fetch is one round, the shared claim, and no result or score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`. Do not bulk-relabel stored `new` comments, and do not restore prediction ids from an older copy.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
