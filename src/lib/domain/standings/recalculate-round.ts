@@ -87,7 +87,7 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
     include: {
       matches: { orderBy: { sortOrder: "asc" }, include: { resultObservations: { select: { matchStatus: true } } } },
       predictionSets: {
-        include: { predictions: true, forumComment: { select: { postedAt: true } } },
+        include: { predictions: true, forumComment: { select: { postedAt: true, rawHtml: true } } },
       },
       season: {
         include: {
@@ -118,9 +118,8 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
   const config = round.season.scoringConfig
     ? scoringConfigFromRecord(round.season.scoringConfig)
     : defaultScoringConfig;
-  const fixtureIds = round.matches.map((match) => match.id);
   const slips = slipsByParticipant(
-    fixtureIds,
+    round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
     round.predictionSets.filter((set) => set.selected).map((set) => ({
       id: set.id,
       participantId: set.participantId,
@@ -128,6 +127,7 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
       manuallyEdited: set.manuallyEdited,
       createdAt: set.createdAt,
       postedAt: set.forumComment?.postedAt ?? null,
+      rawHtml: set.forumComment?.rawHtml ?? null,
       predictions: set.predictions,
     })),
   );

@@ -1,12 +1,19 @@
 import { mergePredictionCells, submissionLabel, type MergedCell } from "./merge-predictions";
 
+export interface SlipFixture {
+  id: string;
+  kickoffAt: Date | null;
+}
+
 export interface StoredSlipSet {
   id: string;
   participantId: string;
   selection: string;
   manuallyEdited: boolean;
   createdAt: Date;
+  /** Publication time. A missing value is unknown; import time is not a substitute. */
   postedAt: Date | null;
+  rawHtml?: string | null;
   predictions: {
     matchId: string;
     homeGoals: number | null;
@@ -25,7 +32,7 @@ export interface EffectiveSlip {
 }
 
 /** One effective slip per participant from every selected comment. */
-export function slipsByParticipant(fixtureIds: readonly string[], sets: readonly StoredSlipSet[]): EffectiveSlip[] {
+export function slipsByParticipant(fixtures: readonly SlipFixture[], sets: readonly StoredSlipSet[]): EffectiveSlip[] {
   const groups = new Map<string, StoredSlipSet[]>();
   for (const set of sets) {
     const list = groups.get(set.participantId) ?? [];
@@ -34,10 +41,11 @@ export function slipsByParticipant(fixtureIds: readonly string[], sets: readonly
   }
   return [...groups.entries()].map(([participantId, group]) => {
     const cells = mergePredictionCells(
-      fixtureIds,
+      fixtures.map((fixture) => ({ id: fixture.id, kickoffAt: fixture.kickoffAt })),
       group.map((set) => ({
         id: set.id,
-        postedAt: set.postedAt ?? set.createdAt,
+        postedAt: set.postedAt,
+        rawHtml: set.rawHtml,
         manual: set.selection === "manual" || set.manuallyEdited,
         predictions: set.predictions.map((prediction) => ({
           matchId: prediction.matchId,
@@ -53,7 +61,7 @@ export function slipsByParticipant(fixtureIds: readonly string[], sets: readonly
       cells,
       predictions: cells.flatMap((cell) => (cell.state === "selected" ? [{ matchId: cell.matchId, home: cell.home, away: cell.away }] : [])),
       unresolvedMatchIds: cells.flatMap((cell) => (cell.state === "review" ? [cell.matchId] : [])),
-      label: submissionLabel(cells, fixtureIds.length),
+      label: submissionLabel(cells, fixtures.length),
     };
   });
 }

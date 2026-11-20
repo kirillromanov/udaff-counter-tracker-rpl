@@ -110,6 +110,7 @@ async function main() {
     const stored = byNumber.get(source.number);
     const fixtures: DiagnosticFixture[] = (stored?.matches ?? []).map((match) => ({
       id: match.id,
+      kickoffAt: match.kickoffAt,
       homeTeam: match.homeTeam,
       awayTeam: match.awayTeam,
       isMatchOfTheRound: match.isMatchOfTheRound,

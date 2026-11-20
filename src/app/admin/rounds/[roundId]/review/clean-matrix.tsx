@@ -14,6 +14,8 @@ import { MatchResultsRefresh } from "../match-results-refresh";
 import { cleanMatrixTotalLabel } from "@/lib/domain/review/operator-status";
 import { classifyIntermediateFixture, exclusionLabel, isFixtureExclusion, ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 import { slipsByParticipant } from "@/lib/domain/import/effective-slip";
+import { parseBreakdown } from "@/lib/domain/export/export-audit";
+import { calculationView, officialFixture, presentSavedMatch } from "@/lib/domain/standings/calculation-view";
 import { formatMoscow } from "@/lib/domain/time/moscow";
 
 function liveFixture(match: {
@@ -62,7 +64,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
           predictions: true,
         },
       },
-      roundScores: { select: { participantId: true, totalPoints: true, calculatedAt: true } },
+      roundScores: { select: { participantId: true, totalPoints: true, calculatedAt: true, breakdownJson: true } },
     },
   });
   if (!round) {
@@ -113,11 +115,14 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
     null,
   );
   const excluded = intermediate.filter((fixture) => fixture.klass !== "included");
+  const savedView = calculationView(round) === "saved-calculation";
 
   return (
     <Section
       title="Чистовая таблица / Прогнозы и расчёт"
-      description="One cell per roster participant and fixture. An empty cell is a missing prediction, not 0-0. Saving writes these cells as the effective slips and keeps them ahead of a later parse."
+      description={savedView
+        ? "Saved calculation. Each cell and its points come from the stored breakdown. A current candidate is labeled separately and does not replace a saved score or a saved miss."
+        : "Live selection for this open round. A stored partial score does not freeze a fixture that has not been calculated. An empty cell is a missing prediction, not 0-0."}
     >
       <MatchResultsRefresh
         lastPolledAt={round.lastPolledAt}
@@ -211,7 +216,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                 const selectedSets = owned.filter((set) => set.selected);
                 const selected = [...selectedSets].sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ?? null;
                 const slip = slipsByParticipant(
-                  fixtures.map((match) => match.id),
+                  fixtures.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })),
                   selectedSets.map((set) => ({
                     id: set.id,
                     participantId: set.participantId,
@@ -219,6 +224,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                     manuallyEdited: set.manuallyEdited,
                     createdAt: set.createdAt,
                     postedAt: set.forumComment?.postedAt ?? null,
+                    rawHtml: set.forumComment?.rawHtml ?? null,
                     predictions: set.predictions,
                   })),
                 )[0];
@@ -227,6 +233,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                 let total = 0;
                 let counted = 0;
                 const stored = round.roundScores.find((score) => score.participantId === person.id);
+                const breakdown = stored ? parseBreakdown(stored.breakdownJson) : null;
                 return (
                   <tr key={person.id} className="border-t border-zinc-100 align-top">
                     <th className="sticky left-0 bg-white px-2 py-2 text-left font-medium">
@@ -256,13 +263,19 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                     </th>
                     {fixtures.map((match) => {
                       const cell = slip?.cells.find((item) => item.matchId === match.id);
-                      const cellReview = cell?.state === "review";
-                      const prediction = cell?.state === "selected"
-                        ? { homeGoals: cell.home, awayGoals: cell.away, ignored: false, markedAsMt: false }
-                        : selected?.predictions.find((item) => item.matchId === match.id);
-                      const missing = cellReview || !prediction || prediction.ignored || prediction.homeGoals == null || prediction.awayGoals == null;
+                      const label = `${match.homeTeam} — ${match.awayTeam}`;
+                      const official = officialFixture({
+                        view: savedView ? "saved-calculation" : "live-selection",
+                        saved: presentSavedMatch(breakdown, label),
+                        live: cell ?? null,
+                      });
+                      const cellReview = official.uncertain;
+                      const prediction = official.home != null && official.away != null
+                        ? { homeGoals: official.home, awayGoals: official.away, ignored: false, markedAsMt: false }
+                        : null;
+                      const missing = official.missing || cellReview || !prediction;
                       const predicted = missing ? null : { home: prediction.homeGoals as number, away: prediction.awayGoals as number };
-                      const scored = !cellReview && match.actualHomeGoals != null && match.actualAwayGoals != null && !reviewOnly
+                      const scored = !savedView && !cellReview && match.actualHomeGoals != null && match.actualAwayGoals != null && !reviewOnly
                         ? scoreMatch({
                             matchId: match.id,
                             actual: { home: match.actualHomeGoals, away: match.actualAwayGoals },
@@ -274,6 +287,8 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                         total += scored.finalMatchPoints;
                         counted += 1;
                       }
+                      const candidate = savedView && cell?.state === "selected" ? `${cell.home}-${cell.away}` : null;
+                      const savedText = official.home != null && official.away != null ? `${official.home}-${official.away}` : null;
                       const picks = alternatives.flatMap((set) => {
                         const candidate = set.predictions.find((item) => item.matchId === match.id && item.homeGoals != null && item.awayGoals != null && !item.ignored);
                         return candidate ? [`${candidate.homeGoals}-${candidate.awayGoals}`] : [];
@@ -282,7 +297,7 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                         <td key={match.id} className="px-2 py-2">
                           <input
                             name={`score_${person.id}_${match.id}`}
-                            defaultValue={cellReview ? "" : cellText(prediction?.homeGoals, prediction?.awayGoals, prediction?.ignored)}
+                            defaultValue={cellReview || official.missing || (!official.inCalculation && savedView) ? "" : cellText(prediction?.homeGoals, prediction?.awayGoals, prediction?.ignored)}
                             placeholder="missing"
                             className={`${fieldClass} w-16`}
                           />
@@ -295,29 +310,49 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
                             </select>
                           ) : null}
                           <div className="text-xs text-zinc-500">
-                            {cellReview
-                              ? "conflict"
-                              : match.confidence !== "verified"
-                                ? "prospective"
-                                : reviewOnly
-                                  ? "review"
-                                  : scored
-                                    ? `${scored.finalMatchPoints}`
-                                    : "no result"}
+                            {savedView
+                              ? official.inCalculation
+                                ? official.missing
+                                  ? "saved miss"
+                                  : official.points != null
+                                    ? `saved ${official.points}`
+                                    : "saved"
+                                : "not in saved calculation"
+                              : cellReview
+                                ? cell?.state === "review" && cell.reason === "uncertain-time"
+                                  ? "time uncertain"
+                                  : "conflict"
+                                : match.confidence !== "verified"
+                                  ? "prospective"
+                                  : reviewOnly
+                                    ? "review"
+                                    : scored
+                                      ? `${scored.finalMatchPoints}`
+                                      : "no result"}
                             {prediction?.markedAsMt && !match.isMatchOfTheRound ? " · text says MT" : ""}
                           </div>
+                          {candidate && candidate !== savedText ? (
+                            <div className="text-xs text-zinc-500">Current candidate: {candidate}</div>
+                          ) : null}
+                          {savedView && cell?.state === "review" ? (
+                            <div className="text-xs text-zinc-500">Current candidate: {cell.reason === "uncertain-time" ? "time uncertain" : "conflict"}</div>
+                          ) : null}
                         </td>
                       );
                     })}
                     <td className="px-2 py-2 text-right tabular-nums">
-                      {cleanMatrixTotalLabel({
-                        reviewOnly,
-                        confirmed,
-                        counted,
-                        fixtureCount: fixtures.length,
-                        storedTotal: stored?.totalPoints ?? null,
-                        calculatedTotal: total,
-                      })}
+                      {savedView
+                        ? stored
+                          ? `saved ${stored.totalPoints}`
+                          : "no saved calculation"
+                        : cleanMatrixTotalLabel({
+                            reviewOnly,
+                            confirmed,
+                            counted,
+                            fixtureCount: fixtures.length,
+                            storedTotal: stored?.totalPoints ?? null,
+                            calculatedTotal: total,
+                          })}
                     </td>
                   </tr>
                 );

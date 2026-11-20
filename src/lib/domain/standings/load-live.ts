@@ -21,7 +21,7 @@ function storedSlip(set: {
   manuallyEdited: boolean;
   createdAt: Date;
   predictions: StoredSlipSet["predictions"];
-  forumComment: { postedAt: Date | null } | null;
+  forumComment: { postedAt: Date | null; rawHtml: string } | null;
 }): StoredSlipSet {
   return {
     id: set.id,
@@ -30,6 +30,7 @@ function storedSlip(set: {
     manuallyEdited: set.manuallyEdited,
     createdAt: set.createdAt,
     postedAt: set.forumComment?.postedAt ?? null,
+    rawHtml: set.forumComment?.rawHtml ?? null,
     predictions: set.predictions,
   };
 }
@@ -72,7 +73,7 @@ export async function loadLiveRound(roundId: string): Promise<LiveRoundView | nu
     include: {
       matches: { orderBy: { sortOrder: "asc" } },
       season: { include: { scoringConfig: true } },
-      predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true } } } },
+      predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true, rawHtml: true } } } },
     },
   });
   if (!round) {
@@ -81,7 +82,7 @@ export async function loadLiveRound(roundId: string): Promise<LiveRoundView | nu
   const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
   const fixtures = round.matches.map(toFixture);
   const names = new Map(round.predictionSets.map((set) => [set.participantId, set.participant.name]));
-  const slips = slipsByParticipant(fixtures.map((fixture) => fixture.matchId), round.predictionSets.map(storedSlip));
+  const slips = slipsByParticipant(round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })), round.predictionSets.map(storedSlip));
   const rows = rankLiveScores(
     slips.map((slip) => ({
       ...scoreLiveParticipant(slip.participantId, fixtures, slip.predictions, config, { unresolvedMatchIds: slip.unresolvedMatchIds }),
@@ -120,7 +121,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
         matches: { orderBy: { sortOrder: "asc" } },
         roundScores: true,
         season: { include: { scoringConfig: true } },
-        predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true } } } },
+        predictionSets: { where: { selected: true }, include: { predictions: true, participant: true, forumComment: { select: { postedAt: true, rawHtml: true } } } },
       },
     }),
   ]);
@@ -145,7 +146,7 @@ export async function loadLiveSeason(seasonId: string): Promise<LiveSeasonView> 
     if (!complete && !(roundIsComplete(fixtures) && round.roundScores.length === 0)) {
       unverifiedRounds.push({ number: round.number, name: round.name });
       const config = round.season.scoringConfig ? scoringConfigFromRecord(round.season.scoringConfig) : defaultScoringConfig;
-      const slips = slipsByParticipant(fixtures.map((fixture) => fixture.matchId), round.predictionSets.map(storedSlip));
+      const slips = slipsByParticipant(round.matches.map((match) => ({ id: match.id, kickoffAt: match.kickoffAt })), round.predictionSets.map(storedSlip));
       return [
         {
           order: round.number,

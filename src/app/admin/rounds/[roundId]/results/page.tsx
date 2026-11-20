@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { parseBreakdown } from "@/lib/domain/export/export-audit";
 import { confidenceLabel, fixtureConfidence, type LiveConfidence } from "@/lib/domain/scoring/live-score";
 import { loadLiveRound } from "@/lib/domain/standings/load-live";
+import { calculationView } from "@/lib/domain/standings/calculation-view";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { RoundNav } from "../../../round-nav";
 import { RoundLockBadge, RoundLockPanel } from "../round-lock-banner";
@@ -68,6 +69,7 @@ export default async function RoundResultsPage({
   }
 
   const live = await loadLiveRound(round.id);
+  const savedView = calculationView(round) === "saved-calculation";
   const scores = [...round.roundScores].sort((left, right) => {
     if (right.totalPoints !== left.totalPoints) {
       return right.totalPoints - left.totalPoints;
@@ -115,12 +117,14 @@ export default async function RoundResultsPage({
         {live ? (
           <Section
             description={
-              live.complete
-                ? "Every fixture is verified. The live total matches a confirmed calculation, including the round bonus. Store it with Calculate round."
-                : "Verified match points and provisional match points are labeled. Pending and open conflicts add nothing. The round bonus waits until every fixture is verified."
+              savedView
+                ? "Inspection only. These candidates are not the saved calculation. A legacy publication time stays uncertain instead of being called on time or late."
+                : live.complete
+                  ? "Every fixture is verified. The live total matches a confirmed calculation, including the round bonus. Store it with Calculate round."
+                  : "Verified match points and provisional match points are labeled. Pending and open conflicts add nothing. The round bonus waits until every fixture is verified. A stored partial score does not freeze a later fixture."
             }
             id="live"
-            title="Live round"
+            title={savedView ? "Current candidates" : "Live round"}
           >
             <ul className="mb-4 flex flex-wrap gap-2 text-sm">
               {live.fixtures.map((fixture) => (
@@ -141,7 +145,7 @@ export default async function RoundResultsPage({
                     <Th>Participant</Th>
                     <Th className="text-right">Verified</Th>
                     <Th className="text-right">Provisional</Th>
-                    <Th className="text-right">Live total</Th>
+                    <Th className="text-right">{savedView ? "Candidate total" : "Live total"}</Th>
                     <Th className="text-right">Pending</Th>
                     <Th className="text-right">Conflicts</Th>
                   </tr>

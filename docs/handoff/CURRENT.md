@@ -117,16 +117,73 @@ Run on 2026-11-20 in a worktree of `4daa59d5abe0d738b2975b48ae2f9a32eede6ee5`. T
 - `npm run build`: passed in that worktree and printed Next.js 16.4.5. It did not use the serving checkout's `.next`.
 - `npm run worker:plan` was then run with the live database opened read-only. `PRAGMA data_version` stayed 2. No claim file was created. Rounds 1–13 were archived, round 14 was closed, and round 15 was not due. The worker LaunchAgent was not installed.
 
+## Checks for the per-fixture deadline
+
+Run on 2026-11-20 in a worktree of `8867c64cc67e35bfb901aaf29f99356f0039d7f5`. The serving checkout was not switched, rebuilt, or restarted. No seed, import, poll, refresh, recalculation, round transition, or schema push was run against `prisma/dev.db`. The worker was not installed or enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` was not set.
+
+- `npm test`: 50 files, 342 tests passed, including `src/tests/import/fixture-deadline.test.ts`, `src/tests/import/merge-predictions.test.ts`, and `src/tests/worker/worker.test.ts`.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed in that worktree and printed Next.js 16.4.5. It used a disposable `DATABASE_URL`, not the serving checkout's `.next`.
+
+The rule compares stored publication time with stored kickoff. A comment at the kickoff instant is late for that fixture. Fetch time is not used. A later eligible comment replaces only the fixtures it names. An edit without one reliable metadata timestamp leaves stored predictions and is flagged. Live selections were not rewritten.
+
+## Checks for the pre-merge review
+
+Run on 2026-11-20 against a read-only snapshot of the live database. `PRAGMA data_version` on the live file stayed 2. The serving checkout was not switched or restarted. No import, refresh, recalculation, or score write was run. Pull request #21 was not merged. The worker stayed disabled.
+
+The comparison used `origin/main` selection (`postedAt` falling back to `createdAt`, earliest identical score, disagreements in review) against this branch's `slipsByParticipant`. Stored breakdowns were compared with both results.
+
+- Archived auto slips change on rounds 1, 2, 4, 5, 6, 10, and 12: 38 selected cells become missing. There were no replacements and no new review cells. Each of those 38 cells matches its stored breakdown before the change and would disagree after it.
+- Live totals change on rounds 1, 2, 4, 5, and 6. The review total changes from the stored number to a newly calculated number for 8 participants on rounds 1, 2, and 5. Rounds 10 and 12 change the displayed score.
+- Closed round 14 does not change. Its selected sets are manual, so the deadline does not filter them. Round 15 does not change: 58 selected cells, and the closest publication is about 70 hours before kickoff.
+- Scored season totals and audit exports stay on stored points. Archived rounds stay out of the production total. Results breakdowns stay on `breakdownJson`.
+- All 939 stored permalinks match `postedAt` to the minute. None of the permalinks carries a timezone. Four comments have a body `<del datetime="+00:00">` three hours before the permalink minute, and none of those four has a prediction set. No comment has an edit mark in its metadata. One comment has the word in the body. No reliable edit time is derived.
+- Comments whose stored instant is less than three hours after kickoff are the clock-sensitive set. Four of the 38 changed cells are in that set. A Moscow reading of the permalink digits would leave those four eligible. The other 34 changed cells are later than three hours and stay late under that reading.
+
+- `npm test`: 51 files, 350 tests passed, including `src/tests/import/deadline-evidence.test.ts`.
+- `npx tsc --noEmit`: passed.
+
+That comparison is the record of the branch before saved and live views were separated. The following section is the later check. Do not rewrite stored scores or `postedAt` from this older note.
+
+## Checks for saved calculations and the publication clock
+
+Run on 2026-11-20 in the same read-only snapshot. The live database `data_version` stayed 2. No comment was posted, no import was saved, and no score or `postedAt` was rewritten. The serving checkout was not updated. The worker stayed disabled. Pull request #21 was not merged.
+
+WordPress REST schema text calls `date` the site timezone and `date_gmt` GMT. Read-only comment responses from July, August, October, and November differ by exactly three hours. The HTML permalink matches `date` to the minute. Round 15's article line `20.11, 19:30 — Ростов — Крылья Советов` matches the stored kickoff `2026-11-20T16:30:00.000Z`. Kickoff is not converted a second time. A body `<del datetime>` is not used as the publication time.
+
+- Saved review cells on rounds 1–14 agree with the stored breakdown. The comparison found 0 disagreements. Closed round 14 and archived round 13 are manual, so their candidate slips remain those manual selections.
+- Auto rounds 1–12 have legacy publication times. Their current candidates are uncertain or absent. They are not classified as late.
+- Round 15 is an open live selection with no stored scores. 58 prediction cells are time uncertain. 14 fixture cells have no selected prediction. 0 cells are accepted by the deadline.
+- `npm test`: 53 files, 356 tests passed, including `src/tests/import/publication-clock.test.ts` and `src/tests/standings/calculation-view.test.ts`.
+- `npx tsc --noEmit`: passed.
+- ESLint on the changed source and tests: passed.
+
+## Round 15 publication-time correction
+
+The operator confirmed that offset-less forum timestamps are Moscow time. The correction used the current deadline branch and a consistent snapshot of the live database. It did not fetch the forum again.
+
+Round 15 (`cmwntxbcj0001fyq6efpbp3hn`) had 14 source comments, 9 selected sets, 58 predictions, and 0 stored scores. All 14 comments had their own offset-less permalink, and each `postedAt` matched the permalink minute read as UTC. None was already normalized. No other field stores a publication instant, so the write set only `ForumComment.postedAt` to that minute read as UTC+3. `rawHtml`, comment bodies, prediction rows, manual selections, kickoffs, `nextPredictionFetchAt`, result attempts, scores, and every other round stayed unchanged.
+
+On the isolated corrected snapshot the live cells were 58 accepted, 0 uncertain, 0 late, 0 ambiguous, and 14 missing. The 14 missing cells have no prediction on the selected sets. The 58 accepted scorelines are the same 58 selected cells counted before the deadline treated the legacy encoding as uncertain. No comment is in a kickoff minute. The latest corrected instant is `2026-11-19T18:55:00.000Z`; the first kickoff remains `2026-11-20T16:30:00.000Z`.
+
+The live write used one compare-and-set transaction. A following read-only plan proposes 0 further corrections and 14 already-normalized rows, with the same 58 accepted and 14 missing cells. Rounds 1–14 still have uncorrected legacy timestamps. Their saved calculations were not rewritten. `scripts/correct-legacy-publication.ts` is read-only unless `--round-id`, `--apply`, and `--manifest` are all given.
+
+- `npm test`: 54 files, 358 tests passed, including `src/tests/import/legacy-publication.test.ts`.
+- `npx tsc --noEmit`: passed.
+- ESLint on the correction source, script, and test: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
+
 ## Background worker
 
-Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. Do not enable it while post-kickoff acceptance is undecided. Details are in [../OPERATIONS.md](../OPERATIONS.md).
+Prediction due time and result due time are separate. `nextPredictionFetchAt` advances by `PREDICTION_REFRESH_INTERVAL_MINUTES` after a prediction attempt. The accepted initial interval is 60 minutes. It is not in the live environment, so the stored round-15 time is unchanged. Result attempts stay on the fixture. `WORKER_RESULTS_ENABLED` must also be `1` before the worker fetches results or stores scores. The serving process now uses the shared claim directory. The worker agent is not installed. The per-fixture deadline is in pull request #21. Round 15's publication times are corrected; historical publication times are not. See [../decisions/008-per-fixture-deadline.md](../decisions/008-per-fixture-deadline.md). Do not enable the worker and do not refresh round 15 until the operator asks. Details are in [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Post-kickoff acceptance is undecided. Do not run the round-15 prediction refresh until that decision is made.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's 14 comment times are corrected. Comments on other rounds keep the legacy encoding. Do not shift those remaining times, and do not run the round-15 prediction refresh.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -137,7 +194,8 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
 - Do not install, load, or start `com.udaff.counter-tracker.worker`.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
-- Do not call `refreshRoundPredictions` for round 15 until post-kickoff acceptance is decided. That call is the approved shape for the first prediction-only check: one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time.
+- Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
+- Do not call `refreshRoundPredictions` or `refreshDuePredictions({ forceRoundId })` for round 15. A later prediction-only check, if the operator asks for it, is one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests

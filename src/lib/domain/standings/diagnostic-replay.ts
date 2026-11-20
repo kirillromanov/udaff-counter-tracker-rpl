@@ -9,10 +9,11 @@ import { scoreRound } from "@/lib/domain/scoring/score-round";
 import type { FixtureRef } from "@/lib/domain/parser/types";
 
 export const DIAGNOSTIC_ELIGIBILITY_NOTE =
-  "No contest deadline is implemented. Every parsed slip is treated as eligible regardless of kickoff. Comment timestamps are stored as UTC.";
+  "A prediction counts only when its comment publication time is before that fixture's kickoff. Comment timestamps are stored as UTC. Kickoffs are Moscow wall times stored as UTC.";
 
 export interface DiagnosticFixture {
   id: string;
+  kickoffAt: Date | null;
   homeTeam: string;
   awayTeam: string;
   isMatchOfTheRound: boolean;
@@ -28,6 +29,7 @@ export interface DiagnosticComment {
   authorName: string;
   postedAt: Date | null;
   rawText: string;
+  rawHtml?: string | null;
 }
 
 export interface DiagnosticRoundInput {
@@ -135,7 +137,7 @@ export function buildDiagnosticReport(input: {
     const unmatched = new Set<string>();
     const parsingErrors: { warning: string; rawLine: string }[] = [];
     let recognized = 0;
-    const sets: (SelectableSet & { lines: ReturnType<typeof rowsForStorage> })[] = [];
+    const sets: (SelectableSet & { lines: ReturnType<typeof rowsForStorage>; rawHtml?: string | null })[] = [];
     const refs = fixtureRefs(round);
     const resultIssues = round.fixtures.flatMap((fixture) => {
       const actual = usableActual(fixture);
@@ -202,6 +204,7 @@ export function buildDiagnosticReport(input: {
         id: comment.id,
         participantId: author.participantId,
         postedAt: comment.postedAt,
+        rawHtml: comment.rawHtml,
         valid,
         selection: "auto",
         selected: false,
@@ -222,10 +225,11 @@ export function buildDiagnosticReport(input: {
       }
       for (const [participantId, group] of groups) {
         const cells = mergePredictionCells(
-          round.fixtures.map((fixture) => fixture.id),
+          round.fixtures.map((fixture) => ({ id: fixture.id, kickoffAt: fixture.kickoffAt })),
           group.map((set) => ({
             id: set.id,
             postedAt: set.postedAt,
+            rawHtml: set.rawHtml,
             manual: false,
             predictions: set.lines.flatMap((line) =>
               line.fixtureId
