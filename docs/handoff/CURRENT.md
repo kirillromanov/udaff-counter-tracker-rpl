@@ -181,7 +181,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running process is the 16.4.5 build `UI3hxUAeqeBw---qenFjH` from `bff0de26756c6ba7ef56ed11c8fd04261c8cfc99`. A later docs commit does not replace that build.
+- The running process is Next.js 16.4.5 build `Ru5U-D_p4OO-D5HaeBrJT` from merge `fcc95006c0eddbb9f3cbb0e3054d986581754338`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
 - The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset even though 60 minutes is the accepted future interval. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's 14 comment times are corrected. Comments on other rounds keep the legacy encoding. Do not shift those remaining times, and do not run the round-15 prediction refresh.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
