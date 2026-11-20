@@ -207,7 +207,26 @@ launchctl print "gui/$(id -u)/com.udaff.counter-tracker"
 launchctl bootout "gui/$(id -u)/com.udaff.counter-tracker"
 ```
 
-The worker label `com.udaff.counter-tracker.worker` is not loaded. Do not bootstrap it until the stored-`new` rewrite is fixed. `zsh scripts/worker-agent.sh status` and `zsh scripts/worker-agent.sh stop` are the commands for that label after a future install.
+The worker label `com.udaff.counter-tracker.worker` is not loaded. Do not bootstrap it. The serving build still rewrites prediction rows for a stored `new` label. `zsh scripts/worker-agent.sh status` and `zsh scripts/worker-agent.sh stop` are the commands for that label after a future install.
+
+## Prediction-refresh idempotency
+
+This change is not merged and not deployed. The running process is still Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI` from `32740ec7b4a2e449f64fef7283653a898a986b92`. No live refresh, reparse, poll, score, relabel, or database restore ran for it. The worker agent was not installed.
+
+`saveForumPost` classifies the current fetch: a comment was created, its extracted text changed, or the text was unchanged. That class is what `refreshRoundPredictions` and batch import pass to `parseStoredComments`. A stored `new`, `updated`, `unchanged`, or `duplicate` value is only the last saved disposition. An explicit reparse omits the fetch class and compares the body with the stored slip. `planCommentParse` does not treat the historical label as the fetch.
+
+An unchanged fetch leaves an already parsed, equivalent slip alone: set id, prediction ids and scores, selected and manual flags, source, and creation time. It does not write a prediction or set timestamp just because the row was visited. Fetch metadata, the import log, and the next prediction time may still move. The same unchanged fetch still parses a comment whose previous parse failed, whose fixtures were missing, or which has no prediction set. An explicit reparse that produces the same scores keeps the existing prediction ids. A real source change uses the existing deadline rules. When the change is allowed, the writer updates the prediction row for that fixture in place and changes `updatedAt` only when the score, the match-of-the-round mark, or the raw line differs. A timed edit does not delete other fixtures. An unchanged later fetch does not clear a genuine unresolved edit. A matching body can clear only the stale unknown-edit note.
+
+A private copy of the database after the 2026-11-20 cycle was refreshed twice with the stored comments served locally. Round 15 kept all 91 prediction ids and all 14 set ids, including selections and timestamps. Comments 5707 and 5713 stayed flagged with the unresolved-edit note and the same prediction rows. Comment 5714 stayed one set of 8 predictions. Round 15 still had 0 score rows and 0 result attempts. A refresh of closed round 14 was rejected before parsing. The live database file was not that copy.
+
+## Checks for prediction-refresh idempotency
+
+Run on 2026-11-20 in a worktree of `4ce3bf1bbdcd310eb782e0f04a67c1f2be4df5d8`. The serving checkout was not switched, rebuilt, or restarted. No live refresh, reparse, poll, score, relabel, or database restore.
+
+- `npm test`: 56 files, 362 tests passed. That run included `src/tests/import/refresh-idempotency.test.ts` and `src/tests/import/refresh-idempotency-snapshot.test.ts`. The snapshot test used a private copy, not the live database.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL. It did not open the live database.
 
 ## Checks for comment-change detection
 
@@ -227,7 +246,7 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
 - The running process is Next.js 16.4.5 build `XYhX_nNRKoRYfRqQWS8DI` from merge `32740ec7b4a2e449f64fef7283653a898a986b92`. It listens only on `127.0.0.1:3000`. The worker is not installed. A later docs commit does not replace that build.
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T07:34:15.738Z`. Do not shift the remaining legacy times. A stored `new` label still causes an identical later fetch to recreate prediction rows.
+- The worker is not enabled. `PREDICTION_REFRESH_INTERVAL_MINUTES` stays unset in the environment. `WORKER_RESULTS_ENABLED` is off. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized, including the comments imported on 2026-11-20. Comments on other rounds keep the legacy encoding. Round 15's next prediction fetch is `2026-11-20T07:34:15.738Z`. Do not shift the remaining legacy times. The idempotency fix is unmerged. The running build still recreates prediction rows when a stored label is `new`. Live comments were not relabeled, and the replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
@@ -236,11 +255,11 @@ Prediction due time and result due time are separate. `nextPredictionFetchAt` ad
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
-- Do not install, load, or start `com.udaff.counter-tracker.worker`. The one due cycle already ran. Another unattended cycle would recreate prediction rows for comments whose stored status is still `new`.
+- Do not install, load, or start `com.udaff.counter-tracker.worker`. The one due cycle already ran. The serving build would recreate prediction rows for comments whose stored status is still `new`. This branch's fix stays unmerged until the evidence report is accepted. Do not deploy or restart the serving application to pick it up.
 - Do not set `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, or `PREDICTION_REFRESH_INTERVAL_MINUTES` in the live environment until the operator asks for that specific flag.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
 - Do not run another round-15 prediction refresh unless the operator asks. The due cycle on 2026-11-20 advanced `nextPredictionFetchAt` to `2026-11-20T07:34:15.738Z`. A later one is still one round, the shared claim, the 60-minute interval in that process only, no result fetch, and no score write. `refreshDuePredictions` does not bypass the stored time unless `forceRoundId` is passed.
-- Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`.
+- Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`. Do not bulk-relabel stored `new` comments, and do not restore prediction ids from an older copy.
 - Do not commit `.env`, `prisma/dev.db`, or backups.
 
 ## Invariants and their tests

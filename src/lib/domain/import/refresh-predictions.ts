@@ -134,7 +134,7 @@ export async function refreshRoundPredictions(
   const post = await load(url);
   const fixtures = await ensureRoundFixtures(roundId, post);
   const saved = await saveForumPost(roundId, post);
-  await parseStoredComments(roundId);
+  await parseStoredComments(roundId, { outcomes: saved.classes });
   const comments = await prisma.forumComment.findMany({
     where: { roundId },
     select: { externalId: true, ingestionStatus: true },

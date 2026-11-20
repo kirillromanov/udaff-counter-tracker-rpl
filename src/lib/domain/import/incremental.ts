@@ -94,33 +94,94 @@ export function resolveIngestionStatus(content: ContentClass, authorKind: string
   return content;
 }
 
-export type StoredEditSignal = "none" | "stale-label" | "body-differs";
+export type StoredEditSignal = "none" | "stale-note" | "body-differs";
 
 /**
- * A stored "updated" or edit-warning label is not evidence of a new edit.
- * The slip text is the body that was parsed. A difference from the current
- * comment body is a retained unresolved edit. Matching text is a stale label.
+ * Compares the current body with the slip that was parsed.
+ * A stored new/updated/unchanged label is not an input: it is not evidence
+ * that this fetch changed the comment.
  */
 export function storedEditSignal(input: {
   commentText: string;
   slipText: string | null;
-  storedStatus: string;
-  reviewNote: string | null;
+  reviewNote?: string | null;
 }): StoredEditSignal {
-  const differs = input.slipText != null && commentFingerprint(input.slipText) !== commentFingerprint(input.commentText);
-  if (differs) {
-    return "body-differs";
-  }
   if (input.slipText == null) {
     return "none";
   }
-  if (input.storedStatus === "updated") {
-    return "stale-label";
+  if (commentFingerprint(input.slipText) !== commentFingerprint(input.commentText)) {
+    return "body-differs";
   }
-  if (input.storedStatus === "flagged" && input.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
-    return "stale-label";
+  if (input.reviewNote === EDIT_TIME_UNKNOWN_NOTE) {
+    return "stale-note";
   }
   return "none";
+}
+
+export type CommentParsePlan =
+  | { action: "leave" }
+  | { action: "protect-unresolved" }
+  | { action: "manual-hold" }
+  | { action: "duplicate" }
+  | { action: "parse"; reason: "created" | "changed" | "recovery" | "explicit" };
+
+/**
+ * Decides whether this comment needs a parse.
+ * `fetch` is the outcome of the current save. Null means an explicit reparse,
+ * which is not evidence that the source changed.
+ */
+export function planCommentParse(input: {
+  fetch: ContentClass | null;
+  force: boolean;
+  bodyDiffersFromSlip: boolean;
+  hasReliableEditTime: boolean;
+  equivalentPredictions: boolean;
+  hasAutoSlip: boolean;
+  hasManualSlip: boolean;
+  /** A duplicate or ignored comment that already has no automatic slip. */
+  disposed: boolean;
+}): CommentParsePlan {
+  if (input.fetch === "duplicate") {
+    return { action: "duplicate" };
+  }
+  const unchangedFetch = input.fetch === "unchanged" && !input.force;
+  if (unchangedFetch && input.bodyDiffersFromSlip) {
+    return !input.hasAutoSlip && input.hasManualSlip
+      ? { action: "manual-hold" }
+      : { action: "protect-unresolved" };
+  }
+  if (unchangedFetch && input.disposed && !input.hasAutoSlip) {
+    return { action: "leave" };
+  }
+  if (unchangedFetch && input.equivalentPredictions) {
+    return { action: "leave" };
+  }
+  if (unchangedFetch && !input.hasAutoSlip && input.hasManualSlip) {
+    return { action: "leave" };
+  }
+  if (unchangedFetch) {
+    return { action: "parse", reason: "recovery" };
+  }
+  if (input.bodyDiffersFromSlip && !input.hasReliableEditTime) {
+    return !input.hasAutoSlip && input.hasManualSlip
+      ? { action: "manual-hold" }
+      : { action: "protect-unresolved" };
+  }
+  if (!input.hasAutoSlip && input.hasManualSlip && input.fetch === "updated") {
+    return { action: "manual-hold" };
+  }
+  if ((input.force || input.fetch === null) && input.equivalentPredictions && !input.bodyDiffersFromSlip) {
+    return { action: "leave" };
+  }
+  if (input.disposed && !input.hasAutoSlip && input.fetch !== "new" && input.fetch !== "updated") {
+    return { action: "leave" };
+  }
+  const reason = input.fetch === "updated" || input.bodyDiffersFromSlip
+    ? "changed"
+    : input.force || input.fetch === null
+      ? "explicit"
+      : "created";
+  return { action: "parse", reason };
 }
 
 /** A manual edit is kept. An unchanged comment is parsed only when no slip is stored yet. */
