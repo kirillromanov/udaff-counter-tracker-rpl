@@ -4,11 +4,9 @@ import { connection } from "next/server";
 import {
   readLines,
   readWarnings,
-  setTone,
-  summarizeSets,
-  toSetToneInput,
   predictionTone,
 } from "@/lib/domain/import/review-status";
+import { explainResultIssue, explainSetIssue, metricTone, roundConsistency, roundCounters, roundMetricOf, setsForMetric, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
 import { loadIdentityCatalog } from "@/lib/domain/participants/registry";
 import { effectiveAuthorResolution, resolveAuthor } from "@/lib/domain/participants/resolve-author";
 import {
@@ -76,7 +74,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; saved?: string; refreshed?: string; busy?: string; updated?: string; conflicts?: string; failed?: string; sourceOk?: string; calc?: string; included?: string; fixtureCount?: string; intermediate?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; metric?: string; saved?: string; refreshed?: string; busy?: string; updated?: string; conflicts?: string; failed?: string; sourceOk?: string; calc?: string; included?: string; fixtureCount?: string; intermediate?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -109,7 +107,36 @@ export default async function RoundImportPage({
   const parsedCommentIds = new Set(
     round.predictionSets.map((set) => set.forumCommentId).filter((id): id is string => Boolean(id)),
   );
-  const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
+  const metricSets: MetricSet[] = round.predictionSets.map((set) => ({
+    id: set.id,
+    status: set.status,
+    selected: set.selected,
+    warningsJson: set.warningsJson,
+    parsedJson: set.parsedJson,
+    rawComment: set.rawComment,
+    predictions: set.predictions,
+    reviewState: set.forumComment?.reviewState,
+    reviewNote: set.forumComment?.reviewNote,
+    authorName: set.forumComment?.authorName ?? set.participant.name,
+    externalId: set.forumComment?.externalId,
+  }));
+  const metricFixtures: MetricFixture[] = round.matches.map((match) => ({
+    id: match.id,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    actualHomeGoals: match.actualHomeGoals,
+    actualAwayGoals: match.actualAwayGoals,
+    resultState: match.resultState,
+    resultResolution: match.resultResolution,
+    resultConflict: match.resultConflict,
+    manuallyCorrected: match.manuallyCorrected,
+    resultProvenance: match.resultProvenance,
+    resultNote: match.resultNote,
+  }));
+  const summary = roundCounters({ comments: round.forumComments, sets: metricSets, fixtures: metricFixtures });
+  const metric = roundMetricOf(query.metric);
+  const covered = new Set(round.predictionSets.filter((set) => set.selected).flatMap((set) => set.predictions.map((row) => row.matchId)));
+  const consistency = roundConsistency({ counters: summary, fixtures: metricFixtures, selectedCoversFixture: (fixtureId) => covered.has(fixtureId) });
   const [catalog, linkTargets] = await Promise.all([
     loadIdentityCatalog(),
     prisma.participant.findMany({
@@ -143,8 +170,7 @@ export default async function RoundImportPage({
   }));
   const factsById = new Map<string, ReviewSetFacts & { tone: ReviewSetFacts["tone"] }>();
   for (const set of round.predictionSets) {
-    const reviewed = setTone(toSetToneInput(set));
-    const tone = set.status === "flagged" && reviewed === "ok" ? "correction" : reviewed;
+    const tone = metricTone(metricSets.find((item) => item.id === set.id)!);
     factsById.set(set.id, {
       participantName: set.participant.name,
       authorName: set.forumComment?.authorName ?? set.participant.name,
@@ -156,7 +182,16 @@ export default async function RoundImportPage({
       tone,
     });
   }
-  const visibleSets = round.predictionSets.filter((set) => setInQueue(factsById.get(set.id)!, queue, search));
+  const metricIds = new Set((metric && metric !== "comments" && metric !== "scored" ? setsForMetric(metricSets, metric) : metricSets).map((set) => set.id));
+  const visibleSets = round.predictionSets.filter((set) => {
+    if (metric === "comments" || metric === "scored") {
+      return false;
+    }
+    if (metric && !metricIds.has(set.id)) {
+      return false;
+    }
+    return metric ? true : setInQueue(factsById.get(set.id)!, queue, search);
+  });
   const visibleByParticipant = new Map<string, typeof visibleSets>();
   for (const set of visibleSets) {
     const group = visibleByParticipant.get(set.participantId) ?? [];
@@ -280,13 +315,49 @@ export default async function RoundImportPage({
 
         <KpiGrid
           items={[
-            { label: "Comments", value: round.forumComments.length },
-            { label: "Sets", value: round.predictionSets.length },
-            { label: "Selected", value: summary.selected },
-            { label: "Conflicts", value: summary.conflicts, tone: summary.conflicts > 0 ? "danger" : "default" },
-            { label: "Need correction", value: summary.corrections, tone: summary.corrections > 0 ? "warning" : "default" },
+            { label: "Comments", value: summary.comments, href: `?metric=comments` },
+            { label: "Sets", value: summary.sets, href: `?metric=sets` },
+            { label: "Selected", value: summary.selected, href: `?metric=selected` },
+            { label: "Conflicts", value: summary.conflicts, href: `?metric=conflicts`, tone: summary.conflicts > 0 ? "danger" : "default" },
+            { label: "Need correction", value: summary.corrections, href: `?metric=corrections`, tone: summary.corrections > 0 ? "warning" : "default" },
           ]}
         />
+        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="consistency">
+          <h2 className="font-semibold text-zinc-950">{consistency.consistent ? "Consistent" : "Not consistent"}</h2>
+          {consistency.consistent ? <p className="mt-1 text-zinc-600">The checks on this round passed.</p> : null}
+          {consistency.blocking.length > 0 ? (
+            <ul className="mt-2 list-disc pl-5">
+              {consistency.blocking.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+          {consistency.notes.length > 0 ? (
+            <ul className="mt-2 list-disc pl-5 text-zinc-600">
+              {consistency.notes.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+        </section>
+        {metricFixtures.some((fixture) => explainResultIssue(fixture)) ? (
+          <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="result-issues">
+            <h2 className="font-semibold text-zinc-950">Result issues</h2>
+            <ul className="mt-2 space-y-3">
+              {metricFixtures.flatMap((fixture) => {
+                const issue = explainResultIssue(fixture);
+                if (!issue) {
+                  return [];
+                }
+                return [
+                  <li className="rounded-md border border-zinc-200 p-3" key={fixture.id}>
+                    <p className="font-medium">{issue.title}</p>
+                    <p className="mt-1">{issue.reason}</p>
+                    <p className="mt-1 text-zinc-700">{issue.evidence}</p>
+                    <p className="mt-1 text-zinc-700">Decide: {issue.decision}</p>
+                    <p className="mt-1 text-zinc-600">Allowed: {issue.actions.join("; ")}.</p>
+                  </li>,
+                ];
+              })}
+            </ul>
+          </section>
+        ) : null}
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
         <Section
@@ -429,9 +500,30 @@ export default async function RoundImportPage({
               </button>
             </form>
           </div>
-          {participants.length === 0 ? (
+          {metric === "comments" ? (
+            <ul className="mb-4 space-y-2">
+              {round.forumComments.map((comment) => (
+                <li className="rounded-md border border-zinc-200 px-3 py-2 text-sm" key={comment.id}>
+                  <p className="font-medium">{comment.authorName}{comment.externalId ? ` · comment ${comment.externalId}` : ""}</p>
+                  <p className="text-xs text-zinc-600">Status {comment.ingestionStatus}, review {comment.reviewState}.{comment.reviewNote ? ` ${comment.reviewNote}` : " No review note is stored."}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {metric === "scored" ? (
+            <ul className="mb-4 space-y-2">
+              {metricFixtures.filter((fixture) => fixture.actualHomeGoals != null && fixture.actualAwayGoals != null).map((fixture) => (
+                <li className="rounded-md border border-zinc-200 px-3 py-2 text-sm" key={fixture.id}>
+                  <p className="font-medium">{fixture.homeTeam} — {fixture.awayTeam}</p>
+                  <p className="text-xs text-zinc-600">Stored score {fixture.actualHomeGoals}-{fixture.actualAwayGoals}. Status {fixture.resultState || "none"}.</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {metric ? <p className="mb-3 text-sm text-zinc-600">Showing {metric === "comments" ? summary.comments : metric === "scored" ? summary.scored : visibleSets.length} records.</p> : null}
+          {participants.length === 0 && metric !== "comments" && metric !== "scored" ? (
             <EmptyState detail="Parse the stored comments, or add a prediction set by hand below." title="No prediction sets yet" />
-          ) : visibleParticipants.length === 0 ? (
+          ) : visibleParticipants.length === 0 && metric !== "comments" && metric !== "scored" ? (
             <EmptyState
               detail={queue === "review" ? "Open Accepted to see slips that can be scored later." : "Try another name or queue."}
               title="Nothing in this queue"
@@ -476,6 +568,20 @@ export default async function RoundImportPage({
                               </SubmitButton>
                             </form>
                           </div>
+                          {(() => {
+                            const issue = explainSetIssue(metricSets.find((item) => item.id === set.id)!);
+                            if (!issue) {
+                              return null;
+                            }
+                            return (
+                              <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3 text-sm">
+                                <p className="font-medium">{issue.reason}</p>
+                                <p className="mt-1 text-zinc-700">{issue.evidence}</p>
+                                <p className="mt-1 text-zinc-700">Decide: {issue.decision}</p>
+                                <p className="mt-1 text-zinc-600">Allowed: {issue.actions.join("; ")}.</p>
+                              </div>
+                            );
+                          })()}
                           <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-white/80 p-3 font-sans text-sm whitespace-pre-wrap text-zinc-800">
                             {set.rawComment || "(empty)"}
                           </pre>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { summarizeSets, toSetToneInput } from "@/lib/domain/import/review-status";
+import { metricTone, roundConsistency, roundCounters, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
 import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { fixtureMode } from "@/lib/domain/standings/load-live";
@@ -46,7 +46,7 @@ export default async function RoundPage({
     include: {
       season: true,
       matches: { orderBy: { sortOrder: "asc" } },
-      predictionSets: { include: { participant: true, predictions: true } },
+      predictionSets: { include: { participant: true, predictions: true, forumComment: { select: { authorName: true, externalId: true, reviewState: true, reviewNote: true } } } },
       roundScores: { include: { participant: true } },
       _count: { select: { forumComments: true, predictionSets: true } },
     },
@@ -56,10 +56,43 @@ export default async function RoundPage({
   }
 
   const preparing = round.standingRole !== ARCHIVED_ROUND && round.productionStartedAt == null && !isRoundClosed(round.closedAt);
-  const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
-  const scoredFixtures = round.matches.filter(
-    (match) => match.actualHomeGoals != null && match.actualAwayGoals != null,
-  ).length;
+  const metricSets: MetricSet[] = round.predictionSets.map((set) => ({
+    id: set.id,
+    status: set.status,
+    selected: set.selected,
+    warningsJson: set.warningsJson,
+    parsedJson: set.parsedJson,
+    rawComment: set.rawComment,
+    predictions: set.predictions,
+    reviewState: set.forumComment?.reviewState,
+    reviewNote: set.forumComment?.reviewNote,
+    authorName: set.forumComment?.authorName,
+    externalId: set.forumComment?.externalId,
+  }));
+  const metricFixtures: MetricFixture[] = round.matches.map((match) => ({
+    id: match.id,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    actualHomeGoals: match.actualHomeGoals,
+    actualAwayGoals: match.actualAwayGoals,
+    resultState: match.resultState,
+    resultResolution: match.resultResolution,
+    resultConflict: match.resultConflict,
+    manuallyCorrected: match.manuallyCorrected,
+    resultProvenance: match.resultProvenance,
+    resultNote: match.resultNote,
+  }));
+  const summary = {
+    ...roundCounters({ comments: [], sets: metricSets, fixtures: metricFixtures }),
+    comments: round._count.forumComments,
+  };
+  const covered = new Set(round.predictionSets.filter((set) => set.selected).flatMap((set) => set.predictions.map((row) => row.matchId)));
+  const consistency = roundConsistency({
+    counters: summary,
+    fixtures: metricFixtures,
+    selectedCoversFixture: (fixtureId) => covered.has(fixtureId),
+  });
+  const reviewBase = `/admin/rounds/${round.id}/review`;
   const participants = [...new Map(round.predictionSets.map((set) => [set.participantId, set.participant])).values()].sort(
     (left, right) => left.name.localeCompare(right.name, "ru"),
   );
@@ -141,21 +174,37 @@ export default async function RoundPage({
         <section id="overview">
           <KpiGrid
             items={[
-              { label: "Fixtures scored", value: `${scoredFixtures}/${round.matches.length}` },
-              { label: "Comments", value: round._count.forumComments },
-              { label: "Selected sets", value: summary.selected, hint: `${round._count.predictionSets} stored` },
+              { label: "Fixtures scored", value: `${summary.scored}/${summary.fixtures}`, href: `${reviewBase}?metric=scored` },
+              { label: "Comments", value: summary.comments, href: `${reviewBase}?metric=comments` },
+              { label: "Selected sets", value: summary.selected, hint: `${summary.stored} stored`, href: `${reviewBase}?metric=selected`, hintHref: `${reviewBase}?metric=stored` },
               {
                 label: "Parse conflicts",
                 value: summary.conflicts,
+                href: `${reviewBase}?metric=conflicts`,
                 tone: summary.conflicts > 0 ? "danger" : "default",
               },
               {
                 label: "Need correction",
                 value: summary.corrections,
+                href: `${reviewBase}?metric=corrections`,
                 tone: summary.corrections > 0 ? "warning" : "default",
               },
             ]}
           />
+        </section>
+        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="consistency">
+          <h2 className="font-semibold text-zinc-950">{consistency.consistent ? "Consistent" : "Not consistent"}</h2>
+          {consistency.consistent ? <p className="mt-1 text-zinc-600">The checks on this round passed.</p> : null}
+          {consistency.blocking.length > 0 ? (
+            <ul className="mt-2 list-disc pl-5 text-zinc-800">
+              {consistency.blocking.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+          {consistency.notes.length > 0 ? (
+            <ul className="mt-2 list-disc pl-5 text-zinc-600">
+              {consistency.notes.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
         </section>
 
         <Section
@@ -204,7 +253,7 @@ export default async function RoundPage({
               {participants.map((participant) => {
                 const sets = round.predictionSets.filter((set) => set.participantId === participant.id);
                 const selected = sets.find((set) => set.selected);
-                const tone = selected ? summarizeSets([toSetToneInput(selected)]) : null;
+                const tone = selected ? metricTone(metricSets.find((set) => set.id === selected.id)!) : "ok";
                 return (
                   <li className="flex flex-wrap items-center justify-between gap-3 py-2.5" key={participant.id}>
                     <div>
@@ -215,9 +264,9 @@ export default async function RoundPage({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {tone && tone.conflicts > 0 ? <Badge tone="danger">Parse conflict</Badge> : null}
-                      {tone && tone.corrections > 0 ? <Badge tone="warning">Needs correction</Badge> : null}
-                      {selected && tone && tone.conflicts === 0 && tone.corrections === 0 ? (
+                      {tone === "conflict" ? <Badge tone="danger">Parse conflict</Badge> : null}
+                      {tone === "correction" ? <Badge tone="warning">Needs correction</Badge> : null}
+                      {selected && tone === "ok" ? (
                         <Badge tone="success">Ready</Badge>
                       ) : null}
                     </div>

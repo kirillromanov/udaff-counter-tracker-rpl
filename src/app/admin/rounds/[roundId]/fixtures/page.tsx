@@ -12,6 +12,7 @@ import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { MatchResultsRefresh } from "../match-results-refresh";
+import { ResultControl } from "../result-control";
 import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 import { formatMoscow } from "@/lib/domain/time/moscow";
 
@@ -381,6 +382,35 @@ export default async function FixturesPage({
                         : `Попытки ${match.autoCheckAttempts}/10`}
                     {match.resultNote ? ` · ${match.resultNote}` : ""}
                   </p>
+                  <ResultControl
+                    archived={round.standingRole === ARCHIVED_ROUND}
+                    closed={isRoundClosed(round.closedAt)}
+                    match={{
+                      id: match.id,
+                      homeTeam: match.homeTeam,
+                      awayTeam: match.awayTeam,
+                      kickoffAt: match.kickoffAt,
+                      actualHomeGoals: match.actualHomeGoals,
+                      actualAwayGoals: match.actualAwayGoals,
+                      resultState: match.resultState,
+                      resultResolution: match.resultResolution,
+                      resultConflict: match.resultConflict,
+                      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
+                      resultProvenance: match.resultProvenance,
+                      manuallyCorrected: match.manuallyCorrected,
+                      resultVersion: match.resultVersion,
+                      resultNote: match.resultNote,
+                    }}
+                    now={rankedAt}
+                    roundId={round.id}
+                    sources={match.resultObservations.map((row) => ({
+                      source: row.source,
+                      homeGoals: row.homeGoals,
+                      awayGoals: row.awayGoals,
+                      firstSeenAt: row.firstSeenAt,
+                      lastSeenAt: row.lastSeenAt,
+                    }))}
+                  />
                 </div>
               ))}
               <SubmitButton pendingLabel="Saving…" variant="primary">

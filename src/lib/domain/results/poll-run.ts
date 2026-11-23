@@ -106,7 +106,7 @@ export async function refreshRoundResults(roundId: string, options?: { automatic
       where: { id: roundId },
       select: { standingRole: true },
     });
-    if (round.standingRole === ARCHIVED_ROUND) {
+    if (round.standingRole === ARCHIVED_ROUND || report.updated === 0) {
       return { ...report, busy: false, recalculated: false, calculation: "skipped", included: 0, total: 0 };
     }
     try {

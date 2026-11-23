@@ -95,6 +95,12 @@ model Match {
   resultConflict    Boolean   @default(false)
   /// verified, provisional, conflict-review, insufficient, or manual. Empty until a fetch or an edit classifies the row.
   resultResolution  String    @default("")
+  /// Empty on rows written before this field. two-source or manual for a result classified by the new rules.
+  resultProvenance  String    @default("")
+  /// Set only by the explicit correction action. Automation does not clear it.
+  manuallyCorrected Boolean   @default(false)
+  /// Incremented when the score, status, or marker changes. A correction must send the value it displayed.
+  resultVersion     Int       @default(0)
   resultNote        String?
   /// Set when an admin leaves a source conflict visible but allows the round to stop polling.
   conflictAcknowledgedAt DateTime?
@@ -112,6 +118,7 @@ model Match {
   round         Round                @relation(fields: [roundId], references: [id], onDelete: Cascade)
   predictions   Prediction[]
   resultObservations ResultObservation[]
+  resultAudits  ResultAudit[]
 
   @@index([roundId])
 }
@@ -165,10 +172,40 @@ model ResultObservation {
   completeness String  @default("complete")
   matchId     String?
   fetchedAt   DateTime @default(now())
+  /// Null on rows stored before this column. A later fetch does not invent it.
+  firstSeenAt DateTime?
+  /// Null on rows stored before this column. Identical refetches update this and not the first time.
+  lastSeenAt  DateTime?
 
   match Match? @relation(fields: [matchId], references: [id], onDelete: SetNull)
 
   @@unique([source, sourceKey])
+  @@index([matchId])
+}
+
+/// One confirmed correction or rollback. Source observations are not changed by these rows.
+model ResultAudit {
+  id                   String   @id @default(cuid())
+  matchId              String
+  roundId              String
+  /// confirm, correct, or rollback
+  action               String
+  actor                String
+  previousHome         Int?
+  previousAway         Int?
+  previousState        String
+  previousResolution   String
+  previousMarker       Boolean
+  nextHome             Int?
+  nextAway             Int?
+  nextState            String
+  nextResolution       String
+  nextMarker           Boolean
+  reason               String   @default("")
+  createdAt            DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
   @@index([matchId])
 }
 

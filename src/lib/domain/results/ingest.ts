@@ -137,6 +137,10 @@ export async function ingestSeasonResults(
       awayTeam: match.awayTeam,
       roundNumber: round.number,
       resultState: match.resultState,
+      resultResolution: match.resultResolution,
+      resultProvenance: match.resultProvenance,
+      manuallyCorrected: match.manuallyCorrected,
+      resultNote: match.resultNote,
       resultConflict: match.resultConflict,
       conflictAcknowledgedAt: match.conflictAcknowledgedAt,
       actualHomeGoals: match.actualHomeGoals,
@@ -177,6 +181,9 @@ export async function ingestSeasonResults(
             matchStatus: sourceRow.matchStatus ?? "finished",
             completeness: sourceRow.completeness ?? "complete",
             matchId,
+            fetchedAt: new Date(),
+            firstSeenAt: new Date(),
+            lastSeenAt: new Date(),
           },
           update: {
             roundNumber: sourceRow.roundNumber,
@@ -190,6 +197,7 @@ export async function ingestSeasonResults(
             completeness: sourceRow.completeness ?? "complete",
             matchId,
             fetchedAt: new Date(),
+            lastSeenAt: new Date(),
           },
         });
       }
@@ -256,6 +264,24 @@ export async function ingestSeasonResults(
       updated += 1;
     }
     const roundId = openRounds.find((round) => round.matches.some((match) => match.id === fixture.id))?.id;
+    const acknowledge = write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null;
+    const unchanged = fixture.actualHomeGoals === write.actualHomeGoals
+      && fixture.actualAwayGoals === write.actualAwayGoals
+      && fixture.resultState === write.resultState
+      && fixture.resultConflict === write.resultConflict
+      && fixture.resultResolution === write.resultResolution
+      && (fixture.resultNote ?? null) === (write.resultNote ?? null)
+      && (fixture.conflictAcknowledgedAt?.getTime() ?? null) === (acknowledge?.getTime() ?? null);
+    if (unchanged) {
+      continue;
+    }
+    const newlyVerified = write.resultState === "verified"
+      && write.resultResolution === "verified"
+      && fixture.resultState !== "verified"
+      && fixture.resultResolution !== "verified";
+    const newlyProvisional = write.resultState === "confirmed"
+      && write.resultResolution === "provisional"
+      && fixture.resultProvenance === "";
     await prisma.$transaction(async (tx) => {
       if (roundId) {
         await assertRoundMutableTx(tx, roundId);
@@ -269,7 +295,10 @@ export async function ingestSeasonResults(
           resultConflict: write.resultConflict,
           resultResolution: write.resultResolution,
           resultNote: write.resultNote,
-          conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
+          conflictAcknowledgedAt: acknowledge,
+          ...(newlyVerified ? { resultProvenance: "two-source", resultVersion: { increment: 1 } } : {}),
+          ...(newlyProvisional ? { resultProvenance: "one-source", resultVersion: { increment: 1 } } : {}),
+          ...(!newlyVerified && !newlyProvisional && (write.changedGoals || fixture.resultConflict !== write.resultConflict || fixture.resultState !== write.resultState) ? { resultVersion: { increment: 1 } } : {}),
         },
       });
     });

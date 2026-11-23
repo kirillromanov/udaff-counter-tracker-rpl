@@ -91,25 +91,53 @@ export function Section({
 export function KpiGrid({
   items,
 }: {
-  items: { label: string; value: string | number; hint?: string; tone?: "default" | "warning" | "danger" }[];
+  items: {
+    label: string;
+    value: string | number;
+    hint?: string;
+    href?: string;
+    hintHref?: string;
+    tone?: "default" | "warning" | "danger";
+  }[];
 }) {
   return (
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {items.map((item) => (
-        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40" key={item.label}>
-          <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{item.label}</dt>
-          <dd
-            className={cx(
-              "mt-1 text-2xl font-semibold tabular-nums tracking-tight",
-              item.tone === "danger" && "text-rose-700",
-              item.tone === "warning" && "text-amber-800",
+      {items.map((item) => {
+        const body = (
+          <>
+            <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{item.label}</dt>
+            <dd
+              className={cx(
+                "mt-1 text-2xl font-semibold tabular-nums tracking-tight",
+                item.tone === "danger" && "text-rose-700",
+                item.tone === "warning" && "text-amber-800",
+              )}
+            >
+              {item.value}
+            </dd>
+          </>
+        );
+        return (
+          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40" key={item.label}>
+            {item.href ? (
+              <Link className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900" href={item.href}>
+                {body}
+              </Link>
+            ) : (
+              body
             )}
-          >
-            {item.value}
-          </dd>
-          {item.hint ? <p className="mt-1 text-xs text-zinc-500">{item.hint}</p> : null}
-        </div>
-      ))}
+            {item.hint ? (
+              item.hintHref ? (
+                <Link className="mt-1 block text-xs text-zinc-600 underline" href={item.hintHref}>
+                  {item.hint}
+                </Link>
+              ) : (
+                <p className="mt-1 text-xs text-zinc-500">{item.hint}</p>
+              )
+            ) : null}
+          </div>
+        );
+      })}
     </dl>
   );
 }

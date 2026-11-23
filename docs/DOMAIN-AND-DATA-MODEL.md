@@ -27,7 +27,7 @@ The schema is `prisma/schema.prisma`. SQLite stores dates as integers. There are
 
 ## Match
 
-One fixture: teams, Moscow kickoff stored as a UTC instant, sort order, and at most one `isMatchOfTheRound` flag enforced by application code. Actual goals and `resultState` are the result. Automatic attempt counters (`autoCheckAttempts`, `autoCheckNextAt`, `autoCheckHistory`) belong to the current kickoff and are not reset by Start, Close, or Re-open.
+One fixture: teams, Moscow kickoff stored as a UTC instant, sort order, and at most one `isMatchOfTheRound` flag enforced by application code. Actual goals and `resultState` are the result. `resultProvenance` is empty on existing rows. New automatic results use `one-source` or `two-source`. An operator correction uses `manual` and `manuallyCorrected`. `resultVersion` rejects a correction that was looking at an older score. `ResultObservation.firstSeenAt` and `lastSeenAt` are null until a new fetch writes them. `ResultAudit` records a correction or a rollback and does not change source rows. Automatic attempt counters (`autoCheckAttempts`, `autoCheckNextAt`, `autoCheckHistory`) belong to the current kickoff and are not reset by Start, Close, or Re-open. A rollback that is waiting for another check sets the next attempt to that moment and does not fetch.
 
 ## Comments and predictions
 

@@ -82,10 +82,12 @@ describe("source failover", () => {
       [],
     );
     const decision = resolveFixture("rodina", [observation("sport-ru", "primary", 2, 2), observation("understat", "verification", 2, 2)], unavailable);
-    expect(decision.outcome).toBe("none");
+    expect(decision.outcome).toBe("confirmed");
+    expect(decision.homeGoals).toBe(2);
     expect(applyResultDecision(stored, decision)).toMatchObject({
       actualHomeGoals: 2,
       actualAwayGoals: 2,
+      resultState: "confirmed",
       changedGoals: false,
     });
   });

@@ -181,8 +181,14 @@ describe("premierliga and footbolno results", () => {
     expect(write.changedGoals).toBe(false);
 
     const verificationOnly = resolveFixture("rodina", [observation({ source: "footbolno", role: "verification" })], new Set());
-    expect(verificationOnly.outcome).toBe("none");
-    expect(applyResultDecision(stored, verificationOnly).resultConflict).toBe(false);
+    expect(verificationOnly.outcome).toBe("confirmed");
+    expect(applyResultDecision(stored, verificationOnly)).toMatchObject({
+      actualHomeGoals: 2,
+      actualAwayGoals: 2,
+      resultState: "verified",
+      resultConflict: false,
+      changedGoals: false,
+    });
 
     const partialIgnored = resolveFixture(
       "rodina",

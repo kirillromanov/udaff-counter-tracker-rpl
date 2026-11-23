@@ -268,6 +268,29 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 `RunAtLoad` is true, so user login and `zsh scripts/worker-agent.sh start` start the process. A reboot does not start it until that user logs in. `zsh scripts/worker-agent.sh stop` unloads the job and leaves it stopped. A non-zero exit, including missing `.env` or `node_modules`, is restarted after the 60-second `ThrottleInterval`. A disabled worker exits 0 and is not restarted. One instance claim rejects a second process. Logs are `~/Library/Logs/udaff-counter-tracker/worker.log`. The web command does not install or start the worker. `WORKER_RESULTS_ENABLED` stays unset. See [../OPERATIONS.md](../OPERATIONS.md).
 
+## Result verification, not deployed
+
+New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
+
+Round 16, not performed:
+
+- Do not enable result processing until that round is chosen.
+- Deploy only after review. Stop the prediction worker first if its source will change, then start one worker again. Leave results disabled until the explicit enable step.
+- Watch the first finished fixture become provisional from one source, then verified when a second configured source agrees.
+- Correct one score, confirm the standings checkbox, then roll it back and confirm the sources decide again.
+- Open each counter and check that the row count matches.
+- Stop with `zsh scripts/worker-agent.sh stop` if a result check starts writing unexpected scores. Do not clear comments 5707 or 5713.
+
+## Checks for result verification
+
+Run on 2026-11-23 in a separate worktree. The serving checkout, the prediction worker, and the live database were not used. Schema changes were applied only to disposable SQLite files.
+
+- `npm test`: 57 files passed, 1 skipped, 369 tests passed. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL.
+- The fixtures and review screens were opened on that disposable database at desktop width and at a 390-pixel width. No live refresh or result poll was run.
+
 ## Checks for the worker recheck
 
 Run on 2026-11-20 in a worktree of `8b1f4efdc6842051ddae9826729b86a20d97be9b`. The serving processes were left running for these checks. No seed, refresh, parse, poll, or score write ran for them.

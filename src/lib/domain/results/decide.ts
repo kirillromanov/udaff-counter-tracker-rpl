@@ -39,6 +39,8 @@ export interface ResultDecision {
 
 export interface StoredResult {
   resultState: string;
+  resultResolution?: string;
+  manuallyCorrected?: boolean;
   actualHomeGoals: number | null;
   actualAwayGoals: number | null;
 }
@@ -150,17 +152,45 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
     };
   }
   if (decision.outcome === "conflict" || decision.homeGoals == null || decision.awayGoals == null) {
+    const held = stored.manuallyCorrected || stored.resultState === "verified" || stored.resultResolution === "verified" || stored.resultState === "manual";
     return {
       actualHomeGoals: stored.actualHomeGoals,
       actualAwayGoals: stored.actualAwayGoals,
       resultState: stored.resultState === "manual" || stored.resultState === "confirmed" || stored.resultState === "verified" ? stored.resultState : "conflict",
       resultConflict: true,
-      resultNote: decision.note,
+      resultNote: held && stored.actualHomeGoals != null ? `Stored score ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}` : decision.note,
       resultResolution: "conflict-review",
       changedGoals: false,
     };
   }
   const same = stored.actualHomeGoals === decision.homeGoals && stored.actualAwayGoals === decision.awayGoals;
+  const autoVerified = stored.resultState === "verified" || stored.resultResolution === "verified";
+  if (stored.manuallyCorrected) {
+    const clash = !same;
+    return {
+      actualHomeGoals: stored.actualHomeGoals,
+      actualAwayGoals: stored.actualAwayGoals,
+      resultState: stored.resultState === "manual" ? "manual" : "verified",
+      resultConflict: clash,
+      resultNote: clash
+        ? `Manual score ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}`
+        : "Manual score matches the sources.",
+      resultResolution: clash ? "conflict-review" : "verified",
+      changedGoals: false,
+    };
+  }
+  if (autoVerified && stored.resultState !== "manual") {
+    const clash = !same;
+    return {
+      actualHomeGoals: stored.actualHomeGoals,
+      actualAwayGoals: stored.actualAwayGoals,
+      resultState: "verified",
+      resultConflict: clash,
+      resultNote: clash ? `Verified score kept. ${decision.note}` : decision.note,
+      resultResolution: clash ? "conflict-review" : "verified",
+      changedGoals: false,
+    };
+  }
   if (stored.resultState === "manual") {
     return {
       actualHomeGoals: stored.actualHomeGoals,

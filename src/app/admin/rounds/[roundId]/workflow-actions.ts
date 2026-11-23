@@ -5,6 +5,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { assertRoundMutable, closeProductionRound, reopenProductionRound, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
+import { applyManualResult, rollbackManualResult } from "@/lib/domain/results/correction";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
@@ -385,6 +386,42 @@ export async function closeRoundAction(formData: FormData): Promise<void> {
     redirect(`${hubPath(roundId)}?closed=1`);
   } catch (error) {
     fail(hubPath(roundId), error);
+  }
+}
+
+export async function confirmFixtureResultAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const matchId = String(formData.get("matchId") ?? "");
+  try {
+    const report = await applyManualResult({
+      matchId,
+      home: formData.get("homeGoals"),
+      away: formData.get("awayGoals"),
+      version: Number(formData.get("version") ?? ""),
+      standingChangeConfirmed: formData.get("standingChange") === "yes",
+      reason: String(formData.get("reason") ?? ""),
+    });
+    refresh(roundId);
+    redirect(`${fixturesPath(roundId)}?saved=result&calc=${report.recalculated ? "1" : "0"}`);
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
+  }
+}
+
+export async function rollbackFixtureResultAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const matchId = String(formData.get("matchId") ?? "");
+  try {
+    const report = await rollbackManualResult({
+      matchId,
+      version: Number(formData.get("version") ?? ""),
+      confirmed: formData.get("confirmRollback") === "yes",
+      reason: String(formData.get("reason") ?? ""),
+    });
+    refresh(roundId);
+    redirect(`${fixturesPath(roundId)}?saved=rollback&calc=${report.recalculated ? "1" : "0"}`);
+  } catch (error) {
+    fail(fixturesPath(roundId), error);
   }
 }
 
