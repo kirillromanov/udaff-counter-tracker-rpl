@@ -1,6 +1,7 @@
 import { SubmitButton } from "@/app/admin/submit-button";
 import { fieldClass } from "@/app/admin/ui";
 import { correctionAllowed, displayedResultLabel } from "@/lib/domain/results/correction";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 import { fixturePhase, fixturePhaseLabel, type PollFixture } from "@/lib/domain/results/poll";
 import { confirmFixtureResultAction, rollbackFixtureResultAction } from "./workflow-actions";
 
@@ -31,20 +32,22 @@ export function ResultControl({
   const legacy = fixturePhaseLabel(phase, match.conflictAcknowledgedAt != null);
   const label = displayedResultLabel(match, legacy);
   const offered = !closed && !archived && correctionAllowed(phase);
-  const caseB = match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual";
+  const caseB = match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual" || match.resultProvenance === "operator-confirmed";
+  const operatorState = match.manuallyCorrected || match.resultProvenance === "manual" || match.resultProvenance === "operator-confirmed";
   return (
     <div className="mt-3 rounded-md border border-zinc-200 p-3">
       <p className="text-sm font-medium text-zinc-950">
         Status: {label}
         {match.manuallyCorrected || match.resultProvenance === "manual" ? " Marker: manually corrected." : ""}
+        {match.resultProvenance === "operator-confirmed" && !match.manuallyCorrected ? " Marker: verified manually." : ""}
       </p>
       {sources.length > 0 ? (
-        <ul className="mt-2 space-y-1 text-xs text-zinc-600">
+        <ul className="mt-2 space-y-2 text-xs text-zinc-600">
           {sources.map((source) => (
             <li key={source.source}>
-              {source.source}: {source.homeGoals}-{source.awayGoals}
-              {source.firstSeenAt ? `, first ${source.firstSeenAt.toISOString()}` : ", first seen not stored"}
-              {source.lastSeenAt ? `, last ${source.lastSeenAt.toISOString()}` : ""}
+              <span>{source.source} {source.homeGoals}-{source.awayGoals}</span>
+              <span className="block whitespace-nowrap">{source.firstSeenAt ? `First ${formatMoscow(source.firstSeenAt)}` : "First seen not stored"}</span>
+              {source.lastSeenAt ? <span className="block whitespace-nowrap">{`Last ${formatMoscow(source.lastSeenAt)}`}</span> : null}
             </li>
           ))}
         </ul>
@@ -58,7 +61,8 @@ export function ResultControl({
           <input name="version" type="hidden" value={match.resultVersion} />
           <p className="sm:col-span-2 text-xs text-zinc-600">
             {match.homeTeam} — {match.awayTeam}. Stored score {match.actualHomeGoals ?? "none"}-{match.actualAwayGoals ?? "none"}.
-            Submitting sets status to verified and marks it manually corrected.
+            The same score is Verified manually. A later disagreement stays visible and does not replace it. Two configured sources that later agree on a different score can replace it.
+            A changed score is Manually corrected, and automatic results do not replace it.
             {caseB ? " The standings checkbox is required only when the score changes." : ""}
             Recalculation runs once only if the score changes.
           </p>
@@ -87,7 +91,7 @@ export function ResultControl({
           {closed || archived ? "This round is locked for result correction." : "A score can be verified only after the fixture is finished."}
         </p>
       )}
-      {offered && (match.manuallyCorrected || match.resultProvenance === "manual") ? (
+      {offered && operatorState ? (
         <form action={rollbackFixtureResultAction} className="mt-3 grid gap-2">
           <input name="roundId" type="hidden" value={roundId} />
           <input name="matchId" type="hidden" value={match.id} />

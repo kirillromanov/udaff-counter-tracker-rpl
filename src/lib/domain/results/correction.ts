@@ -42,7 +42,10 @@ export function displayedResultLabel(match: {
   resultConflict: boolean;
 }, legacy: string): string {
   if (match.manuallyCorrected || match.resultProvenance === "manual") {
-    return match.resultConflict ? "Result conflict. Verified, manually corrected." : "Verified, manually corrected";
+    return match.resultConflict ? "Result conflict. Manually corrected." : "Manually corrected";
+  }
+  if (match.resultProvenance === "operator-confirmed") {
+    return match.resultConflict ? "Result conflict. Verified manually." : "Verified manually";
   }
   if (match.resultProvenance === "two-source") {
     return match.resultConflict ? "Result conflict. Verified, two sources." : "Verified, two sources";
@@ -51,6 +54,31 @@ export function displayedResultLabel(match: {
     return match.resultConflict ? "Result conflict. Provisional." : "Provisional";
   }
   return legacy;
+}
+
+export type FixtureScoreEdit = "leave" | "clear" | "edit" | "partial";
+
+/** How the fixtures form treats the two score boxes. Empty boxes do not clear a stored score. */
+export function readFixtureScoreEdit(
+  storedHome: number | null,
+  storedAway: number | null,
+  homeRaw: unknown,
+  awayRaw: unknown,
+): FixtureScoreEdit {
+  const homeBlank = String(homeRaw ?? "").trim() === "";
+  const awayBlank = String(awayRaw ?? "").trim() === "";
+  if (homeBlank !== awayBlank) {
+    return "partial";
+  }
+  if (homeBlank && awayBlank) {
+    return storedHome == null && storedAway == null ? "leave" : "clear";
+  }
+  const home = Number(String(homeRaw).trim());
+  const away = Number(String(awayRaw).trim());
+  if (home === storedHome && away === storedAway) {
+    return "leave";
+  }
+  return "edit";
 }
 
 export function correctionAllowed(phase: FixturePhase): boolean {
@@ -203,19 +231,31 @@ export async function applyManualResult(input: {
   standingChangeConfirmed: boolean;
   reason: string;
   now?: Date;
-}): Promise<{ recalculated: boolean }> {
+  /** A multi-fixture save recalculates once after every score write. */
+  deferRecalculation?: boolean;
+}): Promise<{ recalculated: boolean; scoreChanged: boolean }> {
   const score = parseFullTimeScore(input.home, input.away);
   const now = input.now ?? new Date();
   const { match } = await loadMutableMatch(input.matchId);
   assertVersion(match, input.version);
   assertFinished(match, now);
-  const alreadyVerified = match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual";
+  const alreadyVerified = match.resultState === "verified"
+    || match.resultResolution === "verified"
+    || match.manuallyCorrected
+    || match.resultState === "manual"
+    || match.resultProvenance === "operator-confirmed"
+    || match.resultProvenance === "manual";
   const scoreChanges = match.actualHomeGoals !== score.home || match.actualAwayGoals !== score.away;
+  const alreadyOperator = match.manuallyCorrected || match.resultProvenance === "manual" || match.resultProvenance === "operator-confirmed";
+  if (!scoreChanges && alreadyOperator) {
+    return { recalculated: false, scoreChanged: false };
+  }
   if (alreadyVerified && scoreChanges && !input.standingChangeConfirmed) {
     throw new ResultCorrectionError("Confirm that standings should use this corrected score.");
   }
   const nextState = "verified";
   const nextResolution = "verified";
+  const nextMarker = scoreChanges;
   const claimed = await prisma.match.updateMany({
     where: { id: match.id, resultVersion: match.resultVersion },
     data: {
@@ -224,9 +264,11 @@ export async function applyManualResult(input: {
       resultState: nextState,
       resultResolution: nextResolution,
       resultConflict: false,
-      resultProvenance: "manual",
-      manuallyCorrected: true,
-      resultNote: input.reason.trim() || "Operator verified this full-time score.",
+      resultProvenance: scoreChanges ? "manual" : "operator-confirmed",
+      manuallyCorrected: nextMarker,
+      resultNote: input.reason.trim() || (scoreChanges
+        ? "Operator corrected the full-time score."
+        : "Operator verified the score already on screen."),
       conflictAcknowledgedAt: null,
       resultVersion: { increment: 1 },
     },
@@ -238,7 +280,7 @@ export async function applyManualResult(input: {
     data: {
       matchId: match.id,
       roundId: match.roundId,
-      action: scoreChanges && alreadyVerified ? "correct" : "confirm",
+      action: scoreChanges ? "correct" : "confirm",
       actor: LOCAL_OPERATOR,
       previousHome: match.actualHomeGoals,
       previousAway: match.actualAwayGoals,
@@ -249,15 +291,15 @@ export async function applyManualResult(input: {
       nextAway: score.away,
       nextState,
       nextResolution,
-      nextMarker: true,
+      nextMarker,
       reason: input.reason.trim(),
     },
   });
-  if (!scoreChanges) {
-    return { recalculated: false };
+  if (!scoreChanges || input.deferRecalculation) {
+    return { recalculated: false, scoreChanged: scoreChanges };
   }
   await recalculateRound(match.roundId);
-  return { recalculated: true };
+  return { recalculated: true, scoreChanged: true };
 }
 
 export async function rollbackManualResult(input: {
@@ -273,8 +315,8 @@ export async function rollbackManualResult(input: {
   const now = input.now ?? new Date();
   const { match } = await loadMutableMatch(input.matchId);
   assertVersion(match, input.version);
-  if (!match.manuallyCorrected && match.resultProvenance !== "manual") {
-    throw new ResultCorrectionError("This fixture has no manual correction to remove.");
+  if (!match.manuallyCorrected && match.resultProvenance !== "manual" && match.resultProvenance !== "operator-confirmed") {
+    throw new ResultCorrectionError("This fixture has no operator verification to remove.");
   }
   const rows = await prisma.resultObservation.findMany({ where: { matchId: match.id } });
   const observations: RankableObservation[] = rows.flatMap((row) => {

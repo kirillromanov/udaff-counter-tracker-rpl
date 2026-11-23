@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
 import { assertRoundMutableTx, closedRoundIdSet } from "@/lib/domain/rounds/round-lock-db";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
-import { alignToFixture, applyResultDecision, attachResults, type AlignedObservation, type FixtureSide } from "./decide";
+import { alignToFixture, applyResultDecision, attachResults, automaticProvenanceUpdate, type AlignedObservation, type FixtureSide } from "./decide";
 import { collectSourceFetches, nextSourceHealth, resolveFixture, unavailableSources, type SourceHealth } from "./policy";
 import { RESULT_ADAPTERS, interpretSourcePage } from "./sources";
 import type { ConfidenceLevel, SourceFetchResult, SourceMatch, SourceRole } from "./types";
@@ -282,6 +282,7 @@ export async function ingestSeasonResults(
     const newlyProvisional = write.resultState === "confirmed"
       && write.resultResolution === "provisional"
       && fixture.resultProvenance === "";
+    const replacedConfirmation = automaticProvenanceUpdate(fixture.resultProvenance, write);
     await prisma.$transaction(async (tx) => {
       if (roundId) {
         await assertRoundMutableTx(tx, roundId);
@@ -298,6 +299,7 @@ export async function ingestSeasonResults(
           conflictAcknowledgedAt: acknowledge,
           ...(newlyVerified ? { resultProvenance: "two-source", resultVersion: { increment: 1 } } : {}),
           ...(newlyProvisional ? { resultProvenance: "one-source", resultVersion: { increment: 1 } } : {}),
+          ...(replacedConfirmation ? { resultProvenance: replacedConfirmation, manuallyCorrected: false } : {}),
           ...(!newlyVerified && !newlyProvisional && (write.changedGoals || fixture.resultConflict !== write.resultConflict || fixture.resultState !== write.resultState) ? { resultVersion: { increment: 1 } } : {}),
         },
       });

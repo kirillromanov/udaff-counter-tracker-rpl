@@ -57,6 +57,8 @@ describe("shared round counters", () => {
     expect(roundConsistency({ counters, fixtures: [fixture], selectedCoversFixture: () => true }).consistent).toBe(true);
     expect(displayedResultLabel({ resultProvenance: "", manuallyCorrected: false, resultConflict: false }, "Source verified")).toBe("Source verified");
     expect(displayedResultLabel({ resultProvenance: "two-source", manuallyCorrected: false, resultConflict: false }, "Source verified")).toBe("Verified, two sources");
+    expect(displayedResultLabel({ resultProvenance: "operator-confirmed", manuallyCorrected: false, resultConflict: false }, "Source verified")).toBe("Verified manually");
+    expect(displayedResultLabel({ resultProvenance: "manual", manuallyCorrected: true, resultConflict: false }, "Source verified")).toBe("Manually corrected");
     expect(explainResultIssue({ ...fixture, resultConflict: true, resultNote: "sport-ru 1-0; premierliga 2-0" })?.reason).toBe("Result-source conflict");
   });
 });

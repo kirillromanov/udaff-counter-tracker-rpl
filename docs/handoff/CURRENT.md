@@ -272,6 +272,8 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
 
+The same submitted score is Verified manually. A later disagreement does not replace it, and two configured sources that agree on a different score can. A changed score is Manually corrected and is not replaced. Save fixtures and Use this score use that same action. The audit action is `confirm` or `correct`. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed.
+
 Round 16, not performed:
 
 - Do not enable result processing until that round is chosen.
@@ -285,7 +287,7 @@ Round 16, not performed:
 
 Run on 2026-11-23 in a separate worktree. The serving checkout, the prediction worker, and the live database were not used. Schema changes were applied only to disposable SQLite files.
 
-- `npm test`: 57 files passed, 1 skipped, 369 tests passed. The private snapshot test stayed skipped.
+- `npm test`: 58 files passed, 1 skipped, 373 tests passed. The private snapshot test stayed skipped. The follow-up for the two operator states was included.
 - `npm run lint`: passed.
 - `npx tsc --noEmit`: passed.
 - `npm run build`: passed on Next.js 16.4.5 with a disposable database URL.

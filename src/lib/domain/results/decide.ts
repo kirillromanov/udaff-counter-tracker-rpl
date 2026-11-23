@@ -40,6 +40,7 @@ export interface ResultDecision {
 export interface StoredResult {
   resultState: string;
   resultResolution?: string;
+  resultProvenance?: string;
   manuallyCorrected?: boolean;
   actualHomeGoals: number | null;
   actualAwayGoals: number | null;
@@ -165,7 +166,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
   }
   const same = stored.actualHomeGoals === decision.homeGoals && stored.actualAwayGoals === decision.awayGoals;
   const autoVerified = stored.resultState === "verified" || stored.resultResolution === "verified";
-  if (stored.manuallyCorrected) {
+  if (stored.manuallyCorrected || stored.resultProvenance === "manual") {
     const clash = !same;
     return {
       actualHomeGoals: stored.actualHomeGoals,
@@ -176,6 +177,30 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
         ? `Manual score ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}`
         : "Manual score matches the sources.",
       resultResolution: clash ? "conflict-review" : "verified",
+      changedGoals: false,
+    };
+  }
+  if (stored.resultProvenance === "operator-confirmed") {
+    if (decision.outcome === "verified" && !same) {
+      return {
+        actualHomeGoals: decision.homeGoals,
+        actualAwayGoals: decision.awayGoals,
+        resultState: "verified",
+        resultConflict: false,
+        resultNote: decision.note,
+        resultResolution: "verified",
+        changedGoals: true,
+      };
+    }
+    return {
+      actualHomeGoals: stored.actualHomeGoals,
+      actualAwayGoals: stored.actualAwayGoals,
+      resultState: "verified",
+      resultConflict: !same,
+      resultNote: !same
+        ? `Verified manually ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}`
+        : "Verified manually. The sources match this score.",
+      resultResolution: !same ? "conflict-review" : "verified",
       changedGoals: false,
     };
   }
@@ -214,4 +239,20 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
     resultResolution: decision.resolution === "verified" ? "verified" : "provisional",
     changedGoals: !same,
   };
+}
+
+/** A same-score operator confirmation can later accept two agreeing sources. A changed score cannot. */
+export function automaticProvenanceUpdate(
+  storedProvenance: string,
+  write: Pick<ResultWrite, "changedGoals" | "resultState" | "resultResolution">,
+): "two-source" | null {
+  if (
+    storedProvenance === "operator-confirmed"
+    && write.changedGoals
+    && write.resultState === "verified"
+    && write.resultResolution === "verified"
+  ) {
+    return "two-source";
+  }
+  return null;
 }

@@ -18,6 +18,13 @@ describe("Moscow fixture clocks", () => {
     expect(formatMoscow(new Date("2026-11-06T16:30:00.000Z"))).toBe("2026-11-06 19:30 UTC+3");
   });
 
+  it("renders a source observation in Moscow time without an ISO timestamp", () => {
+    const seen = formatMoscow(new Date("2026-11-20T16:00:00.000Z"));
+    expect(seen).toBe("2026-11-20 19:00 UTC+3");
+    expect(seen).not.toMatch(/T\d{2}:/);
+    expect(`First ${seen}`.length).toBeLessThan(40);
+  });
+
   it("leaves an explicit UTC instant unchanged when it is displayed", () => {
     const instant = new Date("2026-11-07T13:23:00.000Z");
     expect(instant.toISOString()).toBe("2026-11-07T13:23:00.000Z");

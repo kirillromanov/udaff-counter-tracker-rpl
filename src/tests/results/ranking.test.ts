@@ -52,6 +52,31 @@ describe("configured source identity", () => {
     });
   });
 
+  it("keeps a same-score confirmation when one source later disagrees, and lets two sources replace it", () => {
+    const one = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0)], new Set(), { now });
+    const confirmed = { resultState: "verified", resultResolution: "verified", resultProvenance: "operator-confirmed", actualHomeGoals: 1, actualAwayGoals: 0 };
+    expect(applyResultDecision(confirmed, one)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultConflict: true,
+      changedGoals: false,
+    });
+    const two = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0), row("premierliga", "fallback", 2, 0)], new Set(), { now });
+    expect(applyResultDecision(confirmed, two)).toMatchObject({
+      actualHomeGoals: 2,
+      actualAwayGoals: 0,
+      resultConflict: false,
+      changedGoals: true,
+    });
+    const locked = { ...confirmed, resultProvenance: "manual", manuallyCorrected: true };
+    expect(applyResultDecision(locked, two)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultConflict: true,
+      changedGoals: false,
+    });
+  });
+
   it("does not replace an auto-verified score when a later agreement differs", () => {
     const decision = resolveFixture("rodina", [row("sport-ru", "primary", 3, 0), row("premierliga", "fallback", 3, 0)], new Set(), { now });
     expect(decision.resolution).toBe("verified");

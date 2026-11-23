@@ -4,7 +4,9 @@ A source is the id in `RESULT_ADAPTERS` / `SOURCE_RANK`. Two URLs or two fetches
 
 This counts configured identities only. A shared upstream behind two ids is intentionally not modeled.
 
-An operator can verify a finished fixture in one action. Changing an already verified score needs a second confirmation because standings use that score. The manual value stays until an explicit rollback recomputes it from the stored source rows. Rollback does not poll. The existing operator poll, and the worker only when `WORKER_RESULTS_ENABLED=1`, perform the next check.
+An operator can verify a finished fixture in one action. Submitting the score already on screen is Verified manually. A later single-source disagreement stays visible and does not replace that score. Two configured sources that later agree on a different full-time score can replace it, and that replacement is not a manual correction. Changing the score is Manually corrected. Automatic results do not replace a changed score. Either state needs a second confirmation when the fixture was already verified and the number changes, because standings use that score. Rollback removes either state and recomputes the score from the stored source rows. Rollback does not poll. The existing operator poll, and the worker only when `WORKER_RESULTS_ENABLED=1`, perform the next check.
+
+Save fixtures and Use this score call the same action. They no longer set `resultState` to `manual` by themselves. Empty score boxes do not clear a stored score. Names, order, and the Match of the Round still save without an audit. A score that was already stored as `manual` by the older path stays that way until an operator uses the new action.
 
 There is no login. The audit actor is `local-admin`.
 

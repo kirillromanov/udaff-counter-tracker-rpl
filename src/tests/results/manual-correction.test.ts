@@ -67,7 +67,8 @@ describe("manual result correction on an isolated database", () => {
     const same = await applyManualResult({ matchId: match.id, home: "1", away: "0", version: 3, standingChangeConfirmed: false, reason: "confirmed", now });
     expect(same.recalculated).toBe(false);
     const marked = await db.match.findUniqueOrThrow({ where: { id: match.id } });
-    expect(marked.manuallyCorrected).toBe(true);
+    expect(marked.manuallyCorrected).toBe(false);
+    expect(marked.resultProvenance).toBe("operator-confirmed");
     expect(marked.resultState).toBe("verified");
     expect(marked.resultVersion).toBe(4);
     await expect(applyManualResult({ matchId: match.id, home: "2", away: "0", version: 3, standingChangeConfirmed: true, reason: "late", now })).rejects.toBeInstanceOf(ResultCorrectionError);
@@ -85,8 +86,8 @@ describe("manual result correction on an isolated database", () => {
     expect(sources.map((row) => [row.source, row.homeGoals, row.awayGoals])).toEqual([["premierliga", 1, 0], ["sport-ru", 1, 0]]);
     const current = await db.match.findUniqueOrThrow({ where: { id: match.id } });
     const raced = await Promise.allSettled([
-      applyManualResult({ matchId: match.id, home: "2", away: "0", version: current.resultVersion, standingChangeConfirmed: true, reason: "once", now }),
-      applyManualResult({ matchId: match.id, home: "2", away: "0", version: current.resultVersion, standingChangeConfirmed: true, reason: "twice", now }),
+      applyManualResult({ matchId: match.id, home: "3", away: "0", version: current.resultVersion, standingChangeConfirmed: true, reason: "once", now }),
+      applyManualResult({ matchId: match.id, home: "3", away: "0", version: current.resultVersion, standingChangeConfirmed: true, reason: "twice", now }),
     ]);
     expect(raced.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     const afterRace = await db.match.findUniqueOrThrow({ where: { id: match.id } });
@@ -98,7 +99,9 @@ describe("manual result correction on an isolated database", () => {
     expect(restored.resultProvenance).toBe("two-source");
     expect(restored.actualHomeGoals).toBe(1);
     const audits = await db.resultAudit.findMany({ where: { matchId: match.id }, orderBy: { createdAt: "asc" } });
-    expect(audits.map((row) => row.action)).toEqual(["confirm", "rollback", "correct", "confirm", "rollback"]);
+    expect(audits.map((row) => row.action)).toEqual(["confirm", "rollback", "correct", "correct", "rollback"]);
+    expect(audits[0]?.nextMarker).toBe(false);
+    expect(audits[2]?.nextMarker).toBe(true);
     expect(audits[0]?.actor).toBe("local-admin");
     const sameAgain = recomputeFromSources([
       { source: "sport-ru", sourceKey: "a", homeGoals: 2, awayGoals: 0, role: "primary", confidence: "high", matchStatus: "finished", completeness: "complete" },

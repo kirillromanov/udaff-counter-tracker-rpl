@@ -326,10 +326,17 @@ export default async function FixturesPage({
                         placeholder="—"
                       />
                     </Field>
+                    <input name={`version_${match.id}`} type="hidden" value={match.resultVersion} />
                     <label className="mb-2 flex items-center gap-2 text-sm text-zinc-700">
                       <input defaultChecked={match.isMatchOfTheRound} name="matchOfTheRound" type="radio" value={match.id} />
                       Official MT
                     </label>
+                    {match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual" || match.resultProvenance === "operator-confirmed" ? (
+                      <label className="mb-2 flex basis-full items-start gap-2 text-sm text-zinc-800">
+                        <input className="mt-1" name={`standingChange_${match.id}`} type="checkbox" value="yes" />
+                        I confirm this corrected score should be used in the standings.
+                      </label>
+                    ) : null}
                     <Badge tone={phaseTone(fixturePhase({
                       kickoffAt: match.kickoffAt,
                       actualHomeGoals: match.actualHomeGoals,
@@ -413,6 +420,9 @@ export default async function FixturesPage({
                   />
                 </div>
               ))}
+              <p className="text-xs text-zinc-600">
+                Changing a score here uses the same check as Verify this score. The same number is left unchanged. A different number is Manually corrected, version-checked, and audited. Empty boxes do not clear a stored score. Names, order, and the Match of the Round save without that audit.
+              </p>
               <SubmitButton pendingLabel="Saving…" variant="primary">
                 Save fixtures
               </SubmitButton>
@@ -442,11 +452,13 @@ export default async function FixturesPage({
                       </form>
                     ) : null}
                     <p className="mt-1 text-xs text-zinc-600">
-                      {match.resultState === "manual"
-                        ? "Manual score is selected. A later fetch will not replace it."
-                        : ranking.selectedSource
-                          ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
-                          : ranking.selectionReason}
+                      {match.manuallyCorrected || match.resultProvenance === "manual" || match.resultState === "manual"
+                        ? "Manually corrected. A later fetch will not replace this score."
+                        : match.resultProvenance === "operator-confirmed"
+                          ? "Verified manually. A disagreeing source stays visible and does not replace this score. Two agreeing sources can."
+                          : ranking.selectedSource
+                            ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
+                            : ranking.selectionReason}
                     </p>
                     <ul className="mt-2 space-y-2">
                       {ranking.candidates.map((candidate) => {
@@ -462,16 +474,24 @@ export default async function FixturesPage({
                               <input name="roundId" type="hidden" value={round.id} />
                               <input name="matchId" type="hidden" value={match.id} />
                               <input name="source" type="hidden" value={candidate.source} />
+                              <input name="version" type="hidden" value={match.resultVersion} />
                               <input name="homeGoals" type="hidden" value={aligned?.homeGoals ?? candidate.homeGoals} />
                               <input name="awayGoals" type="hidden" value={aligned?.awayGoals ?? candidate.awayGoals} />
                               <Badge tone={standingTone(candidate.standing)}>{candidate.standing}</Badge>
-                              <span className="text-xs text-zinc-600">
-                                {candidate.source} · rank {candidate.weight} · {candidate.homeGoals}-{candidate.awayGoals}
-                                {parsed ? ` · parsed ${parsed.homeTeam} ${parsed.homeGoals}-${parsed.awayGoals} ${parsed.awayTeam}` : ""}
-                                {parsed ? ` · ${formatWhen(parsed.fetchedAt)}` : ""}
-                                {" · "}
-                                {candidate.reason}
-                              </span>
+                              <div className="min-w-0 text-xs text-zinc-600">
+                                <p>
+                                  {candidate.source} · rank {candidate.weight} · {candidate.homeGoals}-{candidate.awayGoals}
+                                  {parsed ? ` · parsed ${parsed.homeTeam} ${parsed.homeGoals}-${parsed.awayGoals} ${parsed.awayTeam}` : ""}
+                                </p>
+                                {parsed ? <p className="whitespace-nowrap">{formatWhen(parsed.fetchedAt)}</p> : null}
+                                <p>{candidate.reason}</p>
+                              </div>
+                              {offer && (match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual" || match.resultProvenance === "operator-confirmed") ? (
+                                <label className="flex basis-full items-start gap-2 text-sm text-zinc-800">
+                                  <input className="mt-1" name="standingChange" type="checkbox" value="yes" />
+                                  I confirm this corrected score should be used in the standings.
+                                </label>
+                              ) : null}
                               {offer ? (
                                 <SubmitButton pendingLabel="Saving…" variant="ghost">
                                   Use this score
