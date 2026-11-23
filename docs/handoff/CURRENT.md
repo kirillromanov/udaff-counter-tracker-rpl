@@ -272,7 +272,7 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
 
-Fix score lives on Parser review, under the result refresh. Off is automatic. On keeps the score, and later sources do not replace it. The two-source replacement of a same-score confirmation is removed. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and red `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
+Fix score lives on Parser review, under the result refresh, in one compact block. A wide screen shows two columns. A narrow screen shows one. Each fixture has a small switch and two score fields. Source details open on demand. The switch does not save. Save actual results confirms every score change, including a switch turned off, checks every version, and recalculates the round once when a score number changes. A stale fixture rejects the whole save. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and the exact red text `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
 
 Round 16, not performed:
 
@@ -282,6 +282,16 @@ Round 16, not performed:
 - Correct one score, confirm the standings checkbox, then roll it back and confirm the sources decide again.
 - Open each counter and check that the row count matches.
 - Stop with `zsh scripts/worker-agent.sh stop` if a result check starts writing unexpected scores. Do not clear comments 5707 or 5713.
+
+## Checks for the compact shared score save
+
+Run on 2026-11-23 in the result-verification worktree after the review score block returned to one compact form. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 60 files passed, 1 skipped, 377 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The isolated review page showed eight synthetic fixtures. At 1920 pixels the block was two columns of four, 224 pixels tall, with no horizontal overflow. At 390 pixels it was one column, the document scroll width stayed 390, and both score fields of each fixture stayed on one line. Turning a switch on and turning a saved switch off left the stored scores unchanged and showed Unsaved. Save then listed `Manual Home — Manual Away: 3-0 → 1-0` with the standings confirmation. Cancel removed that dialog, kept the draft, and wrote no audit.
 
 ## Checks for the review score toggle
 

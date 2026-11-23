@@ -7,12 +7,13 @@ import { fixtureCheckStatus, fixturePhase, fixturePhaseLabel, planRoundPoll, pol
 import type { RefreshQuery } from "@/lib/domain/results/refresh-status";
 import { prisma } from "@/lib/db/prisma";
 import { SubmitButton } from "../../../submit-button";
-import { displayedResultLabel, isLegacyManualScore, scoreIsFixed, sourceAgreement, type SourceAgreement } from "@/lib/domain/results/correction";
+import { displayedResultLabel, isLegacyManualScore, recomputeFromSources, scoreIsFixed, sourceAgreement, type SourceAgreement } from "@/lib/domain/results/correction";
 import { alignToFixture } from "@/lib/domain/results/decide";
+import { automaticResultLabel } from "@/lib/domain/results/score-draft";
 import { isRoundClosed } from "@/lib/domain/rounds/round-lock";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { saveMatrixAction } from "../actions";
-import { ScoreLockRow } from "./score-lock";
+import { ResultScoreBlock, type ScoreBlockRow } from "./score-lock";
 import { fieldClass, Section } from "../../../ui";
 import { CalculateIntermediateButton } from "../calculate-intermediate-button";
 import { MatchResultsRefresh } from "../match-results-refresh";
@@ -52,7 +53,7 @@ function liveFixture(match: {
   };
 }
 
-export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; refreshQuery: RefreshQuery }) {
+export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }: { roundId: string; refreshQuery: RefreshQuery; scoresSaved?: boolean }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
@@ -194,60 +195,53 @@ export async function CleanMatrix({ roundId, refreshQuery }: { roundId: string; 
           No source comments are stored for this round. Empty cells are not proof that a participant submitted nothing.
         </p>
       ) : null}
-      <div className="mb-4 space-y-2">
-        <p className="text-sm text-zinc-700">
-          Fix score keeps the number in the fields. While it is off, the fields show the automatic score and a later fetch can update them.
-        </p>
-        {fixtures.map((match) => {
-          const phase = fixturePhase(match, now);
-          const aligned = match.resultObservations.flatMap((row) => {
-            const observation = alignToFixture(match, row);
-            if (!observation) {
-              return [];
-            }
-            return [{
-              source: row.source,
-              sourceKey: row.sourceKey,
-              homeGoals: observation.homeGoals,
-              awayGoals: observation.awayGoals,
-              role: row.role,
-              confidence: row.confidence,
-              matchStatus: row.matchStatus,
-              completeness: row.completeness,
-              fetchedAt: row.lastSeenAt ?? row.fetchedAt,
-            }];
-          });
-          const agreement: SourceAgreement | null = scoreIsFixed(match) ? sourceAgreement(match.actualHomeGoals, match.actualAwayGoals, aligned) : null;
-          const legacy = fixturePhaseLabel(phase, match.conflictAcknowledgedAt != null);
-          const label = displayedResultLabel(match, legacy, agreement);
-          const closed = isRoundClosed(round.closedAt);
-          const archived = round.standingRole === ARCHIVED_ROUND;
-          const editable = !closed && !archived && (phase === "finished-unverified" || phase === "finished-verified" || phase === "conflict-review");
-          return (
-            <ScoreLockRow
-              key={match.id}
-              away={match.actualAwayGoals}
-              awayTeam={match.awayTeam}
-              editable={editable}
-              fixed={scoreIsFixed(match)}
-              home={match.actualHomeGoals}
-              homeTeam={match.homeTeam}
-              label={label}
-              lockedReason={closed ? "This round is closed." : archived ? "An archived reference round keeps its stored result." : editable ? null : "A score can be fixed only after the fixture is finished."}
-              matchId={match.id}
-              needsStandingConfirm={match.resultState === "verified" || match.resultResolution === "verified" || scoreIsFixed(match)}
-              roundId={round.id}
-              sources={match.resultObservations.map((row) => ({
-                source: row.source,
-                score: `${row.homeGoals}-${row.awayGoals}`,
-                seen: row.lastSeenAt ? formatMoscow(row.lastSeenAt) : row.firstSeenAt ? formatMoscow(row.firstSeenAt) : "time not stored",
-              }))}
-              version={match.resultVersion}
-              warning={agreement === "other" && !isLegacyManualScore(match)}
-            />
-          );
-        })}
-      </div>
+      <ResultScoreBlock justSaved={scoresSaved} roundId={round.id} rows={fixtures.map((match): ScoreBlockRow => {
+        const phase = fixturePhase(match, now);
+        const aligned = match.resultObservations.flatMap((row) => {
+          const observation = alignToFixture(match, row);
+          if (!observation) {
+            return [];
+          }
+          return [{
+            source: row.source,
+            sourceKey: row.sourceKey,
+            homeGoals: observation.homeGoals,
+            awayGoals: observation.awayGoals,
+            role: row.role,
+            confidence: row.confidence,
+            matchStatus: row.matchStatus,
+            completeness: row.completeness,
+          }];
+        });
+        const agreement: SourceAgreement | null = scoreIsFixed(match) ? sourceAgreement(match.actualHomeGoals, match.actualAwayGoals, aligned) : null;
+        const legacy = fixturePhaseLabel(phase, match.conflictAcknowledgedAt != null);
+        const automatic = recomputeFromSources(aligned);
+        const closed = isRoundClosed(round.closedAt);
+        const archived = round.standingRole === ARCHIVED_ROUND;
+        return {
+          id: match.id,
+          version: match.resultVersion,
+          homeTeam: match.homeTeam,
+          awayTeam: match.awayTeam,
+          isMatchOfTheRound: match.isMatchOfTheRound,
+          storedHome: match.actualHomeGoals,
+          storedAway: match.actualAwayGoals,
+          storedFixed: scoreIsFixed(match),
+          legacy: isLegacyManualScore(match),
+          verifiedForStandings: match.resultState === "verified" || match.resultResolution === "verified" || scoreIsFixed(match),
+          editable: !closed && !archived && (phase === "finished-unverified" || phase === "finished-verified" || phase === "conflict-review"),
+          storedLabel: displayedResultLabel(match, legacy, agreement),
+          automaticHome: automatic.home,
+          automaticAway: automatic.away,
+          automaticLabel: automaticResultLabel(automatic, legacy),
+          observations: aligned,
+          sources: match.resultObservations.map((row) => ({
+            source: row.source,
+            score: `${row.homeGoals}-${row.awayGoals}`,
+            seen: row.lastSeenAt ? formatMoscow(row.lastSeenAt) : row.firstSeenAt ? formatMoscow(row.firstSeenAt) : "time not stored",
+          })),
+        };
+      })} />
 
       <form action={saveMatrixAction}>
         <input name="roundId" type="hidden" value={round.id} />

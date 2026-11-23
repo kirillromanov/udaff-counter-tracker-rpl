@@ -286,7 +286,7 @@ export default async function RoundImportPage({
         ) : null}
         {query.saved === "results" ? <Notice tone="success">Actual results saved. They apply to every participant.</Notice> : null}
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-          <CleanMatrix refreshQuery={query} roundId={round.id} />
+          <CleanMatrix refreshQuery={query} roundId={round.id} scoresSaved={query.saved === "score"} />
         </MutationRegion>
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">

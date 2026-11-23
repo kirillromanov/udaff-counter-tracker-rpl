@@ -58,6 +58,9 @@ await db.match.create({
 await db.match.create({
   data: { roundId: round.id, sortOrder: 7, homeTeam: "Legacy Home", awayTeam: "Legacy Away", kickoffAt: kickoff, actualHomeGoals: 4, actualAwayGoals: 1, resultState: "manual", resultResolution: "manual", resultProvenance: "", manuallyCorrected: false, resultNote: "Entered on the clean review matrix. This score is used for every participant." },
 });
+const single = await db.match.create({
+  data: { roundId: round.id, sortOrder: 8, homeTeam: "Single Home", awayTeam: "Single Away", kickoffAt: kickoff, actualHomeGoals: 2, actualAwayGoals: 0, resultState: "verified", resultResolution: "verified", resultProvenance: "manual", manuallyCorrected: true, isMatchOfTheRound: true, resultNote: "Fixed on the review page." },
+});
 async function observation(source, sourceKey, matchId, homeTeam, awayTeam, homeGoals, awayGoals, role) {
   await db.resultObservation.create({
     data: { source, sourceKey, homeTeam, awayTeam, homeGoals, awayGoals, role, matchId, firstSeenAt: seen, lastSeenAt: seen },
@@ -71,6 +74,7 @@ await observation("premierliga", "equal", equal.id, "Equal Home", "Equal Away", 
 await observation("sport-ru", "manual", manual.id, "Manual Home", "Manual Away", 1, 0, "primary");
 await observation("sport-ru", "conflict", conflict.id, "Conflict Home", "Conflict Away", 1, 0, "primary");
 await observation("premierliga", "conflict", conflict.id, "Conflict Home", "Conflict Away", 2, 0, "fallback");
+await observation("sport-ru", "single", single.id, "Single Home", "Single Away", 2, 0, "primary");
 const flagged = await db.forumComment.create({
   data: { roundId: round.id, sourceUrl: "https://example.test/c/sample", externalId: "sample-5707", authorName: "Sample Flag", postedAt: kickoff, rawHtml: "<p>sample</p>", rawText: "sample", reviewState: "flagged", reviewNote: note, ingestionStatus: "flagged" },
 });

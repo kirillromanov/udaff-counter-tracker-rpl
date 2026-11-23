@@ -5,6 +5,20 @@ import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import { alignToFixture } from "./decide";
 import { rankFixtureResult, type RankableObservation } from "./ranking";
 import { fixturePhase, type FixturePhase, type PollFixture } from "./poll";
+import { scoreIsFixed, sourceAgreement } from "./result-label";
+
+export {
+  LABEL_FIXED,
+  LABEL_FIXED_ONE_SOURCE,
+  LABEL_MANUAL_NOT_VERIFIED,
+  LABEL_OLDER_MANUAL,
+  LABEL_VERIFIED_FIXED,
+  displayedResultLabel,
+  isLegacyManualScore,
+  scoreIsFixed,
+  sourceAgreement,
+  type SourceAgreement,
+} from "./result-label";
 
 /** Full-time scores only. This model has no extra-time or penalty fields. */
 export const MAX_RESULT_GOALS = 20;
@@ -33,84 +47,6 @@ function readGoal(value: unknown, side: string): number {
     throw new ResultCorrectionError(`A full-time score above ${MAX_RESULT_GOALS} is not accepted.`);
   }
   return parsed;
-}
-
-export const LABEL_MANUAL_NOT_VERIFIED = "manual corrected, not source verified";
-export const LABEL_VERIFIED_FIXED = "verified, fixed manually";
-export const LABEL_FIXED_ONE_SOURCE = "fixed manually. Only one source agrees.";
-export const LABEL_OLDER_MANUAL = "older manual score";
-export const LABEL_FIXED = "fixed manually";
-
-export type SourceAgreement = "verified" | "provisional" | "other";
-
-export function scoreIsFixed(match: {
-  manuallyCorrected: boolean;
-  resultProvenance: string;
-  resultState?: string;
-}): boolean {
-  const state = match.resultState ?? "";
-  return match.manuallyCorrected
-    || match.resultProvenance === "manual"
-    || match.resultProvenance === "operator-confirmed"
-    || (state === "manual" && match.resultProvenance === "");
-}
-
-export function isLegacyManualScore(match: {
-  manuallyCorrected: boolean;
-  resultProvenance: string;
-  resultState?: string;
-}): boolean {
-  return (match.resultState ?? "") === "manual" && match.resultProvenance === "" && !match.manuallyCorrected;
-}
-
-/** How the stored source rows relate to the score on screen. Stale or unfinished rows do not confirm it. */
-export function sourceAgreement(
-  home: number | null,
-  away: number | null,
-  observations: readonly RankableObservation[],
-): SourceAgreement {
-  const ranking = rankFixtureResult(observations);
-  if (ranking.homeGoals == null || ranking.homeGoals !== home || ranking.awayGoals !== away) {
-    return "other";
-  }
-  if (ranking.classification === "verified") {
-    return "verified";
-  }
-  if (ranking.classification === "provisional") {
-    return "provisional";
-  }
-  return "other";
-}
-
-/** Legacy rows have an empty provenance and keep their existing label. A fixed score uses the source comparison. */
-export function displayedResultLabel(match: {
-  resultProvenance: string;
-  manuallyCorrected: boolean;
-  resultConflict: boolean;
-  resultState?: string;
-}, legacy: string, agreement?: SourceAgreement | null): string {
-  if (isLegacyManualScore(match)) {
-    return LABEL_OLDER_MANUAL;
-  }
-  if (scoreIsFixed(match)) {
-    if (agreement === "verified") {
-      return LABEL_VERIFIED_FIXED;
-    }
-    if (agreement === "provisional") {
-      return LABEL_FIXED_ONE_SOURCE;
-    }
-    if (agreement === "other") {
-      return LABEL_MANUAL_NOT_VERIFIED;
-    }
-    return LABEL_FIXED;
-  }
-  if (match.resultProvenance === "two-source") {
-    return match.resultConflict ? "Result conflict. Verified, two sources." : "Verified, two sources";
-  }
-  if (match.resultProvenance === "one-source") {
-    return match.resultConflict ? "Result conflict. Provisional." : "Provisional";
-  }
-  return legacy;
 }
 
 export type FixtureScoreEdit = "leave" | "clear" | "edit" | "partial";
@@ -447,4 +383,214 @@ export async function rollbackManualResult(input: {
   }
   await recalculateRound(match.roundId);
   return { recalculated: true };
+}
+
+export interface ScoreLockSaveItem {
+  matchId: string;
+  fixed: boolean;
+  home: unknown;
+  away: unknown;
+  version: number;
+}
+
+/**
+ * One confirmed save for the review block. Versions are checked before any write.
+ * A stale fixture rejects the batch. Recalculation runs once, after the writes, and only if a score number changes.
+ */
+export async function saveScoreLockBatch(input: {
+  roundId: string;
+  items: readonly ScoreLockSaveItem[];
+  standingChangeConfirmed: boolean;
+  now?: Date;
+  /** Tests count this. Production uses the round recalculation. */
+  recalculate?: (roundId: string) => Promise<unknown>;
+}): Promise<{ recalculated: boolean; changed: number }> {
+  const now = input.now ?? new Date();
+  const round = await prisma.round.findUnique({
+    where: { id: input.roundId },
+    include: { matches: true },
+  });
+  if (!round) {
+    throw new ResultCorrectionError("That round is not stored.");
+  }
+  if (isRoundClosed(round.closedAt)) {
+    throw new RoundClosedError();
+  }
+  if (round.standingRole === ARCHIVED_ROUND) {
+    throw new ResultCorrectionError("An archived reference round keeps its stored result. This action does not change it.");
+  }
+  const byId = new Map(round.matches.map((match) => [match.id, match]));
+  const planned: {
+    match: MatchRow;
+    scoreChanges: boolean;
+    data: {
+      actualHomeGoals: number | null;
+      actualAwayGoals: number | null;
+      resultState: string;
+      resultResolution: string;
+      resultConflict: boolean;
+      resultProvenance: string;
+      manuallyCorrected: boolean;
+      resultNote: string;
+      autoCheckAttempts?: number;
+      autoCheckNextAt?: Date | null;
+    };
+    audit: {
+      action: string;
+      nextHome: number | null;
+      nextAway: number | null;
+      nextState: string;
+      nextResolution: string;
+      nextMarker: boolean;
+      reason: string;
+    };
+  }[] = [];
+  for (const item of input.items) {
+    const stored = byId.get(item.matchId);
+    if (!stored || stored.roundId !== round.id) {
+      throw new ResultCorrectionError("That fixture is not stored.");
+    }
+    const match = toMatchRow(stored);
+    const wantsFixed = item.fixed;
+    const wasFixed = scoreIsFixed(match);
+    if (!wantsFixed && !wasFixed) {
+      continue;
+    }
+    if (wantsFixed) {
+      const score = parseFullTimeScore(item.home, item.away);
+      const sameLock = wasFixed && match.actualHomeGoals === score.home && match.actualAwayGoals === score.away;
+      if (sameLock) {
+        continue;
+      }
+      assertVersion(match, item.version);
+      assertFinished(match, now);
+      const scoreChanges = match.actualHomeGoals !== score.home || match.actualAwayGoals !== score.away;
+      const alreadyVerified = match.resultState === "verified"
+        || match.resultResolution === "verified"
+        || wasFixed;
+      if (alreadyVerified && scoreChanges && !input.standingChangeConfirmed) {
+        throw new ResultCorrectionError("Confirm that standings should use this corrected score.");
+      }
+      const observations = await storedSourceRows(match);
+      planned.push({
+        match,
+        scoreChanges,
+        data: {
+          actualHomeGoals: score.home,
+          actualAwayGoals: score.away,
+          resultState: "verified",
+          resultResolution: "verified",
+          resultConflict: sourceAgreement(score.home, score.away, observations) === "other",
+          resultProvenance: "manual",
+          manuallyCorrected: true,
+          resultNote: "Fixed on the review page.",
+        },
+        audit: {
+          action: scoreChanges ? "correct" : "confirm",
+          nextHome: score.home,
+          nextAway: score.away,
+          nextState: "verified",
+          nextResolution: "verified",
+          nextMarker: true,
+          reason: `Fixed on the review page. Sources at lock: ${sourceSnapshot(observations)}`,
+        },
+      });
+      continue;
+    }
+    const next = recomputeFromSources(await storedSourceRows(match));
+    const scoreChanges = match.actualHomeGoals !== next.home || match.actualAwayGoals !== next.away;
+    assertVersion(match, item.version);
+    if (scoreChanges && !input.standingChangeConfirmed && (match.resultState === "verified" || match.resultResolution === "verified" || wasFixed)) {
+      throw new ResultCorrectionError("Confirm that standings should use this corrected score.");
+    }
+    planned.push({
+      match,
+      scoreChanges,
+      data: {
+        actualHomeGoals: next.home,
+        actualAwayGoals: next.away,
+        resultState: next.resultState,
+        resultResolution: next.resultResolution,
+        resultConflict: next.resultConflict,
+        resultProvenance: next.resultProvenance,
+        manuallyCorrected: false,
+        resultNote: next.note,
+        ...(next.awaitingRecheck ? { autoCheckAttempts: 0, autoCheckNextAt: now } : { autoCheckNextAt: null }),
+      },
+      audit: {
+        action: "rollback",
+        nextHome: next.home,
+        nextAway: next.away,
+        nextState: next.resultState,
+        nextResolution: next.resultResolution,
+        nextMarker: false,
+        reason: "Fix score turned off on the review page.",
+      },
+    });
+  }
+  if (planned.length === 0) {
+    return { recalculated: false, changed: 0 };
+  }
+  const versions = new Set(planned.map((item) => `${item.match.id}:${item.match.resultVersion}`));
+  if (versions.size !== planned.length) {
+    throw new ResultCorrectionError("The score changed while this page was open. Reload the fixture and try again.");
+  }
+  await prisma.$transaction(async (tx) => {
+    for (const item of planned) {
+      const claimed = await tx.match.updateMany({
+        where: { id: item.match.id, resultVersion: item.match.resultVersion },
+        data: {
+          ...item.data,
+          conflictAcknowledgedAt: null,
+          resultVersion: { increment: 1 },
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ResultCorrectionError("The score changed while this page was open. Reload the fixture and try again.");
+      }
+      await tx.resultAudit.create({
+        data: {
+          matchId: item.match.id,
+          roundId: item.match.roundId,
+          action: item.audit.action,
+          actor: LOCAL_OPERATOR,
+          previousHome: item.match.actualHomeGoals,
+          previousAway: item.match.actualAwayGoals,
+          previousState: item.match.resultState,
+          previousResolution: item.match.resultResolution,
+          previousMarker: item.match.manuallyCorrected || item.match.resultState === "manual",
+          nextHome: item.audit.nextHome,
+          nextAway: item.audit.nextAway,
+          nextState: item.audit.nextState,
+          nextResolution: item.audit.nextResolution,
+          nextMarker: item.audit.nextMarker,
+          reason: item.audit.reason,
+        },
+      });
+    }
+  });
+  const scoreChanged = planned.some((item) => item.scoreChanges);
+  if (scoreChanged) {
+    await (input.recalculate ?? recalculateRound)(input.roundId);
+  }
+  return { recalculated: scoreChanged, changed: planned.length };
+}
+
+function toMatchRow(match: {
+  id: string;
+  roundId: string;
+  homeTeam: string;
+  awayTeam: string;
+  kickoffAt: Date | null;
+  actualHomeGoals: number | null;
+  actualAwayGoals: number | null;
+  resultState: string;
+  resultResolution: string;
+  resultConflict: boolean;
+  conflictAcknowledgedAt: Date | null;
+  manuallyCorrected: boolean;
+  resultVersion: number;
+  resultProvenance: string;
+}): MatchRow {
+  return match;
 }
