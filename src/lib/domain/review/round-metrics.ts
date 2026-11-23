@@ -1,6 +1,7 @@
 import { EDIT_AFTER_KICKOFF_NOTE, EDIT_TIME_UNKNOWN_NOTE } from "@/lib/domain/import/fixture-deadline";
 import { MANUAL_PREDICTION_NOTE } from "@/lib/domain/import/incremental";
 import { isConflictWarning, isCorrectionWarning, setTone, toSetToneInput, type ReviewTone } from "@/lib/domain/import/review-status";
+import { isLegacyManualScore, LABEL_MANUAL_NOT_VERIFIED, LABEL_OLDER_MANUAL, scoreIsFixed } from "@/lib/domain/results/correction";
 
 export type RoundMetric = "comments" | "sets" | "selected" | "conflicts" | "corrections" | "scored" | "stored";
 
@@ -169,22 +170,31 @@ export function explainSetIssue(set: MetricSet): IssueExplanation | null {
 }
 
 export function explainResultIssue(fixture: MetricFixture): IssueExplanation | null {
+  if (isLegacyManualScore(fixture)) {
+    return {
+      title: `${fixture.homeTeam} — ${fixture.awayTeam}`,
+      reason: LABEL_OLDER_MANUAL,
+      evidence: `Stored score ${fixture.actualHomeGoals}-${fixture.actualAwayGoals}. The stored fields were not relabeled.`,
+      decision: "Leave it, or turn Fix score off on this review page so the stored sources decide again.",
+      actions: ["Use the Fix score toggle under the result refresh on this page"],
+    };
+  }
+  if (scoreIsFixed(fixture) && fixture.resultConflict) {
+    return {
+      title: `${fixture.homeTeam} — ${fixture.awayTeam}`,
+      reason: LABEL_MANUAL_NOT_VERIFIED,
+      evidence: `Stored score ${fixture.actualHomeGoals}-${fixture.actualAwayGoals}. Sources stay visible and do not replace this score.`,
+      decision: "Leave the fixed score, or turn Fix score off so the stored sources decide again.",
+      actions: ["Use the Fix score toggle under the result refresh on this page"],
+    };
+  }
   if (fixture.resultConflict) {
     return {
       title: `${fixture.homeTeam} — ${fixture.awayTeam}`,
       reason: "Result-source conflict",
       evidence: fixture.resultNote || "Stored sources do not share one full-time score. Both values stay on the fixture.",
-      decision: "Keep the stored score, or enter the full-time score in one confirmed action.",
-      actions: ["Verify or correct the score on the fixtures page", "Return a manual score to the stored sources"],
-    };
-  }
-  if (fixture.manuallyCorrected) {
-    return {
-      title: `${fixture.homeTeam} — ${fixture.awayTeam}`,
-      reason: "Manual correction in effect",
-      evidence: `Stored score ${fixture.actualHomeGoals}-${fixture.actualAwayGoals}. Sources are kept and do not replace this score.`,
-      decision: "Leave the manual score, or remove the marker so the stored sources decide again.",
-      actions: ["Remove the manual marker on the fixtures page"],
+      decision: "Keep the stored score, or turn Fix score on and enter the full-time score.",
+      actions: ["Use the Fix score toggle under the result refresh on this page"],
     };
   }
   return null;
@@ -212,7 +222,7 @@ export function roundConsistency(input: {
   if (input.counters.selected > input.counters.stored) {
     blocking.push("Selected sets outnumber stored sets.");
   }
-  const resultConflicts = input.fixtures.filter((fixture) => fixture.resultConflict);
+  const resultConflicts = input.fixtures.filter((fixture) => fixture.resultConflict && !scoreIsFixed(fixture));
   if (resultConflicts.length > 0) {
     blocking.push(`${resultConflicts.length} ${resultConflicts.length === 1 ? "fixture has" : "fixtures have"} a result conflict.`);
   }
@@ -224,6 +234,9 @@ export function roundConsistency(input: {
   }
   const unverified = input.fixtures.filter((fixture) => {
     const scored = fixture.actualHomeGoals != null && fixture.actualAwayGoals != null;
+    if (scoreIsFixed(fixture)) {
+      return false;
+    }
     const verified = !fixture.resultConflict && (fixture.resultState === "verified" || fixture.resultState === "manual" || fixture.resultResolution === "verified" || fixture.resultResolution === "manual");
     return scored && !verified;
   });
@@ -234,9 +247,17 @@ export function roundConsistency(input: {
   if (missing > 0) {
     notes.push(`${missing} ${missing === 1 ? "fixture has" : "fixtures have"} no full-time score yet.`);
   }
-  const manual = input.fixtures.filter((fixture) => fixture.manuallyCorrected || fixture.resultState === "manual");
-  if (manual.length > 0) {
-    notes.push(`${manual.length} ${manual.length === 1 ? "fixture uses" : "fixtures use"} a manual score.`);
+  const red = input.fixtures.filter((fixture) => scoreIsFixed(fixture) && fixture.resultConflict && !isLegacyManualScore(fixture));
+  if (red.length > 0) {
+    notes.push(`${red.length} ${red.length === 1 ? "fixture is" : "fixtures are"} ${LABEL_MANUAL_NOT_VERIFIED}.`);
+  }
+  const legacy = input.fixtures.filter((fixture) => isLegacyManualScore(fixture));
+  if (legacy.length > 0) {
+    notes.push(`${legacy.length} ${legacy.length === 1 ? "fixture keeps" : "fixtures keep"} an ${LABEL_OLDER_MANUAL}.`);
+  }
+  const calm = input.fixtures.filter((fixture) => scoreIsFixed(fixture) && !fixture.resultConflict && !isLegacyManualScore(fixture));
+  if (calm.length > 0) {
+    notes.push(`${calm.length} ${calm.length === 1 ? "fixture is" : "fixtures are"} fixed manually.`);
   }
   return { consistent: blocking.length === 0, blocking, notes };
 }

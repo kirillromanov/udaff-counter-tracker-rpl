@@ -272,7 +272,7 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
 
-The same submitted score is Verified manually. One later disagreeing source keeps that score and shows a conflict. Two configured sources that agree on a different full-time score replace it. The replacement writes one audit row, action `replace`, actor `automatic`, and the visible sentence “Verified manually … was replaced by two sources”. Recalculation runs once. The same fetch again does not write another audit or recalculate. A changed score is Manually corrected and is not replaced. Save fixtures and Use this score use that same action. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
+Fix score lives on Parser review, under the result refresh. Off is automatic. On keeps the score, and later sources do not replace it. The two-source replacement of a same-score confirmation is removed. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and red `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
 
 Round 16, not performed:
 
@@ -282,6 +282,16 @@ Round 16, not performed:
 - Correct one score, confirm the standings checkbox, then roll it back and confirm the sources decide again.
 - Open each counter and check that the row count matches.
 - Stop with `zsh scripts/worker-agent.sh stop` if a result check starts writing unexpected scores. Do not clear comments 5707 or 5713.
+
+## Checks for the review score toggle
+
+Run on 2026-11-23 in the result-verification worktree after Fix score moved to Parser review. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 59 files passed, 1 skipped, 375 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The review page was opened on a disposable database. At 390 pixels the document was 390 wide with no horizontal overflow. The score block showed Provisional, Verified two sources, verified fixed manually, the red manual-corrected label, Source conflict, Scheduled, and older manual score. A screenshot of that block showed the stacked Fix score toggle. At 1920 pixels the same labels were present with no horizontal overflow. The fixtures page had Save fixtures and Official MT, and no score box, Verify this score, or Use this score.
 
 ## Checks for verified-manually replacement
 

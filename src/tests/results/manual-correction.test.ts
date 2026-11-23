@@ -67,10 +67,13 @@ describe("manual result correction on an isolated database", () => {
     const same = await applyManualResult({ matchId: match.id, home: "1", away: "0", version: 3, standingChangeConfirmed: false, reason: "confirmed", now });
     expect(same.recalculated).toBe(false);
     const marked = await db.match.findUniqueOrThrow({ where: { id: match.id } });
-    expect(marked.manuallyCorrected).toBe(false);
-    expect(marked.resultProvenance).toBe("operator-confirmed");
+    expect(marked.manuallyCorrected).toBe(true);
+    expect(marked.resultProvenance).toBe("manual");
     expect(marked.resultState).toBe("verified");
     expect(marked.resultVersion).toBe(4);
+    const repeated = await applyManualResult({ matchId: match.id, home: "1", away: "0", version: 4, standingChangeConfirmed: false, reason: "confirmed", now });
+    expect(repeated.recalculated).toBe(false);
+    expect(await db.resultAudit.count({ where: { matchId: match.id } })).toBe(1);
     await expect(applyManualResult({ matchId: match.id, home: "2", away: "0", version: 3, standingChangeConfirmed: true, reason: "late", now })).rejects.toBeInstanceOf(ResultCorrectionError);
     await expect(applyManualResult({ matchId: match.id, home: "2", away: "", version: 4, standingChangeConfirmed: true, reason: "", now })).rejects.toBeInstanceOf(ResultCorrectionError);
     const unchangedRollback = await rollbackManualResult({ matchId: match.id, version: 4, confirmed: true, reason: "same score", now });
@@ -80,6 +83,7 @@ describe("manual result correction on an isolated database", () => {
     expect(back.resultProvenance).toBe("two-source");
     expect(back.actualHomeGoals).toBe(1);
     expect(back.autoCheckNextAt).toBeNull();
+    await expect(applyManualResult({ matchId: match.id, home: "2", away: "0", version: back.resultVersion, standingChangeConfirmed: false, reason: "official sheet", now })).rejects.toBeInstanceOf(ResultCorrectionError);
     const manualAgain = await applyManualResult({ matchId: match.id, home: "2", away: "0", version: back.resultVersion, standingChangeConfirmed: true, reason: "official sheet", now });
     expect(manualAgain.recalculated).toBe(true);
     const sources = await db.resultObservation.findMany({ where: { matchId: match.id }, orderBy: { source: "asc" } });
@@ -100,7 +104,8 @@ describe("manual result correction on an isolated database", () => {
     expect(restored.actualHomeGoals).toBe(1);
     const audits = await db.resultAudit.findMany({ where: { matchId: match.id }, orderBy: { createdAt: "asc" } });
     expect(audits.map((row) => row.action)).toEqual(["confirm", "rollback", "correct", "correct", "rollback"]);
-    expect(audits[0]?.nextMarker).toBe(false);
+    expect(audits[0]?.nextMarker).toBe(true);
+    expect(audits[0]?.reason).toContain("Sources at lock:");
     expect(audits[2]?.nextMarker).toBe(true);
     expect(audits[0]?.actor).toBe("local-admin");
     const sameAgain = recomputeFromSources([
@@ -133,6 +138,14 @@ describe("manual result correction on an isolated database", () => {
       data: { roundId: round.id, homeTeam: "Later", awayTeam: "Side", kickoffAt: new Date("2026-12-01T16:00:00.000Z"), resultState: "open" },
     });
     await expect(applyManualResult({ matchId: later.id, home: "1", away: "0", version: 0, standingChangeConfirmed: false, reason: "", now })).rejects.toBeInstanceOf(ResultCorrectionError);
+    const [{ saveFixtureStructure }] = await Promise.all([import("@/lib/domain/fixtures/save-structure")]);
+    await saveFixtureStructure([{ id: legacy.id, homeTeam: "Renamed", awayTeam: "Side", sortOrder: 4, isMatchOfTheRound: false }]);
+    const renamed = await db.match.findUniqueOrThrow({ where: { id: legacy.id } });
+    expect(renamed.homeTeam).toBe("Renamed");
+    expect(renamed.actualHomeGoals).toBe(0);
+    expect(renamed.resultState).toBe("verified");
+    expect(renamed.resultProvenance).toBe("");
+    expect(renamed.manuallyCorrected).toBe(false);
     await db.$disconnect();
   });
 });

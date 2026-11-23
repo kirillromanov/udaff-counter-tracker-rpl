@@ -48,7 +48,7 @@ describe("verified manually replacement", () => {
     }
   });
 
-  it("replaces a confirmed score only when two sources agree, once, with an audit and a note", async () => {
+  it("does not replace a fixed score when two sources agree on a different score", async () => {
     const [{ PrismaClient }, { refreshRoundResults }] = await Promise.all([
       import("@prisma/client"),
       import("@/lib/domain/results/poll-run"),
@@ -103,38 +103,27 @@ describe("verified manually replacement", () => {
       ]),
     ];
     const first = await refreshRoundResults(round.id, { fetches });
-    expect(first.recalculated).toBe(true);
-    expect(first.updated).toBe(1);
+    expect(first.recalculated).toBe(false);
+    expect(first.updated).toBe(0);
     const changed = await db.match.findUniqueOrThrow({ where: { id: replaced.id } });
-    expect(changed.actualHomeGoals).toBe(2);
+    expect(changed.actualHomeGoals).toBe(1);
     expect(changed.actualAwayGoals).toBe(0);
-    expect(changed.resultProvenance).toBe("two-source");
-    expect(changed.resultNote).toBe("Verified manually 1-0 was replaced by two sources with 2-0.");
+    expect(changed.resultProvenance).toBe("operator-confirmed");
+    expect(changed.resultConflict).toBe(true);
     const kept = await db.match.findUniqueOrThrow({ where: { id: held.id } });
     expect(kept.actualHomeGoals).toBe(1);
     expect(kept.actualAwayGoals).toBe(0);
     expect(kept.resultConflict).toBe(true);
     expect(kept.resultProvenance).toBe("operator-confirmed");
-    const audits = await db.resultAudit.findMany({ orderBy: { createdAt: "asc" } });
-    expect(audits).toHaveLength(1);
-    expect(audits[0]).toMatchObject({
-      matchId: replaced.id,
-      action: "replace",
-      actor: "automatic",
-      previousHome: 1,
-      previousAway: 0,
-      nextHome: 2,
-      nextAway: 0,
-      nextMarker: false,
-    });
+    expect(await db.resultAudit.count()).toBe(0);
     const second = await refreshRoundResults(round.id, { fetches });
     expect(second.recalculated).toBe(false);
     expect(second.updated).toBe(0);
-    expect(await db.resultAudit.count()).toBe(1);
+    expect(await db.resultAudit.count()).toBe(0);
     const again = await db.match.findUniqueOrThrow({ where: { id: replaced.id } });
-    expect(again.resultNote).toBe(changed.resultNote);
-    expect(again.actualHomeGoals).toBe(2);
+    expect(again.actualHomeGoals).toBe(1);
     expect(again.resultVersion).toBe(changed.resultVersion);
+    expect(again.resultNote).toBe(changed.resultNote);
     await db.$disconnect();
   });
 });

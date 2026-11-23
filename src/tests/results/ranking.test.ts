@@ -52,9 +52,9 @@ describe("configured source identity", () => {
     });
   });
 
-  it("keeps a same-score confirmation when one source later disagrees, and lets two sources replace it", () => {
+  it("keeps a fixed score when one source disagrees and when two sources agree on a different score", () => {
     const one = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0)], new Set(), { now });
-    const confirmed = { resultState: "verified", resultResolution: "verified", resultProvenance: "operator-confirmed", actualHomeGoals: 1, actualAwayGoals: 0 };
+    const confirmed = { resultState: "verified", resultResolution: "verified", resultProvenance: "operator-confirmed", actualHomeGoals: 1, actualAwayGoals: 0, resultNote: "Fixed on the review page." };
     expect(applyResultDecision(confirmed, one)).toMatchObject({
       actualHomeGoals: 1,
       actualAwayGoals: 0,
@@ -63,11 +63,10 @@ describe("configured source identity", () => {
     });
     const two = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0), row("premierliga", "fallback", 2, 0)], new Set(), { now });
     expect(applyResultDecision(confirmed, two)).toMatchObject({
-      actualHomeGoals: 2,
+      actualHomeGoals: 1,
       actualAwayGoals: 0,
-      resultConflict: false,
-      changedGoals: true,
-      resultNote: "Verified manually 1-0 was replaced by two sources with 2-0.",
+      resultConflict: true,
+      changedGoals: false,
     });
     const locked = { ...confirmed, resultProvenance: "manual", manuallyCorrected: true };
     expect(applyResultDecision(locked, two)).toMatchObject({

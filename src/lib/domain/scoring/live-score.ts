@@ -16,6 +16,8 @@ export interface LiveFixtureInput {
   resultResolution: string;
   resultConflict: boolean;
   conflictAcknowledged: boolean;
+  manuallyCorrected?: boolean;
+  resultProvenance?: string;
   isMatchOfTheRound: boolean;
 }
 
@@ -97,13 +99,17 @@ function isVerifiedFixture(fixture: LiveFixtureInput): boolean {
 
 /** Verified scores can become confirmed points. A dispute does not. A blank score stays pending. */
 export function fixtureConfidence(fixture: LiveFixtureInput): LiveConfidence {
-  if (fixture.resultConflict && !fixture.conflictAcknowledged) {
+  const fixed = Boolean(fixture.manuallyCorrected)
+    || fixture.resultProvenance === "manual"
+    || fixture.resultProvenance === "operator-confirmed"
+    || (fixture.resultState === "manual" && (fixture.resultProvenance ?? "") === "");
+  if (fixture.resultConflict && !fixture.conflictAcknowledged && !fixed) {
     return "conflict";
   }
   if (!hasScore(fixture)) {
     return "pending";
   }
-  if (fixture.resultConflict) {
+  if (fixture.resultConflict && !fixed) {
     return "provisional";
   }
   if (isVerifiedFixture(fixture)) {

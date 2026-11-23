@@ -157,35 +157,8 @@ export async function saveCleanMatrix(roundId: string, formData: FormData, recal
   }
 }
 
-export async function saveMatrixResults(roundId: string, formData: FormData): Promise<void> {
-  await assertRoundMutable(roundId);
-  const matches = await prisma.match.findMany({ where: { roundId } });
-  for (const match of matches) {
-    const homeText = String(formData.get(`actual_${match.id}_home`) ?? "").trim();
-    const awayText = String(formData.get(`actual_${match.id}_away`) ?? "").trim();
-    if ((homeText === "") !== (awayText === "")) {
-      throw new Error(`${match.homeTeam} — ${match.awayTeam} needs both scores, or both fields cleared.`);
-    }
-    const home = homeText === "" ? null : Number(homeText);
-    const away = awayText === "" ? null : Number(awayText);
-    if ((home != null && !Number.isInteger(home)) || (away != null && !Number.isInteger(away))) {
-      throw new Error("Actual scores have to be whole numbers.");
-    }
-    if (home === match.actualHomeGoals && away === match.actualAwayGoals) {
-      continue;
-    }
-    await prisma.match.update({
-      where: { id: match.id },
-      data: {
-        actualHomeGoals: home,
-        actualAwayGoals: away,
-        resultState: home == null ? "open" : "manual",
-        resultResolution: home == null ? "" : "manual",
-        resultNote: home == null ? null : "Entered on the clean review matrix. This score is used for every participant.",
-        resultConflict: false,
-      },
-    });
-  }
+export async function saveMatrixResults(): Promise<void> {
+  throw new Error("Scores are changed with Fix score on the review page. This save no longer sets a result.");
 }
 
 export function cellText(home: number | null | undefined, away: number | null | undefined, ignored: boolean | undefined): string {

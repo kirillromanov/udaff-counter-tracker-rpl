@@ -11,9 +11,9 @@ import { MutationRegion, RoundLockBadge, RoundLockPanel } from "../round-lock-ba
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
+import { displayedResultLabel, scoreIsFixed, sourceAgreement } from "@/lib/domain/results/correction";
 import { MatchResultsRefresh } from "../match-results-refresh";
-import { ResultControl } from "../result-control";
-import { acceptSourceScoreAction, acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
+import { acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 import { formatMoscow } from "@/lib/domain/time/moscow";
 
 export const instant = false;
@@ -310,33 +310,10 @@ export default async function FixturesPage({
                     <Field label="Away">
                       <input className={`${fieldClass} w-40`} defaultValue={match.awayTeam} name={`away_${match.id}`} />
                     </Field>
-                    <Field label="Home goals">
-                      <input
-                        className={`${fieldClass} w-20`}
-                        defaultValue={match.actualHomeGoals ?? ""}
-                        name={`homeGoals_${match.id}`}
-                        placeholder="—"
-                      />
-                    </Field>
-                    <Field label="Away goals">
-                      <input
-                        className={`${fieldClass} w-20`}
-                        defaultValue={match.actualAwayGoals ?? ""}
-                        name={`awayGoals_${match.id}`}
-                        placeholder="—"
-                      />
-                    </Field>
-                    <input name={`version_${match.id}`} type="hidden" value={match.resultVersion} />
                     <label className="mb-2 flex items-center gap-2 text-sm text-zinc-700">
                       <input defaultChecked={match.isMatchOfTheRound} name="matchOfTheRound" type="radio" value={match.id} />
                       Official MT
                     </label>
-                    {match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual" || match.resultProvenance === "operator-confirmed" ? (
-                      <label className="mb-2 flex basis-full items-start gap-2 text-sm text-zinc-800">
-                        <input className="mt-1" name={`standingChange_${match.id}`} type="checkbox" value="yes" />
-                        I confirm this corrected score should be used in the standings.
-                      </label>
-                    ) : null}
                     <Badge tone={phaseTone(fixturePhase({
                       kickoffAt: match.kickoffAt,
                       actualHomeGoals: match.actualHomeGoals,
@@ -346,7 +323,7 @@ export default async function FixturesPage({
                       resultConflict: match.resultConflict,
                       conflictAcknowledgedAt: match.conflictAcknowledgedAt,
                     }, rankedAt), match.conflictAcknowledgedAt != null)}>
-                      {fixturePhaseLabel(fixturePhase({
+                      {displayedResultLabel(match, fixturePhaseLabel(fixturePhase({
                         kickoffAt: match.kickoffAt,
                         actualHomeGoals: match.actualHomeGoals,
                         actualAwayGoals: match.actualAwayGoals,
@@ -354,7 +331,7 @@ export default async function FixturesPage({
                         resultResolution: match.resultResolution,
                         resultConflict: match.resultConflict,
                         conflictAcknowledgedAt: match.conflictAcknowledgedAt,
-                      }, rankedAt), match.conflictAcknowledgedAt != null)}
+                      }, rankedAt), match.conflictAcknowledgedAt != null), scoreIsFixed(match) ? sourceAgreement(match.actualHomeGoals, match.actualAwayGoals, rankings.get(match.id)?.aligned ?? []) : null)}
                     </Badge>
                   </div>
                   <p className="mt-2 text-xs text-zinc-600">
@@ -389,39 +366,13 @@ export default async function FixturesPage({
                         : `Попытки ${match.autoCheckAttempts}/10`}
                     {match.resultNote ? ` · ${match.resultNote}` : ""}
                   </p>
-                  <ResultControl
-                    archived={round.standingRole === ARCHIVED_ROUND}
-                    closed={isRoundClosed(round.closedAt)}
-                    match={{
-                      id: match.id,
-                      homeTeam: match.homeTeam,
-                      awayTeam: match.awayTeam,
-                      kickoffAt: match.kickoffAt,
-                      actualHomeGoals: match.actualHomeGoals,
-                      actualAwayGoals: match.actualAwayGoals,
-                      resultState: match.resultState,
-                      resultResolution: match.resultResolution,
-                      resultConflict: match.resultConflict,
-                      conflictAcknowledgedAt: match.conflictAcknowledgedAt,
-                      resultProvenance: match.resultProvenance,
-                      manuallyCorrected: match.manuallyCorrected,
-                      resultVersion: match.resultVersion,
-                      resultNote: match.resultNote,
-                    }}
-                    now={rankedAt}
-                    roundId={round.id}
-                    sources={match.resultObservations.map((row) => ({
-                      source: row.source,
-                      homeGoals: row.homeGoals,
-                      awayGoals: row.awayGoals,
-                      firstSeenAt: row.firstSeenAt,
-                      lastSeenAt: row.lastSeenAt,
-                    }))}
-                  />
+                  <p className="mt-2 text-xs text-zinc-600">
+                    Score {match.actualHomeGoals ?? "—"}-{match.actualAwayGoals ?? "—"}. A score is fixed from Parser review.
+                  </p>
                 </div>
               ))}
               <p className="text-xs text-zinc-600">
-                Changing a score here uses the same check as Verify this score. The same number is left unchanged. A different number is Manually corrected, version-checked, and audited. Empty boxes do not clear a stored score. Names, order, and the Match of the Round save without that audit.
+                Save fixtures stores names, order, and the Match of the Round. It does not change a score or a result status.
               </p>
               <SubmitButton pendingLabel="Saving…" variant="primary">
                 Save fixtures
@@ -436,7 +387,6 @@ export default async function FixturesPage({
                 if (!ranking || ranking.candidates.length === 0) {
                   return null;
                 }
-                const observations = new Map((review?.aligned ?? []).map((row) => [row.sourceKey, row]));
                 return (
                   <div className="text-sm text-zinc-700" key={`sources-${match.id}`}>
                     <p className="font-medium">
@@ -452,54 +402,26 @@ export default async function FixturesPage({
                       </form>
                     ) : null}
                     <p className="mt-1 text-xs text-zinc-600">
-                      {match.manuallyCorrected || match.resultProvenance === "manual"
-                        ? "Manually corrected. A later fetch will not replace this score."
-                        : match.resultProvenance === "operator-confirmed"
-                          ? "Verified manually. A disagreeing source stays visible and does not replace this score. Two agreeing sources can."
-                          : match.resultState === "manual"
-                            ? "Manual score is selected. A later fetch will not replace it."
-                            : ranking.selectedSource
-                              ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
-                              : ranking.selectionReason}
+                      {scoreIsFixed(match)
+                        ? "This score is fixed on Parser review. A later fetch does not replace it."
+                        : ranking.selectedSource
+                          ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
+                          : ranking.selectionReason}
                     </p>
                     <ul className="mt-2 space-y-2">
                       {ranking.candidates.map((candidate) => {
                         const parsed = match.resultObservations.find((row) => row.source === candidate.source && row.sourceKey === candidate.sourceKey);
-                        const aligned = observations.get(candidate.sourceKey);
-                        const offer =
-                          aligned != null &&
-                          (candidate.standing === "flagged" || candidate.standing === "downgraded") &&
-                          (aligned.homeGoals !== match.actualHomeGoals || aligned.awayGoals !== match.actualAwayGoals);
                         return (
-                          <li key={`${candidate.source}-${candidate.sourceKey}`}>
-                            <form action={acceptSourceScoreAction} className="flex flex-wrap items-center gap-2">
-                              <input name="roundId" type="hidden" value={round.id} />
-                              <input name="matchId" type="hidden" value={match.id} />
-                              <input name="source" type="hidden" value={candidate.source} />
-                              <input name="version" type="hidden" value={match.resultVersion} />
-                              <input name="homeGoals" type="hidden" value={aligned?.homeGoals ?? candidate.homeGoals} />
-                              <input name="awayGoals" type="hidden" value={aligned?.awayGoals ?? candidate.awayGoals} />
-                              <Badge tone={standingTone(candidate.standing)}>{candidate.standing}</Badge>
-                              <div className="min-w-0 text-xs text-zinc-600">
-                                <p>
-                                  {candidate.source} · rank {candidate.weight} · {candidate.homeGoals}-{candidate.awayGoals}
-                                  {parsed ? ` · parsed ${parsed.homeTeam} ${parsed.homeGoals}-${parsed.awayGoals} ${parsed.awayTeam}` : ""}
-                                </p>
-                                {parsed ? <p className="whitespace-nowrap">{formatWhen(parsed.fetchedAt)}</p> : null}
-                                <p>{candidate.reason}</p>
-                              </div>
-                              {offer && (match.resultState === "verified" || match.resultResolution === "verified" || match.manuallyCorrected || match.resultState === "manual" || match.resultProvenance === "operator-confirmed") ? (
-                                <label className="flex basis-full items-start gap-2 text-sm text-zinc-800">
-                                  <input className="mt-1" name="standingChange" type="checkbox" value="yes" />
-                                  I confirm this corrected score should be used in the standings.
-                                </label>
-                              ) : null}
-                              {offer ? (
-                                <SubmitButton pendingLabel="Saving…" variant="ghost">
-                                  Use this score
-                                </SubmitButton>
-                              ) : null}
-                            </form>
+                          <li className="flex flex-wrap items-center gap-2" key={`${candidate.source}-${candidate.sourceKey}`}>
+                            <Badge tone={standingTone(candidate.standing)}>{candidate.standing}</Badge>
+                            <div className="min-w-0 text-xs text-zinc-600">
+                              <p>
+                                {candidate.source} · rank {candidate.weight} · {candidate.homeGoals}-{candidate.awayGoals}
+                                {parsed ? ` · parsed ${parsed.homeTeam} ${parsed.homeGoals}-${parsed.awayGoals} ${parsed.awayTeam}` : ""}
+                              </p>
+                              {parsed ? <p className="whitespace-nowrap">{formatWhen(parsed.fetchedAt)}</p> : null}
+                              <p>{candidate.reason}</p>
+                            </div>
                           </li>
                         );
                       })}

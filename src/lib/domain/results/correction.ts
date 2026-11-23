@@ -35,17 +35,74 @@ function readGoal(value: unknown, side: string): number {
   return parsed;
 }
 
-/** Legacy rows have an empty provenance and keep their existing label. */
+export const LABEL_MANUAL_NOT_VERIFIED = "manual corrected, not source verified";
+export const LABEL_VERIFIED_FIXED = "verified, fixed manually";
+export const LABEL_FIXED_ONE_SOURCE = "fixed manually. Only one source agrees.";
+export const LABEL_OLDER_MANUAL = "older manual score";
+export const LABEL_FIXED = "fixed manually";
+
+export type SourceAgreement = "verified" | "provisional" | "other";
+
+export function scoreIsFixed(match: {
+  manuallyCorrected: boolean;
+  resultProvenance: string;
+  resultState?: string;
+}): boolean {
+  const state = match.resultState ?? "";
+  return match.manuallyCorrected
+    || match.resultProvenance === "manual"
+    || match.resultProvenance === "operator-confirmed"
+    || (state === "manual" && match.resultProvenance === "");
+}
+
+export function isLegacyManualScore(match: {
+  manuallyCorrected: boolean;
+  resultProvenance: string;
+  resultState?: string;
+}): boolean {
+  return (match.resultState ?? "") === "manual" && match.resultProvenance === "" && !match.manuallyCorrected;
+}
+
+/** How the stored source rows relate to the score on screen. Stale or unfinished rows do not confirm it. */
+export function sourceAgreement(
+  home: number | null,
+  away: number | null,
+  observations: readonly RankableObservation[],
+): SourceAgreement {
+  const ranking = rankFixtureResult(observations);
+  if (ranking.homeGoals == null || ranking.homeGoals !== home || ranking.awayGoals !== away) {
+    return "other";
+  }
+  if (ranking.classification === "verified") {
+    return "verified";
+  }
+  if (ranking.classification === "provisional") {
+    return "provisional";
+  }
+  return "other";
+}
+
+/** Legacy rows have an empty provenance and keep their existing label. A fixed score uses the source comparison. */
 export function displayedResultLabel(match: {
   resultProvenance: string;
   manuallyCorrected: boolean;
   resultConflict: boolean;
-}, legacy: string): string {
-  if (match.manuallyCorrected || match.resultProvenance === "manual") {
-    return match.resultConflict ? "Result conflict. Manually corrected." : "Manually corrected";
+  resultState?: string;
+}, legacy: string, agreement?: SourceAgreement | null): string {
+  if (isLegacyManualScore(match)) {
+    return LABEL_OLDER_MANUAL;
   }
-  if (match.resultProvenance === "operator-confirmed") {
-    return match.resultConflict ? "Result conflict. Verified manually." : "Verified manually";
+  if (scoreIsFixed(match)) {
+    if (agreement === "verified") {
+      return LABEL_VERIFIED_FIXED;
+    }
+    if (agreement === "provisional") {
+      return LABEL_FIXED_ONE_SOURCE;
+    }
+    if (agreement === "other") {
+      return LABEL_MANUAL_NOT_VERIFIED;
+    }
+    return LABEL_FIXED;
   }
   if (match.resultProvenance === "two-source") {
     return match.resultConflict ? "Result conflict. Verified, two sources." : "Verified, two sources";
@@ -219,8 +276,36 @@ function assertVersion(match: MatchRow, version: number): void {
 
 function assertFinished(match: MatchRow, now: Date): void {
   if (!correctionAllowed(fixturePhase(pollOf(match), now))) {
-    throw new ResultCorrectionError("This fixture is not finished, so its score cannot be verified by hand.");
+    throw new ResultCorrectionError("This fixture is not finished, so its score cannot be fixed by hand.");
   }
+}
+
+async function storedSourceRows(match: MatchRow): Promise<RankableObservation[]> {
+  const rows = await prisma.resultObservation.findMany({ where: { matchId: match.id } });
+  return rows.flatMap((row) => {
+    const aligned = alignToFixture({ id: match.id, homeTeam: match.homeTeam, awayTeam: match.awayTeam }, row);
+    if (!aligned) {
+      return [];
+    }
+    return [{
+      source: row.source,
+      sourceKey: row.sourceKey,
+      homeGoals: aligned.homeGoals,
+      awayGoals: aligned.awayGoals,
+      role: row.role,
+      confidence: row.confidence,
+      matchStatus: row.matchStatus,
+      completeness: row.completeness,
+      fetchedAt: row.lastSeenAt ?? row.fetchedAt,
+    }];
+  });
+}
+
+function sourceSnapshot(observations: readonly RankableObservation[]): string {
+  if (observations.length === 0) {
+    return "none stored";
+  }
+  return observations.map((row) => `${row.source} ${row.homeGoals}-${row.awayGoals}`).join("; ");
 }
 
 export async function applyManualResult(input: {
@@ -246,16 +331,17 @@ export async function applyManualResult(input: {
     || match.resultProvenance === "operator-confirmed"
     || match.resultProvenance === "manual";
   const scoreChanges = match.actualHomeGoals !== score.home || match.actualAwayGoals !== score.away;
-  const alreadyOperator = match.manuallyCorrected || match.resultProvenance === "manual" || match.resultProvenance === "operator-confirmed";
+  const alreadyOperator = scoreIsFixed(match);
   if (!scoreChanges && alreadyOperator) {
     return { recalculated: false, scoreChanged: false };
   }
   if (alreadyVerified && scoreChanges && !input.standingChangeConfirmed) {
     throw new ResultCorrectionError("Confirm that standings should use this corrected score.");
   }
+  const observations = await storedSourceRows(match);
+  const agreement = sourceAgreement(score.home, score.away, observations);
   const nextState = "verified";
   const nextResolution = "verified";
-  const nextMarker = scoreChanges;
   const claimed = await prisma.match.updateMany({
     where: { id: match.id, resultVersion: match.resultVersion },
     data: {
@@ -263,12 +349,10 @@ export async function applyManualResult(input: {
       actualAwayGoals: score.away,
       resultState: nextState,
       resultResolution: nextResolution,
-      resultConflict: false,
-      resultProvenance: scoreChanges ? "manual" : "operator-confirmed",
-      manuallyCorrected: nextMarker,
-      resultNote: input.reason.trim() || (scoreChanges
-        ? "Operator corrected the full-time score."
-        : "Operator verified the score already on screen."),
+      resultConflict: agreement === "other",
+      resultProvenance: "manual",
+      manuallyCorrected: true,
+      resultNote: input.reason.trim() || "Fixed on the review page.",
       conflictAcknowledgedAt: null,
       resultVersion: { increment: 1 },
     },
@@ -291,8 +375,8 @@ export async function applyManualResult(input: {
       nextAway: score.away,
       nextState,
       nextResolution,
-      nextMarker,
-      reason: input.reason.trim(),
+      nextMarker: true,
+      reason: `${input.reason.trim()} Sources at lock: ${sourceSnapshot(observations)}`.trim(),
     },
   });
   if (!scoreChanges || input.deferRecalculation) {
@@ -315,28 +399,10 @@ export async function rollbackManualResult(input: {
   const now = input.now ?? new Date();
   const { match } = await loadMutableMatch(input.matchId);
   assertVersion(match, input.version);
-  if (!match.manuallyCorrected && match.resultProvenance !== "manual" && match.resultProvenance !== "operator-confirmed") {
-    throw new ResultCorrectionError("This fixture has no operator verification to remove.");
+  if (!scoreIsFixed(match)) {
+    return { recalculated: false };
   }
-  const rows = await prisma.resultObservation.findMany({ where: { matchId: match.id } });
-  const observations: RankableObservation[] = rows.flatMap((row) => {
-    const aligned = alignToFixture({ id: match.id, homeTeam: match.homeTeam, awayTeam: match.awayTeam }, row);
-    if (!aligned) {
-      return [];
-    }
-    return [{
-      source: row.source,
-      sourceKey: row.sourceKey,
-      homeGoals: aligned.homeGoals,
-      awayGoals: aligned.awayGoals,
-      role: row.role,
-      confidence: row.confidence,
-      matchStatus: row.matchStatus,
-      completeness: row.completeness,
-      fetchedAt: row.lastSeenAt ?? row.fetchedAt,
-    }];
-  });
-  const next = recomputeFromSources(observations);
+  const next = recomputeFromSources(await storedSourceRows(match));
   const claimed = await prisma.match.updateMany({
     where: { id: match.id, resultVersion: match.resultVersion },
     data: {

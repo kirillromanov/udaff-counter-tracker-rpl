@@ -14,6 +14,7 @@ import {
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
 import { saveCleanMatrix, saveMatrixResults } from "@/lib/domain/import/save-matrix";
+import { applyManualResult, rollbackManualResult } from "@/lib/domain/results/correction";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import {
   createParticipantForAuthor,
@@ -106,9 +107,38 @@ export async function calculateIntermediateAction(formData: FormData): Promise<v
 export async function saveMatrixResultsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    await saveMatrixResults(roundId, formData);
+    await saveMatrixResults();
     refreshRound(roundId);
     redirect(`${reviewPath(roundId)}?saved=results`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+export async function setFixtureScoreLockAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const matchId = String(formData.get("matchId") ?? "");
+    const version = Number(formData.get("version") ?? "");
+    if (String(formData.get("fixed") ?? "") === "yes") {
+      await applyManualResult({
+        matchId,
+        home: formData.get("homeGoals"),
+        away: formData.get("awayGoals"),
+        version,
+        standingChangeConfirmed: formData.get("standingChange") === "yes",
+        reason: "Fixed on the review page.",
+      });
+    } else {
+      await rollbackManualResult({
+        matchId,
+        version,
+        confirmed: true,
+        reason: "Fix score turned off on the review page.",
+      });
+    }
+    refreshRound(roundId);
+    redirect(`${reviewPath(roundId)}?saved=score`);
   } catch (error) {
     fail(roundId, error);
   }

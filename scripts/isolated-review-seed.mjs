@@ -20,7 +20,7 @@ if (lockDir.includes(`${path.sep}udaff-counter-tracker${path.sep}worker-locks`))
 const note = "Forum comment text changed without a reliable edit timestamp. Stored predictions were left in place.";
 const kickoff = new Date("2026-11-20T16:00:00.000Z");
 const future = new Date("2026-12-20T16:00:00.000Z");
-const seen = kickoff;
+const seen = new Date();
 
 const db = new PrismaClient({ datasources: { db: { url } } });
 const season = await db.season.create({ data: { name: "UI snapshot", slug: "ui-snapshot" } });
@@ -43,17 +43,20 @@ const provisional = await db.match.create({
 const verified = await db.match.create({
   data: { roundId: round.id, sortOrder: 2, homeTeam: "Verified Home", awayTeam: "Verified Away", kickoffAt: kickoff, actualHomeGoals: 2, actualAwayGoals: 1, resultState: "verified", resultResolution: "verified", resultProvenance: "two-source" },
 });
-const confirmed = await db.match.create({
-  data: { roundId: round.id, sortOrder: 3, homeTeam: "Confirmed Home", awayTeam: "Confirmed Away", kickoffAt: kickoff, actualHomeGoals: 1, actualAwayGoals: 0, resultState: "verified", resultResolution: "verified", resultProvenance: "operator-confirmed", resultNote: "Operator verified the score already on screen." },
+const equal = await db.match.create({
+  data: { roundId: round.id, sortOrder: 3, homeTeam: "Equal Home", awayTeam: "Equal Away", kickoffAt: kickoff, actualHomeGoals: 1, actualAwayGoals: 0, resultState: "verified", resultResolution: "verified", resultProvenance: "manual", manuallyCorrected: true, resultNote: "Fixed on the review page." },
 });
 const manual = await db.match.create({
-  data: { roundId: round.id, sortOrder: 4, homeTeam: "Manual Home", awayTeam: "Manual Away", kickoffAt: kickoff, actualHomeGoals: 3, actualAwayGoals: 0, resultState: "verified", resultResolution: "verified", resultProvenance: "manual", manuallyCorrected: true, resultVersion: 2, resultNote: "Operator corrected the full-time score." },
+  data: { roundId: round.id, sortOrder: 4, homeTeam: "Manual Home", awayTeam: "Manual Away", kickoffAt: kickoff, actualHomeGoals: 3, actualAwayGoals: 0, resultState: "verified", resultResolution: "verified", resultProvenance: "manual", manuallyCorrected: true, resultConflict: true, resultVersion: 2, resultNote: "Fixed on the review page." },
 });
 const conflict = await db.match.create({
   data: { roundId: round.id, sortOrder: 5, homeTeam: "Conflict Home", awayTeam: "Conflict Away", kickoffAt: kickoff, resultState: "conflict", resultResolution: "conflict-review", resultConflict: true, resultNote: "sport-ru 1-0; premierliga 2-0" },
 });
 await db.match.create({
   data: { roundId: round.id, sortOrder: 6, homeTeam: "Later Home", awayTeam: "Later Away", kickoffAt: future, resultState: "open" },
+});
+await db.match.create({
+  data: { roundId: round.id, sortOrder: 7, homeTeam: "Legacy Home", awayTeam: "Legacy Away", kickoffAt: kickoff, actualHomeGoals: 4, actualAwayGoals: 1, resultState: "manual", resultResolution: "manual", resultProvenance: "", manuallyCorrected: false, resultNote: "Entered on the clean review matrix. This score is used for every participant." },
 });
 async function observation(source, sourceKey, matchId, homeTeam, awayTeam, homeGoals, awayGoals, role) {
   await db.resultObservation.create({
@@ -63,7 +66,8 @@ async function observation(source, sourceKey, matchId, homeTeam, awayTeam, homeG
 await observation("sport-ru", "provisional", provisional.id, "Provisional Home", "Provisional Away", 1, 0, "primary");
 await observation("sport-ru", "verified", verified.id, "Verified Home", "Verified Away", 2, 1, "primary");
 await observation("premierliga", "verified", verified.id, "Verified Home", "Verified Away", 2, 1, "fallback");
-await observation("sport-ru", "confirmed", confirmed.id, "Confirmed Home", "Confirmed Away", 1, 0, "primary");
+await observation("sport-ru", "equal", equal.id, "Equal Home", "Equal Away", 1, 0, "primary");
+await observation("premierliga", "equal", equal.id, "Equal Home", "Equal Away", 1, 0, "fallback");
 await observation("sport-ru", "manual", manual.id, "Manual Home", "Manual Away", 1, 0, "primary");
 await observation("sport-ru", "conflict", conflict.id, "Conflict Home", "Conflict Away", 1, 0, "primary");
 await observation("premierliga", "conflict", conflict.id, "Conflict Home", "Conflict Away", 2, 0, "fallback");

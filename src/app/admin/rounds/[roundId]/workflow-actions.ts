@@ -5,7 +5,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { assertRoundMutable, closeProductionRound, reopenProductionRound, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
-import { applyManualResult, readFixtureScoreEdit, ResultCorrectionError, rollbackManualResult } from "@/lib/domain/results/correction";
+import { saveFixtureStructure } from "@/lib/domain/fixtures/save-structure";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
@@ -73,13 +73,6 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
       include: { matches: true },
     });
     const matchOfTheRound = String(formData.get("matchOfTheRound") ?? "");
-    const edits: {
-      matchId: string;
-      home: string;
-      away: string;
-      version: number;
-      standingChangeConfirmed: boolean;
-    }[] = [];
     const details: {
       id: string;
       homeTeam: string;
@@ -97,27 +90,6 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
       if (!Number.isInteger(sortOrder)) {
         throw new Error("Sort order must be an integer");
       }
-      const edit = readFixtureScoreEdit(
-        match.actualHomeGoals,
-        match.actualAwayGoals,
-        formData.get(`homeGoals_${match.id}`),
-        formData.get(`awayGoals_${match.id}`),
-      );
-      if (edit === "partial") {
-        throw new Error(`Enter both scores for ${homeTeam} — ${awayTeam}, or leave both empty`);
-      }
-      if (edit === "clear") {
-        throw new ResultCorrectionError("Empty score boxes leave the stored score unchanged. Remove an operator verification from the fixture status, or submit the score to keep.");
-      }
-      if (edit === "edit") {
-        edits.push({
-          matchId: match.id,
-          home: String(formData.get(`homeGoals_${match.id}`) ?? ""),
-          away: String(formData.get(`awayGoals_${match.id}`) ?? ""),
-          version: Number(formData.get(`version_${match.id}`) ?? ""),
-          standingChangeConfirmed: formData.get(`standingChange_${match.id}`) === "yes",
-        });
-      }
       details.push({
         id: match.id,
         homeTeam,
@@ -126,36 +98,7 @@ export async function saveFixturesAction(formData: FormData): Promise<void> {
         isMatchOfTheRound: match.id === matchOfTheRound,
       });
     }
-    let scoreChanged = false;
-    try {
-      for (const edit of edits) {
-        const report = await applyManualResult({
-          ...edit,
-          reason: "Entered on the fixtures page.",
-          deferRecalculation: true,
-        });
-        scoreChanged = scoreChanged || report.scoreChanged;
-      }
-    } catch (error) {
-      if (scoreChanged) {
-        await recalculateRound(roundId);
-      }
-      throw error;
-    }
-    if (scoreChanged) {
-      await recalculateRound(roundId);
-    }
-    for (const detail of details) {
-      await prisma.match.update({
-        where: { id: detail.id },
-        data: {
-          homeTeam: detail.homeTeam,
-          awayTeam: detail.awayTeam,
-          sortOrder: detail.sortOrder,
-          isMatchOfTheRound: detail.isMatchOfTheRound,
-        },
-      });
-    }
+    await saveFixtureStructure(details);
     refresh(roundId);
     redirect(`${fixturesPath(roundId)}?saved=1`);
   } catch (error) {
@@ -349,32 +292,6 @@ export async function acknowledgeConflictAction(formData: FormData): Promise<voi
   }
 }
 
-export async function acceptSourceScoreAction(formData: FormData): Promise<void> {
-  const roundId = String(formData.get("roundId") ?? "");
-  try {
-    await assertRoundMutable(roundId);
-    const matchId = String(formData.get("matchId") ?? "");
-    const homeGoals = String(formData.get("homeGoals") ?? "");
-    const awayGoals = String(formData.get("awayGoals") ?? "");
-    const source = String(formData.get("source") ?? "").trim();
-    if (!homeGoals.trim() || !awayGoals.trim() || !source) {
-      throw new Error("Choose a source score to keep");
-    }
-    const report = await applyManualResult({
-      matchId,
-      home: homeGoals,
-      away: awayGoals,
-      version: Number(formData.get("version") ?? ""),
-      standingChangeConfirmed: formData.get("standingChange") === "yes",
-      reason: `Accepted ${source} ${homeGoals}-${awayGoals}.`,
-    });
-    refresh(roundId);
-    redirect(`${fixturesPath(roundId)}?saved=result&calc=${report.recalculated ? "1" : "0"}`);
-  } catch (error) {
-    fail(fixturesPath(roundId), error);
-  }
-}
-
 export async function calculateRoundAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
@@ -416,42 +333,6 @@ export async function closeRoundAction(formData: FormData): Promise<void> {
     redirect(`${hubPath(roundId)}?closed=1`);
   } catch (error) {
     fail(hubPath(roundId), error);
-  }
-}
-
-export async function confirmFixtureResultAction(formData: FormData): Promise<void> {
-  const roundId = String(formData.get("roundId") ?? "");
-  const matchId = String(formData.get("matchId") ?? "");
-  try {
-    const report = await applyManualResult({
-      matchId,
-      home: formData.get("homeGoals"),
-      away: formData.get("awayGoals"),
-      version: Number(formData.get("version") ?? ""),
-      standingChangeConfirmed: formData.get("standingChange") === "yes",
-      reason: String(formData.get("reason") ?? ""),
-    });
-    refresh(roundId);
-    redirect(`${fixturesPath(roundId)}?saved=result&calc=${report.recalculated ? "1" : "0"}`);
-  } catch (error) {
-    fail(fixturesPath(roundId), error);
-  }
-}
-
-export async function rollbackFixtureResultAction(formData: FormData): Promise<void> {
-  const roundId = String(formData.get("roundId") ?? "");
-  const matchId = String(formData.get("matchId") ?? "");
-  try {
-    const report = await rollbackManualResult({
-      matchId,
-      version: Number(formData.get("version") ?? ""),
-      confirmed: formData.get("confirmRollback") === "yes",
-      reason: String(formData.get("reason") ?? ""),
-    });
-    refresh(roundId);
-    redirect(`${fixturesPath(roundId)}?saved=rollback&calc=${report.recalculated ? "1" : "0"}`);
-  } catch (error) {
-    fail(fixturesPath(roundId), error);
   }
 }
 

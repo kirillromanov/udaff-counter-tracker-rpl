@@ -17,6 +17,8 @@ export interface IntermediateFixture {
   resultState: string;
   resultResolution: string;
   resultConflict: boolean;
+  manuallyCorrected?: boolean;
+  resultProvenance?: string;
   isMatchOfTheRound: boolean;
   /** Stored provider lifecycle. A verified score with a live observation is not final. */
   observationStatuses: readonly string[];
@@ -58,6 +60,13 @@ function isManual(fixture: IntermediateFixture): boolean {
   return fixture.resultState === "manual" || fixture.resultResolution === "manual";
 }
 
+function fixedScore(fixture: IntermediateFixture): boolean {
+  return Boolean(fixture.manuallyCorrected)
+    || fixture.resultProvenance === "manual"
+    || fixture.resultProvenance === "operator-confirmed"
+    || (fixture.resultState === "manual" && (fixture.resultProvenance ?? "") === "");
+}
+
 function isVerified(fixture: IntermediateFixture): boolean {
   return isManual(fixture) || fixture.resultState === "verified" || fixture.resultResolution === "verified";
 }
@@ -68,7 +77,7 @@ function isVerified(fixture: IntermediateFixture): boolean {
  * A manual score is the operator's final result.
  */
 export function classifyIntermediateFixture(fixture: IntermediateFixture): IntermediateFixtureClass {
-  if (fixture.resultConflict) {
+  if (fixture.resultConflict && !fixedScore(fixture)) {
     return "conflict";
   }
   const live = fixture.observationStatuses.includes("live");

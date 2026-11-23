@@ -73,6 +73,7 @@ describe("intermediate round standings", () => {
   it("excludes a verified live score and a finished conflict or unverified score", () => {
     expect(classifyIntermediateFixture(fixture({ observationStatuses: ["live"] }))).toBe("live");
     expect(classifyIntermediateFixture(fixture({ resultConflict: true }))).toBe("conflict");
+    expect(classifyIntermediateFixture(fixture({ resultConflict: true, manuallyCorrected: true, resultProvenance: "manual" }))).toBe("included");
     expect(classifyIntermediateFixture(fixture({ resultState: "confirmed", resultResolution: "provisional" }))).toBe("unverified");
     const scored = scoreIntermediateRound({
       roundId: "round",
