@@ -452,13 +452,15 @@ export default async function FixturesPage({
                       </form>
                     ) : null}
                     <p className="mt-1 text-xs text-zinc-600">
-                      {match.manuallyCorrected || match.resultProvenance === "manual" || match.resultState === "manual"
+                      {match.manuallyCorrected || match.resultProvenance === "manual"
                         ? "Manually corrected. A later fetch will not replace this score."
                         : match.resultProvenance === "operator-confirmed"
                           ? "Verified manually. A disagreeing source stays visible and does not replace this score. Two agreeing sources can."
-                          : ranking.selectedSource
-                            ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
-                            : ranking.selectionReason}
+                          : match.resultState === "manual"
+                            ? "Manual score is selected. A later fetch will not replace it."
+                            : ranking.selectedSource
+                              ? `Selected ${ranking.selectedSource} ${ranking.homeGoals}-${ranking.awayGoals}.${fallbackSourceLabel(ranking.selectedSource) ? ` ${fallbackSourceLabel(ranking.selectedSource)}.` : ""} ${ranking.selectionReason}`
+                              : ranking.selectionReason}
                     </p>
                     <ul className="mt-2 space-y-2">
                       {ranking.candidates.map((candidate) => {
