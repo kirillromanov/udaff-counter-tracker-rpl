@@ -41,9 +41,20 @@ export interface StoredResult {
   resultState: string;
   resultResolution?: string;
   resultProvenance?: string;
+  resultNote?: string | null;
   manuallyCorrected?: boolean;
   actualHomeGoals: number | null;
   actualAwayGoals: number | null;
+}
+
+/** Shown after two configured sources replace a score the operator verified without changing it. */
+export function verifiedManuallyReplacedNote(
+  previousHome: number | null,
+  previousAway: number | null,
+  nextHome: number,
+  nextAway: number,
+): string {
+  return `Verified manually ${previousHome}-${previousAway} was replaced by two sources with ${nextHome}-${nextAway}.`;
 }
 
 export interface ResultWrite {
@@ -187,7 +198,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
         actualAwayGoals: decision.awayGoals,
         resultState: "verified",
         resultConflict: false,
-        resultNote: decision.note,
+        resultNote: verifiedManuallyReplacedNote(stored.actualHomeGoals, stored.actualAwayGoals, decision.homeGoals, decision.awayGoals),
         resultResolution: "verified",
         changedGoals: true,
       };
@@ -199,7 +210,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
       resultConflict: !same,
       resultNote: !same
         ? `Verified manually ${stored.actualHomeGoals}-${stored.actualAwayGoals} was kept. ${decision.note}`
-        : "Verified manually. The sources match this score.",
+        : (stored.resultNote ?? "Verified manually. The sources match this score."),
       resultResolution: !same ? "conflict-review" : "verified",
       changedGoals: false,
     };
@@ -211,7 +222,7 @@ export function applyResultDecision(stored: StoredResult, decision: ResultDecisi
       actualAwayGoals: stored.actualAwayGoals,
       resultState: "verified",
       resultConflict: clash,
-      resultNote: clash ? `Verified score kept. ${decision.note}` : decision.note,
+      resultNote: clash ? `Verified score kept. ${decision.note}` : (stored.resultNote ?? decision.note),
       resultResolution: clash ? "conflict-review" : "verified",
       changedGoals: false,
     };

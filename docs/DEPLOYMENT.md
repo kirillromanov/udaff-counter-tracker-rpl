@@ -40,7 +40,30 @@ This order is a plan. None of it has been done.
 6. Not performed. Start one prediction worker with `zsh scripts/worker-agent.sh start`. Do not enable result processing.
 7. Not performed. Read back one closed round and the active round. Stored scores, statuses, prediction ids, and the warnings on comments 5707 and 5713 must match the backup. New source-observation times stay empty on old rows.
 
-The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
+The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
+
+An isolated review instance uses another port and a new database file. Do not run it in the serving checkout, and do not point it at `prisma/dev.db`, the live `.env`, or the live worker lock directory. From a separate worktree:
+
+```sh
+export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
+unset DATABASE_URL WORKER_ENABLED WORKER_RESULTS_ENABLED WORKER_LOCK_DIR PREDICTION_REFRESH_INTERVAL_MINUTES
+dir=$(mktemp -d /tmp/udaff-review-XXXX)
+export DATABASE_URL="file:${dir}/review.db"
+export WORKER_LOCK_DIR="${dir}/locks"
+npx prisma db push --skip-generate --accept-data-loss
+node scripts/isolated-review-seed.mjs
+npx next start --hostname 127.0.0.1 --port 3016
+```
+
+Stop it and remove that disposable directory. Use the path printed for `dir`. Do not delete any other database.
+
+```sh
+pid=$(lsof -nP -iTCP:3016 -sTCP:LISTEN -t)
+kill "$pid"
+rm -rf "$dir"
+```
+
+Do not use port 3000. Do not click Fetch results or Check due rounds during that review. Those buttons poll sources.
 
 ## Not done
 

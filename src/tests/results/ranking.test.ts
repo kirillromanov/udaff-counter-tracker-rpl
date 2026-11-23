@@ -67,6 +67,7 @@ describe("configured source identity", () => {
       actualAwayGoals: 0,
       resultConflict: false,
       changedGoals: true,
+      resultNote: "Verified manually 1-0 was replaced by two sources with 2-0.",
     });
     const locked = { ...confirmed, resultProvenance: "manual", manuallyCorrected: true };
     expect(applyResultDecision(locked, two)).toMatchObject({

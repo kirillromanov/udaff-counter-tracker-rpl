@@ -6,6 +6,7 @@ import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { recalculateRound, type RoundCalculationReport } from "@/lib/domain/standings/recalculate-round";
 import { ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
 import { ingestRoundResults, ingestSeasonResults, type IngestReport } from "./ingest";
+import type { SourceFetchResult } from "./types";
 import {
   advanceFixtureCheck,
   fixtureBlocksPolling,
@@ -88,7 +89,10 @@ export interface RoundRefreshReport extends IngestReport {
  * Manual buttons and the due-round poll use this same ingestion path.
  * A busy lock does not fetch again and does not change stored scores.
  */
-export async function refreshRoundResults(roundId: string, options?: { automatic?: boolean }): Promise<RoundRefreshReport> {
+export async function refreshRoundResults(
+  roundId: string,
+  options?: { automatic?: boolean; fetches?: readonly SourceFetchResult[] },
+): Promise<RoundRefreshReport> {
   if (!beginRoundRefresh(roundId)) {
     return busyResultReport();
   }
@@ -99,7 +103,7 @@ export async function refreshRoundResults(roundId: string, options?: { automatic
       return busyResultReport();
     }
     await assertRoundMutable(roundId);
-    const report = await ingestRoundResults(roundId);
+    const report = await ingestRoundResults(roundId, options?.fetches);
     await assertRoundMutable(roundId);
     await syncRoundPollState(roundId, new Date(), report.sources, options?.automatic === true);
     const round = await prisma.round.findUniqueOrThrow({

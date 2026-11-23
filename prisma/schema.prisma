@@ -188,7 +188,7 @@ model ResultAudit {
   id                   String   @id @default(cuid())
   matchId              String
   roundId              String
-  /// confirm: verified manually, score unchanged. correct: score changed. rollback: either operator state removed.
+  /// confirm: verified manually, score unchanged. correct: score changed. replace: two sources replaced a verified-manually score. rollback: either operator state removed.
   action               String
   actor                String
   previousHome         Int?

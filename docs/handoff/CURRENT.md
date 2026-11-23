@@ -272,7 +272,7 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
 
-The same submitted score is Verified manually. A later disagreement does not replace it, and two configured sources that agree on a different score can. A changed score is Manually corrected and is not replaced. Save fixtures and Use this score use that same action. The audit action is `confirm` or `correct`. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed.
+The same submitted score is Verified manually. One later disagreeing source keeps that score and shows a conflict. Two configured sources that agree on a different full-time score replace it. The replacement writes one audit row, action `replace`, actor `automatic`, and the visible sentence “Verified manually … was replaced by two sources”. Recalculation runs once. The same fetch again does not write another audit or recalculate. A changed score is Manually corrected and is not replaced. Save fixtures and Use this score use that same action. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
 
 Round 16, not performed:
 
@@ -282,6 +282,16 @@ Round 16, not performed:
 - Correct one score, confirm the standings checkbox, then roll it back and confirm the sources decide again.
 - Open each counter and check that the row count matches.
 - Stop with `zsh scripts/worker-agent.sh stop` if a result check starts writing unexpected scores. Do not clear comments 5707 or 5713.
+
+## Checks for verified-manually replacement
+
+Run on 2026-11-23 in the result-verification worktree after the replacement audit was added. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 59 files passed, 1 skipped, 374 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- Screenshots at 390 pixels timed out. The fixtures page was checked in the browser at that width: the document was 390 pixels wide with no horizontal overflow, and the six statuses were Provisional, Verified two sources, Verified manually, Manually corrected, Source conflict, and Scheduled. Each source time was `2026-11-20 19:00 UTC+3` on its own nowrap line, inside the viewport. The review drill-downs showed 2 comments, 3 sets, 1 selected, 3 stored, 1 conflict, 1 correction, and 4 scored fixtures.
 
 ## Checks for result verification
 
