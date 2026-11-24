@@ -6,6 +6,8 @@
 
 `npm run build` is a production Next.js build. It rewrites `.next/`. Do not run it in the checkout that `next start` is serving. A clean check belongs in a temporary copy with its own `DATABASE_URL`.
 
+Parser review counter clicks are same-page links. Their scroll behavior is checked in a browser on an isolated server. A unit test of the link property does not show whether the page moved.
+
 ## Rules locked by tests
 
 | Rule | Test |

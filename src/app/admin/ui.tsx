@@ -103,6 +103,8 @@ export function KpiGrid({
     hintHref?: string;
     tone?: "default" | "warning" | "danger";
     current?: boolean;
+    /** Same-page filter links keep the reader's place. Other links keep the normal page scroll. */
+    scroll?: boolean;
   }[];
 }) {
   return (
@@ -132,6 +134,7 @@ export function KpiGrid({
                 aria-expanded={item.current ? true : false}
                 className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 href={item.href}
+                scroll={item.scroll}
               >
                 {body}
               </Link>
