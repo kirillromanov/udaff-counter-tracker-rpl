@@ -268,6 +268,22 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 `RunAtLoad` is true, so user login and `zsh scripts/worker-agent.sh start` start the process. A reboot does not start it until that user logs in. `zsh scripts/worker-agent.sh stop` unloads the job and leaves it stopped. A non-zero exit, including missing `.env` or `node_modules`, is restarted after the 60-second `ThrottleInterval`. A disabled worker exits 0 and is not restarted. One instance claim rejects a second process. Logs are `~/Library/Logs/udaff-counter-tracker/worker.log`. The web command does not install or start the worker. `WORKER_RESULTS_ENABLED` stays unset. See [../OPERATIONS.md](../OPERATIONS.md).
 
+## Result scope, not deployed
+
+Result verification on this branch applies only to season `rpl-demo-2026`, round 16 and later. `src/lib/domain/results/eligibility.ts` is the check. Manual save, rollback, refresh, ingest, due polling, conflict acknowledgement, and the worker result line refuse an earlier round before a fetch or a stored-result write. Prediction refresh is unchanged. Rounds 1–15 keep the stored phase label. The serving checkout, the worker, and `prisma/dev.db` were not changed. Round 16 does not exist in the live season. `WORKER_RESULTS_ENABLED` stays unset.
+
+A read-only look at the live database showed one season, `rpl-demo-2026`, and rounds 1–15. Rounds 1–13 are archived, scored, not started, and not closed. Rounds 14 and 15 are operational, scored, started, and closed. The live `Match` table does not yet have the result-verification columns.
+
+## Checks for the result scope guard
+
+Run on 2026-11-24 in a worktree of `35dac04db10010731811a9e01194e05e097ea107`. The serving checkout, the prediction worker, port 3000, and the live database were not used. `prisma db push` and `npm run build` used a new disposable SQLite file, which was removed. That push did not use `--accept-data-loss`.
+
+- `npm test`: 61 files passed, 1 skipped, 385 tests passed, 1 skipped. The private snapshot test stayed skipped. The new cases cover round 15, round 16, round 17, and another season's round 16.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed. The production build typechecked the same source again.
+- `npm run build`: passed on Next.js 16.4.5. The disposable database was removed after the build.
+- `npm ci` from the unchanged lockfile reported 11 audit findings (7 moderate, 4 high). None were patched.
+
 ## Result verification, not deployed
 
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.

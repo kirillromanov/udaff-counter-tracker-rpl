@@ -19,3 +19,5 @@ Fixtures save names, order, and the Match of the Round. It does not change a sco
 There is no login. The audit actor is `local-admin`.
 
 Existing rows are not rewritten. Empty provenance keeps the previous label. Closed rounds still reject writes. Archived reference rounds reject the new correction actions.
+
+The new workflow applies only when the season slug is `rpl-demo-2026` and the round number is 16 or later. `resultVerificationApplies` in `src/lib/domain/results/eligibility.ts` is that check. It does not use a database id, and another season's round 16 is outside it. Manual save, rollback, result refresh, season ingest, due polling, conflict acknowledgement, and the worker result line all refuse an earlier round before a fetch or a stored-result write. Prediction refresh is unchanged. Rounds before 16 keep the stored phase label. Their counters still show stored parse warnings, and they do not gain the new result-status notes. `scripts/import-rounds-12-13.ts` now hits this guard. Do not run it to rewrite those rounds.

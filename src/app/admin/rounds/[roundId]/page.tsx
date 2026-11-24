@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, roundConsistency, roundCounters, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
 import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
@@ -87,10 +88,12 @@ export default async function RoundPage({
     comments: round._count.forumComments,
   };
   const covered = new Set(round.predictionSets.filter((set) => set.selected).flatMap((set) => set.predictions.map((row) => row.matchId)));
+  const verificationApplies = resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number });
   const consistency = roundConsistency({
     counters: summary,
     fixtures: metricFixtures,
     selectedCoversFixture: (fixtureId) => covered.has(fixtureId),
+    verificationApplies,
   });
   const reviewBase = `/admin/rounds/${round.id}/review`;
   const participants = [...new Map(round.predictionSets.map((set) => [set.participantId, set.participant])).values()].sort(
@@ -161,7 +164,7 @@ export default async function RoundPage({
         ) : null}
         <section id="overview">
           {(() => {
-            const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId));
+            const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId), { verificationApplies });
             const issueTotal = resultIssueCount(issues);
             const focus = primaryConsistencyMetric(summary, issues);
             return (

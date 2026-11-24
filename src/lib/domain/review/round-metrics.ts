@@ -169,11 +169,13 @@ function scoredVerified(fixture: MetricFixture): boolean {
 export function resultIssueRows(
   fixtures: readonly MetricFixture[],
   selectedCoversFixture: (fixtureId: string) => boolean,
+  options?: { verificationApplies?: boolean },
 ): ResultIssueRow[] {
+  const verificationApplies = options?.verificationApplies !== false;
   const rows: ResultIssueRow[] = [];
   for (const fixture of fixtures) {
     const title = `${fixture.homeTeam} — ${fixture.awayTeam}`;
-    const issue = explainResultIssue(fixture);
+    const issue = verificationApplies ? explainResultIssue(fixture) : null;
     if (issue) {
       rows.push({
         id: fixture.id,
@@ -211,7 +213,12 @@ export function resultIssueRows(
         actions: ["Use this set, if a stored slip should score"],
       });
     }
-    if (!scoreIsFixed(fixture) && !scoredVerified(fixture) && !(fixture.resultConflict && !scoreIsFixed(fixture))) {
+    if (
+      verificationApplies
+      && !scoreIsFixed(fixture)
+      && !scoredVerified(fixture)
+      && !(fixture.resultConflict && !scoreIsFixed(fixture))
+    ) {
       rows.push({
         id: `${fixture.id}:unverified`,
         kind: "blocking",
@@ -332,6 +339,8 @@ export function roundConsistency(input: {
   counters: RoundCounters;
   fixtures: readonly MetricFixture[];
   selectedCoversFixture: (fixtureId: string) => boolean;
+  /** False keeps the previous result wording. Stored parse warnings still count. */
+  verificationApplies?: boolean;
 }): ConsistencyReport {
   const blocking: string[] = [];
   const notes: string[] = [];
@@ -344,7 +353,9 @@ export function roundConsistency(input: {
   if (input.counters.selected > input.counters.stored) {
     blocking.push("Selected sets outnumber stored sets.");
   }
-  const resultConflicts = input.fixtures.filter((fixture) => fixture.resultConflict && !scoreIsFixed(fixture));
+  const resultConflicts = input.verificationApplies === false
+    ? []
+    : input.fixtures.filter((fixture) => fixture.resultConflict && !scoreIsFixed(fixture));
   if (resultConflicts.length > 0) {
     blocking.push(`${resultConflicts.length} ${resultConflicts.length === 1 ? "fixture has" : "fixtures have"} a result conflict.`);
   }
@@ -354,7 +365,7 @@ export function roundConsistency(input: {
   if (scoredWithoutSelection.length > 0) {
     blocking.push(`${scoredWithoutSelection.length} scored ${scoredWithoutSelection.length === 1 ? "fixture has" : "fixtures have"} no prediction on a selected set.`);
   }
-  const unverified = input.fixtures.filter((fixture) => {
+  const unverified = input.verificationApplies === false ? [] : input.fixtures.filter((fixture) => {
     const scored = fixture.actualHomeGoals != null && fixture.actualAwayGoals != null;
     if (scoreIsFixed(fixture)) {
       return false;
@@ -369,15 +380,15 @@ export function roundConsistency(input: {
   if (missing > 0) {
     notes.push(`${missing} ${missing === 1 ? "fixture has" : "fixtures have"} no full-time score yet.`);
   }
-  const red = input.fixtures.filter((fixture) => scoreIsFixed(fixture) && fixture.resultConflict && !isLegacyManualScore(fixture));
+  const red = input.verificationApplies === false ? [] : input.fixtures.filter((fixture) => scoreIsFixed(fixture) && fixture.resultConflict && !isLegacyManualScore(fixture));
   if (red.length > 0) {
     notes.push(`${red.length} ${red.length === 1 ? "fixture is" : "fixtures are"} ${LABEL_MANUAL_NOT_VERIFIED}.`);
   }
-  const legacy = input.fixtures.filter((fixture) => isLegacyManualScore(fixture));
+  const legacy = input.verificationApplies === false ? [] : input.fixtures.filter((fixture) => isLegacyManualScore(fixture));
   if (legacy.length > 0) {
     notes.push(`${legacy.length} ${legacy.length === 1 ? "fixture keeps" : "fixtures keep"} an ${LABEL_OLDER_MANUAL}.`);
   }
-  const calm = input.fixtures.filter((fixture) => scoreIsFixed(fixture) && !fixture.resultConflict && !isLegacyManualScore(fixture));
+  const calm = input.verificationApplies === false ? [] : input.fixtures.filter((fixture) => scoreIsFixed(fixture) && !fixture.resultConflict && !isLegacyManualScore(fixture));
   if (calm.length > 0) {
     notes.push(`${calm.length} ${calm.length === 1 ? "fixture is" : "fixtures are"} fixed manually.`);
   }

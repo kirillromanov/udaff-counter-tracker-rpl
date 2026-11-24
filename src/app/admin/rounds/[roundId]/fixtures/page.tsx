@@ -11,7 +11,8 @@ import { MutationRegion, RoundLockBadge, RoundLockPanel } from "../round-lock-ba
 import { SubmitButton } from "../../../submit-button";
 import { Badge, CrumbLink, EmptyState, Field, Notice, PageBody, PageHeader, Section, fieldClass } from "../../../ui";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
-import { displayedResultLabel, scoreIsFixed, sourceAgreement } from "@/lib/domain/results/correction";
+import { resultLabelForRound, scoreIsFixed, sourceAgreement } from "@/lib/domain/results/correction";
+import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { MatchResultsRefresh } from "../match-results-refresh";
 import { acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 import { formatMoscow } from "@/lib/domain/time/moscow";
@@ -84,6 +85,7 @@ export default async function FixturesPage({
   }
   const unavailable = unavailableFromHealth(health);
   const rankedAt = new Date();
+  const verificationApplies = resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number });
   const rankings = new Map(
     round.matches.map((match) => {
       const aligned: AlignedObservation[] = match.resultObservations.flatMap((observation) => {
@@ -195,7 +197,7 @@ export default async function FixturesPage({
             {fallbackSourceLabel(round.lastSuccessfulSource) ? ` · ${fallbackSourceLabel(round.lastSuccessfulSource)}` : ""}
           </p>
           {round.pollHealthSummary ? <p className="mt-1 text-xs text-zinc-600">{round.pollHealthSummary}</p> : null}
-          <div className="mt-3 flex flex-wrap gap-2">
+          {verificationApplies ? <div className="mt-3 flex flex-wrap gap-2">
             <form action={pollDueAction}>
               <input name="roundId" type="hidden" value={round.id} />
               <SubmitButton pendingLabel="Checking…" variant="secondary">
@@ -210,7 +212,9 @@ export default async function FixturesPage({
                 </SubmitButton>
               </form>
             ) : null}
-          </div>
+          </div> : (
+            <p className="mt-3 text-sm text-zinc-600">Automatic result checks for this round stay off. They start at round 16 of this season.</p>
+          )}
         </Section>
 
         <Section
@@ -220,12 +224,16 @@ export default async function FixturesPage({
           id="ingest"
           title="Import actual results"
         >
-          <form action={fetchResultsAction}>
-            <input name="roundId" type="hidden" value={round.id} />
-            <SubmitButton pendingLabel="Fetching…" variant="primary">
-              Fetch results
-            </SubmitButton>
-          </form>
+          {verificationApplies ? (
+            <form action={fetchResultsAction}>
+              <input name="roundId" type="hidden" value={round.id} />
+              <SubmitButton pendingLabel="Fetching…" variant="primary">
+                Fetch results
+              </SubmitButton>
+            </form>
+          ) : (
+            <p className="text-sm text-zinc-600">Result fetching for this round stays off. It starts at round 16 of this season.</p>
+          )}
           {health.length === 0 ? (
             <p className="mt-3 text-sm text-zinc-500">No source health has been recorded yet.</p>
           ) : (
@@ -261,6 +269,7 @@ export default async function FixturesPage({
 
         <Section description="Order, clubs, actual score, and the official MT flag." id="results" title="Round results">
           <MatchResultsRefresh
+            allowRefresh={verificationApplies}
             lastPolledAt={round.lastPolledAt}
             lastSuccessfulSource={round.lastSuccessfulSource}
             checks={round.matches.map((match) => ({
@@ -323,7 +332,7 @@ export default async function FixturesPage({
                       resultConflict: match.resultConflict,
                       conflictAcknowledgedAt: match.conflictAcknowledgedAt,
                     }, rankedAt), match.conflictAcknowledgedAt != null)}>
-                      {displayedResultLabel(match, fixturePhaseLabel(fixturePhase({
+                      {resultLabelForRound(verificationApplies, match, fixturePhaseLabel(fixturePhase({
                         kickoffAt: match.kickoffAt,
                         actualHomeGoals: match.actualHomeGoals,
                         actualAwayGoals: match.actualAwayGoals,
@@ -392,7 +401,7 @@ export default async function FixturesPage({
                     <p className="font-medium">
                       {match.homeTeam} — {match.awayTeam}
                     </p>
-                    {match.resultConflict && !match.conflictAcknowledgedAt ? (
+                    {verificationApplies && match.resultConflict && !match.conflictAcknowledgedAt ? (
                       <form action={acknowledgeConflictAction} className="mt-2">
                         <input name="roundId" type="hidden" value={round.id} />
                         <input name="matchId" type="hidden" value={match.id} />

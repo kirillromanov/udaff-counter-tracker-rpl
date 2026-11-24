@@ -20,8 +20,10 @@ export function MatchResultsRefresh({
   now,
   query,
   checks = [],
+  allowRefresh,
 }: {
   roundId: string;
+  allowRefresh: boolean;
   returnTo: "review" | "fixtures";
   lastPolledAt: Date | null;
   nextPollAt: Date | null;
@@ -43,7 +45,7 @@ export function MatchResultsRefresh({
   });
   return (
     <RefreshStatusBar
-      action={<RefreshResultsButton returnTo={returnTo} roundId={roundId} />}
+      action={allowRefresh ? <RefreshResultsButton returnTo={returnTo} roundId={roundId} /> : null}
       summary={summary.text}
       tone={summary.tone}
     >

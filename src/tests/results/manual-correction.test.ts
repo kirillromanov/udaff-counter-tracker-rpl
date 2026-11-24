@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { RESULT_VERIFICATION_SEASON_SLUG } from "@/lib/domain/results/eligibility";
 
 describe("manual result correction on an isolated database", () => {
   let directory = "";
@@ -32,7 +33,7 @@ describe("manual result correction on an isolated database", () => {
       import("@/lib/domain/rounds/round-lock"),
     ]);
     const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    const season = await db.season.create({ data: { name: "test", slug: "test-correction" } });
+    const season = await db.season.create({ data: { name: "test", slug: RESULT_VERIFICATION_SEASON_SLUG } });
     const round = await db.round.create({
       data: { seasonId: season.id, number: 16, name: "16", standingRole: "operational", productionStartedAt: new Date("2026-11-01T00:00:00.000Z"), status: "open" },
     });
