@@ -46,6 +46,8 @@ Names only. Values stay in the untracked `.env`. See `.env.example`.
 | `WORKER_SCAN_MINUTES` | No | Optional shorter ceiling. The supervised wait is already at most 60 seconds, and the smallest accepted scan is 5 minutes, so a set value does not change that wait. It does not set a task due time |
 | `WORKER_LOCK_DIR` | No | Claim files shared by the worker, web refresh, and CLI. Default `~/Library/Application Support/udaff-counter-tracker/worker-locks` |
 
+Prisma Client resolves a relative `file:` URL from the `prisma/` directory, so `file:./dev.db` is `prisma/dev.db`. `prisma migrate diff --from-url` resolves a relative `file:` URL from the process working directory. A `dev.db` at the repository root is a different file. `scripts/apply-result-verification-schema.ts` does not read `DATABASE_URL`. Pass `--database` with the absolute path of the existing SQLite file. The deployment order is in [DEPLOYMENT.md](DEPLOYMENT.md) and has not been run.
+
 ## Backup
 
 The live file is `prisma/dev.db`. A consistent copy:

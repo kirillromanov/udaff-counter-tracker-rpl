@@ -10,6 +10,7 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "schema:result-verification": "tsx scripts/apply-result-verification-schema.ts",
     "db:seed": "prisma db seed",
     "import:rounds": "tsx scripts/import-rounds.ts",
     "import:rounds-12-13": "tsx scripts/import-rounds-12-13.ts",
