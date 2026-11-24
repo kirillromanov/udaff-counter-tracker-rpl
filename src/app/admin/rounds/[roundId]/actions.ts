@@ -14,6 +14,7 @@ import {
   updatePredictionFromForm,
 } from "@/lib/domain/import/persist-import";
 import { saveCleanMatrix, saveMatrixResults } from "@/lib/domain/import/save-matrix";
+import { saveScoreLockBatch } from "@/lib/domain/results/correction";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 import {
   createParticipantForAuthor,
@@ -106,9 +107,32 @@ export async function calculateIntermediateAction(formData: FormData): Promise<v
 export async function saveMatrixResultsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
-    await saveMatrixResults(roundId, formData);
+    await saveMatrixResults();
     refreshRound(roundId);
     redirect(`${reviewPath(roundId)}?saved=results`);
+  } catch (error) {
+    fail(roundId, error);
+  }
+}
+
+export async function saveActualResultsAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  try {
+    const ids = formData.getAll("matchId").map(String);
+    await saveScoreLockBatch({
+      roundId,
+      standingChangeConfirmed: formData.get("standingChange") === "yes",
+      items: ids.map((matchId) => ({
+        matchId,
+        fixed: String(formData.get(`fixed_${matchId}`) ?? "") === "yes",
+        home: formData.get(`home_${matchId}`),
+        away: formData.get(`away_${matchId}`),
+        version: Number(formData.get(`version_${matchId}`) ?? ""),
+      })),
+    });
+    const round = await prisma.round.findUnique({ where: { id: roundId }, select: { seasonId: true } });
+    refreshRound(roundId, round?.seasonId);
+    redirect(`${reviewPath(roundId)}?saved=score`);
   } catch (error) {
     fail(roundId, error);
   }

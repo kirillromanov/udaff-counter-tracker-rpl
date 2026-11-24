@@ -94,6 +94,51 @@ export function snapshotFormControl(element: Element | RadioNodeList): FieldSnap
  * and a successful check is not the same as a stored score change.
  * Every source failing keeps the previous scores and is not shown as an update.
  */
+export type RefreshSummaryTone = "neutral" | "error" | "warning" | "info";
+
+/**
+ * One line for the current refresh state. A due timestamp is not a running check.
+ * This does not read the worker flag; a stopped round plan is the only automatic-check fact used here.
+ */
+export function refreshSummaryLine(input: {
+  query: RefreshQuery;
+  lastAttempt: string | null;
+  automaticChecksActive: boolean;
+  health: string | null;
+}): { text: string; tone: RefreshSummaryTone } {
+  const stopped = input.automaticChecksActive ? "" : " Automatic checks stopped.";
+  if (input.query.busy === "1") {
+    return { tone: "info", text: "Checking now." };
+  }
+  if (input.query.calc === "stale") {
+    return { tone: "error", text: `Last attempt: failed. Standings calculation failed, so the export is stale.${stopped}` };
+  }
+  if (input.query.refreshed === "1") {
+    const failed = Number(input.query.failed ?? 0);
+    const ok = Number(input.query.sourceOk ?? 0);
+    if (failed > 0 && ok === 0) {
+      return { tone: "error", text: `Last attempt: failed. Sources failed (${failed}).${stopped}` };
+    }
+    if (failed > 0) {
+      return { tone: "warning", text: `Last attempt: completed with source errors.${stopped}` };
+    }
+    return { tone: "neutral", text: `Last attempt: completed.${stopped}` };
+  }
+  const when = input.lastAttempt ? `Last attempt at ${input.lastAttempt}` : null;
+  const healthFailed = Boolean(input.health && /failed/i.test(input.health));
+  const healthHasSuccess = Boolean(input.health && /\bok\b/i.test(input.health));
+  if (when && healthFailed && !healthHasSuccess) {
+    return { tone: "error", text: `${when}: failed. ${input.health}${stopped}` };
+  }
+  if (when && healthFailed) {
+    return { tone: "warning", text: `${when}: completed with source errors. ${input.health}${stopped}` };
+  }
+  if (when) {
+    return { tone: "neutral", text: `${when}: completed.${stopped}` };
+  }
+  return { tone: "neutral", text: `Never checked.${stopped}` };
+}
+
 export function describeRefreshQuery(query: RefreshQuery): { tone: "error" | "success" | "info" | "warning"; text: string } | null {
   if (query.busy === "1") {
     return { tone: "info", text: "A refresh for this round is already running. Stored results were left unchanged." };

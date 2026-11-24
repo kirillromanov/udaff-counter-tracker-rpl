@@ -1,7 +1,10 @@
 /**
- * Rank a fixture's source rows.
- * Official-strength sources can accept a score. Verification sources can only support one.
- * A disagreement between official-strength sources is left for review.
+ * Rank a fixture's source rows by configured source identity.
+ * Each id in SOURCE_RANK is one source. Repeated fetches, extra URLs, and extra
+ * source keys for that id are one confirmation. A shared upstream behind two ids
+ * is not modeled.
+ * One finished score is provisional. Two different ids with the same full-time
+ * score are verified. Different scores are a conflict and do not select a score.
  */
 
 export const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
@@ -105,6 +108,30 @@ function listed(rows: readonly Judged[]): string {
     .join(", ");
 }
 
+/** One confirmation per configured source id. Disagreeing rows from that id do not confirm either score. */
+export function sourceConfirmations(observations: readonly RankableObservation[]): {
+  representatives: RankableObservation[];
+  splitSources: string[];
+} {
+  const groups = new Map<string, RankableObservation[]>();
+  for (const observation of observations) {
+    const list = groups.get(observation.source) ?? [];
+    list.push(observation);
+    groups.set(observation.source, list);
+  }
+  const representatives: RankableObservation[] = [];
+  const splitSources: string[] = [];
+  for (const [source, rows] of groups) {
+    const scores = new Set(rows.map((row) => scoreKey(row.homeGoals, row.awayGoals)));
+    if (scores.size > 1) {
+      splitSources.push(source);
+      continue;
+    }
+    representatives.push(rows[0] as RankableObservation);
+  }
+  return { representatives, splitSources };
+}
+
 export function rankFixtureResult(
   observations: readonly RankableObservation[],
   options?: { now?: Date; unavailable?: ReadonlySet<string> },
@@ -120,10 +147,25 @@ export function rankFixtureResult(
       note: "",
     };
   }
-  const judged = observations.map((observation) => judge(observation, options?.unavailable, options?.now));
+  const collapsed = sourceConfirmations(observations);
+  const judged = collapsed.representatives.map((observation) => judge(observation, options?.unavailable, options?.now));
+  const splitJudged = observations
+    .filter((observation) => collapsed.splitSources.includes(observation.source))
+    .map((observation) => judge(observation, options?.unavailable, options?.now));
+  if (collapsed.splitSources.length > 0) {
+    const candidates = [...judged, ...splitJudged].map((row) => candidate(row, "conflict", null));
+    return {
+      classification: "conflict-review",
+      homeGoals: null,
+      awayGoals: null,
+      selectedSource: null,
+      selectionReason: "One configured source reported more than one score, so no score was auto-selected.",
+      candidates,
+      note: `Sources disagree inside ${collapsed.splitSources.join(", ")}. The stored score was left unchanged.`,
+    };
+  }
   const voters = judged.filter((row) => row.kind === "voter");
-  const material = voters.filter((row) => row.material);
-  const scores = new Set(material.map((row) => scoreKey(row.observation.homeGoals, row.observation.awayGoals)));
+  const scores = new Set(voters.map((row) => scoreKey(row.observation.homeGoals, row.observation.awayGoals)));
   const conflict = scores.size > 1;
 
   if (conflict) {
@@ -133,13 +175,13 @@ export function rankFixtureResult(
       homeGoals: null,
       awayGoals: null,
       selectedSource: null,
-      selectionReason: "Official-strength sources disagree, so no score was auto-selected.",
+      selectionReason: "Configured sources disagree, so no score was auto-selected.",
       candidates,
       note: `Sources disagree: ${listed(voters)}. The stored score was left unchanged.`,
     };
   }
 
-  if (material.length === 0) {
+  if (voters.length === 0) {
     const candidates = judged.map((row) => candidate(row, "insufficient", null));
     const reasons = candidates.map((row) => `${row.source}: ${row.reason}`).join(" ");
     return {
@@ -147,13 +189,13 @@ export function rankFixtureResult(
       homeGoals: null,
       awayGoals: null,
       selectedSource: null,
-      selectionReason: "No official-strength source provided a finished score.",
+      selectionReason: "No configured source provided a finished score.",
       candidates,
       note: `Insufficient data. ${reasons}`.trim(),
     };
   }
 
-  const selected = [...material].sort((left, right) => right.weight - left.weight || left.observation.source.localeCompare(right.observation.source))[0] as Judged;
+  const selected = [...voters].sort((left, right) => right.weight - left.weight || left.observation.source.localeCompare(right.observation.source))[0] as Judged;
   const selectedKey = scoreKey(selected.observation.homeGoals, selected.observation.awayGoals);
   const agreeing = voters.filter((row) => scoreKey(row.observation.homeGoals, row.observation.awayGoals) === selectedKey);
   const classification: ResolutionClass = agreeing.length >= 2 ? "verified" : "provisional";
@@ -189,15 +231,15 @@ function candidate(row: Judged, mode: "conflict" | "insufficient" | "chosen", se
   } else if (row.kind === "stale") {
     standing = "downgraded";
     reason = row.block ?? "Stale.";
-  } else if (mode === "conflict" && row.material) {
+  } else if (mode === "conflict" && row.kind === "voter") {
     standing = "flagged";
-    reason = "Disagrees with another official-strength source, so the result was not auto-finalized.";
+    reason = "Disagrees with another configured source, so the result was not auto-finalized.";
   } else if (mode === "conflict") {
     standing = "downgraded";
     reason = "Weaker source cannot settle a disagreement between official-strength sources.";
   } else if (mode === "insufficient") {
     standing = "downgraded";
-    reason = "Verification-only source cannot accept a score alone.";
+    reason = row.block ?? "This row cannot decide the score.";
   } else if (row.observation.source === selectedSource && score === selectedKey) {
     standing = "selected";
     reason = `Highest-ranked source for this score (${row.label}, rank ${row.weight}).`;

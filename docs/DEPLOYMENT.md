@@ -28,6 +28,43 @@ There is no in-process poller. A separate worker can refresh predictions when `W
 
 A worker-only source change does not require a web rebuild. Stop the worker with `zsh scripts/worker-agent.sh stop` before updating the checkout it runs from, so an old process does not refresh during the update. Fast-forward that checkout, run `zsh scripts/worker-agent.sh install` to rewrite the plist, then `zsh scripts/worker-agent.sh start` once. `RunAtLoad` starts the process; do not kickstart it as well. A reboot starts this user agent only after that user logs in. `zsh scripts/worker-agent.sh stop` unloads it and leaves it stopped. Logs stay at `~/Library/Logs/udaff-counter-tracker/worker.log`. Missing `.env` or `node_modules` exits 1 and is retried after the 60-second throttle, not reported as a healthy exit.
 
+## Result verification deploy, not performed
+
+This order is a plan. None of it has been done.
+
+1. Not performed. Take a SQLite backup of the live database and check its integrity. Do not restore it as part of this plan.
+2. Not performed. Stop the prediction worker with `zsh scripts/worker-agent.sh stop`. Leave `WORKER_RESULTS_ENABLED` unset.
+3. Not performed. Fast-forward the serving checkout to the reviewed commit. Do not seed, and do not use `--accept-data-loss` or `--force-reset`.
+4. Not performed. Apply the additive schema with `npx prisma db push` against that database only. The new columns default to empty, false, or zero, and `firstSeenAt` stays null. If this step fails, stop. Do not start the web server or the worker on the new source. The previous database file is unchanged if the push did not finish; if it did finish and the following build fails, the new columns can stay because existing result values are not rewritten. Restore the backup only if a later check shows a stored score, status, or observation changed.
+5. Not performed. Build with the live `DATABASE_URL` only for the running server's own file, then restart one `next start` with `--hostname 127.0.0.1 --port 3000`.
+6. Not performed. Start one prediction worker with `zsh scripts/worker-agent.sh start`. Do not enable result processing.
+7. Not performed. Read back one closed round and the active round. Stored scores, statuses, prediction ids, and the warnings on comments 5707 and 5713 must match the backup. New source-observation times stay empty on old rows.
+
+The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
+
+An isolated review instance uses another port and a new database file. Do not run it in the serving checkout, and do not point it at `prisma/dev.db`, the live `.env`, or the live worker lock directory. From a separate worktree:
+
+```sh
+export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
+unset DATABASE_URL WORKER_ENABLED WORKER_RESULTS_ENABLED WORKER_LOCK_DIR PREDICTION_REFRESH_INTERVAL_MINUTES
+dir=$(mktemp -d /tmp/udaff-review-XXXX)
+export DATABASE_URL="file:${dir}/review.db"
+export WORKER_LOCK_DIR="${dir}/locks"
+npx prisma db push --skip-generate --accept-data-loss
+node scripts/isolated-review-seed.mjs
+npx next start --hostname 127.0.0.1 --port 3016
+```
+
+Stop it and remove that disposable directory. Use the path printed for `dir`. Do not delete any other database.
+
+```sh
+pid=$(lsof -nP -iTCP:3016 -sTCP:LISTEN -t)
+kill "$pid"
+rm -rf "$dir"
+```
+
+Do not use port 3000. Do not click Fetch results or Check due rounds during that review. Those buttons poll sources.
+
 ## Not done
 
 - Authentication

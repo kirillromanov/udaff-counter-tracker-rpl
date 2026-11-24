@@ -268,6 +268,73 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 `RunAtLoad` is true, so user login and `zsh scripts/worker-agent.sh start` start the process. A reboot does not start it until that user logs in. `zsh scripts/worker-agent.sh stop` unloads the job and leaves it stopped. A non-zero exit, including missing `.env` or `node_modules`, is restarted after the 60-second `ThrottleInterval`. A disabled worker exits 0 and is not restarted. One instance claim rejects a second process. Logs are `~/Library/Logs/udaff-counter-tracker/worker.log`. The web command does not install or start the worker. `WORKER_RESULTS_ENABLED` stays unset. See [../OPERATIONS.md](../OPERATIONS.md).
 
+## Result verification, not deployed
+
+New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
+
+Fix score lives on Parser review, under the result refresh, in one compact block. A wide screen shows two columns. A narrow screen shows one. Each fixture has a small switch and two score fields. Source details open on demand. The switch does not save. Save actual results confirms every score change, including a switch turned off, checks every version, and recalculates the round once when a score number changes. A stale fixture rejects the whole save. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and the exact red text `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
+
+Parser review and the overview use tighter section spacing. The refresh status is one line. Details stays closed until opened and does not request a source. A due time is not shown as a running check. `plan.active` is the only source for "Automatic checks stopped." The worker flag is not inferred. Counters open one panel under the grid. The same counter closes it. `metric` stays in the address, including back and forward. Parse conflicts stay on Conflicts. Slips that need correction stay on Need correction. Result issues counts unfixed result-source conflicts, scored fixtures with no selected prediction, and scored fixtures that are not verified. Fixed scores that sources do not confirm, and older manual scores, are notices in that panel and are not blocking. A fixture with no full-time score is pending in that panel and is not an error. The parser queue is no longer filtered by the selected counter.
+
+## Checks for the compact review presentation
+
+Run on 2026-11-24 in the result-verification worktree. The serving checkout, the prediction worker, port 3000, and the live database were not used.
+
+- `npm test`: 60 files passed, 1 skipped, 381 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The isolated review page at 1440 pixels had no horizontal overflow. The fixture block stayed two columns and 224 pixels tall, with eight switches. Refresh details and the counter panel stayed closed until opened. At 390 pixels the document scroll width stayed 390, the fixtures were one column, and both score fields of a row stayed on one line. Turning a switch on, and turning a saved switch off, left the stored scores and the audit count unchanged. Screenshots of this pass were not captured because the screenshot call timed out.
+
+Round 16, not performed:
+
+- Do not enable result processing until that round is chosen.
+- Deploy only after review. Stop the prediction worker first if its source will change, then start one worker again. Leave results disabled until the explicit enable step.
+- Watch the first finished fixture become provisional from one source, then verified when a second configured source agrees.
+- Correct one score, confirm the standings checkbox, then roll it back and confirm the sources decide again.
+- Open each counter and check that the row count matches.
+- Stop with `zsh scripts/worker-agent.sh stop` if a result check starts writing unexpected scores. Do not clear comments 5707 or 5713.
+
+## Checks for the compact shared score save
+
+Run on 2026-11-23 in the result-verification worktree after the review score block returned to one compact form. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 60 files passed, 1 skipped, 377 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The isolated review page showed eight synthetic fixtures. At 1920 pixels the block was two columns of four, 224 pixels tall, with no horizontal overflow. At 390 pixels it was one column, the document scroll width stayed 390, and both score fields of each fixture stayed on one line. Turning a switch on and turning a saved switch off left the stored scores unchanged and showed Unsaved. Save then listed `Manual Home — Manual Away: 3-0 → 1-0` with the standings confirmation. Cancel removed that dialog, kept the draft, and wrote no audit.
+
+## Checks for the review score toggle
+
+Run on 2026-11-23 in the result-verification worktree after Fix score moved to Parser review. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 59 files passed, 1 skipped, 375 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The review page was opened on a disposable database. At 390 pixels the document was 390 wide with no horizontal overflow. The score block showed Provisional, Verified two sources, verified fixed manually, the red manual-corrected label, Source conflict, Scheduled, and older manual score. A screenshot of that block showed the stacked Fix score toggle. At 1920 pixels the same labels were present with no horizontal overflow. The fixtures page had Save fixtures and Official MT, and no score box, Verify this score, or Use this score.
+
+## Checks for verified-manually replacement
+
+Run on 2026-11-23 in the result-verification worktree after the replacement audit was added. The serving checkout, the prediction worker, and the live database were not used.
+
+- `npm test`: 59 files passed, 1 skipped, 374 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- Screenshots at 390 pixels timed out. The fixtures page was checked in the browser at that width: the document was 390 pixels wide with no horizontal overflow, and the six statuses were Provisional, Verified two sources, Verified manually, Manually corrected, Source conflict, and Scheduled. Each source time was `2026-11-20 19:00 UTC+3` on its own nowrap line, inside the viewport. The review drill-downs showed 2 comments, 3 sets, 1 selected, 3 stored, 1 conflict, 1 correction, and 4 scored fixtures.
+
+## Checks for result verification
+
+Run on 2026-11-23 in a separate worktree. The serving checkout, the prediction worker, and the live database were not used. Schema changes were applied only to disposable SQLite files.
+
+- `npm test`: 58 files passed, 1 skipped, 373 tests passed. The private snapshot test stayed skipped. The follow-up for the two operator states was included.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 with a disposable database URL.
+- The fixtures and review screens were opened on that disposable database at desktop width and at a 390-pixel width. No live refresh or result poll was run.
+
 ## Checks for the worker recheck
 
 Run on 2026-11-20 in a worktree of `8b1f4efdc6842051ddae9826729b86a20d97be9b`. The serving processes were left running for these checks. No seed, refresh, parse, poll, or score write ran for them.

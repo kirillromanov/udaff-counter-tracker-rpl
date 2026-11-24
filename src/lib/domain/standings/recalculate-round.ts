@@ -112,6 +112,8 @@ export async function recalculateRound(roundId: string): Promise<RoundCalculatio
     resultState: match.resultState,
     resultResolution: match.resultResolution,
     resultConflict: match.resultConflict,
+    manuallyCorrected: match.manuallyCorrected,
+    resultProvenance: match.resultProvenance,
     isMatchOfTheRound: match.isMatchOfTheRound,
     observationStatuses: match.resultObservations.map((observation) => observation.matchStatus),
   }));

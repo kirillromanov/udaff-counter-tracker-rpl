@@ -108,26 +108,26 @@ describe("multi-source verification", () => {
     });
   });
 
-  it("keeps an official score provisional when only a weaker source disagrees", () => {
+  it("keeps a verified score when a second configured source later disagrees", () => {
     const decision = decideFixture("rodina", [primary, { ...understat, homeGoals: 1, awayGoals: 1 }]);
-    expect(decision.outcome).toBe("confirmed");
-    expect(decision.resolution).toBe("provisional");
-    expect(decision.selectedSource).toBe("sport-ru");
-    expect(decision.homeGoals).toBe(2);
-    expect(decision.candidates.find((row) => row.source === "understat")).toMatchObject({ standing: "downgraded", homeGoals: 1, awayGoals: 1 });
+    expect(decision.outcome).toBe("conflict");
+    expect(decision.resolution).toBe("conflict-review");
+    expect(decision.homeGoals).toBeNull();
+    expect(decision.candidates.find((row) => row.source === "understat")).toMatchObject({ standing: "flagged", homeGoals: 1, awayGoals: 1 });
     expect(applyResultDecision({ resultState: "verified", actualHomeGoals: 2, actualAwayGoals: 2 }, decision)).toMatchObject({
       actualHomeGoals: 2,
       actualAwayGoals: 2,
-      resultState: "confirmed",
-      resultResolution: "provisional",
-      resultConflict: false,
+      resultState: "verified",
+      resultResolution: "conflict-review",
+      resultConflict: true,
       changedGoals: false,
     });
   });
 
-  it("does not confirm a score from a verification source alone", () => {
+  it("accepts one configured source as provisional", () => {
     const attached = attachResults([{ id: "rodina", homeTeam: "Родина", awayTeam: "Оренбург" }], [understat]);
     expect(attached.get("rodina")).toEqual([expect.objectContaining({ homeGoals: 2, awayGoals: 2 })]);
-    expect(decideFixture("rodina", attached.get("rodina") ?? []).outcome).toBe("none");
+    expect(decideFixture("rodina", attached.get("rodina") ?? []).outcome).toBe("confirmed");
+    expect(decideFixture("rodina", attached.get("rodina") ?? []).resolution).toBe("provisional");
   });
 });

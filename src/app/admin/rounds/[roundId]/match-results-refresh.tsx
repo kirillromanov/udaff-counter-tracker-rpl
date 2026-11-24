@@ -1,9 +1,9 @@
 import { effectiveNextCheck, type FixtureCheckStatus, type RoundPollPlan } from "@/lib/domain/results/poll";
-import { describeRefreshQuery, type RefreshQuery } from "@/lib/domain/results/refresh-status";
+import { describeRefreshQuery, refreshSummaryLine, type RefreshQuery } from "@/lib/domain/results/refresh-status";
+import { formatMoscow } from "@/lib/domain/time/moscow";
 import { Notice } from "../../ui";
 import { RefreshResultsButton } from "./refresh-results-button";
-
-import { formatMoscow } from "@/lib/domain/time/moscow";
+import { RefreshStatusBar } from "./refresh-status-bar";
 
 function formatWhen(value: Date): string {
   return formatMoscow(value);
@@ -35,9 +35,18 @@ export function MatchResultsRefresh({
   const outcome = describeRefreshQuery(query);
   const next = effectiveNextCheck(plan, nextPollAt, now);
   const nextLabel = !plan.active ? "stopped" : next && next.getTime() > now.getTime() ? formatWhen(next) : "due now";
-  const sourcesFailed = Boolean(pollHealthSummary && !pollHealthSummary.includes(" ok") && pollHealthSummary.includes("failed"));
+  const summary = refreshSummaryLine({
+    query,
+    lastAttempt: lastPolledAt ? formatWhen(lastPolledAt) : null,
+    automaticChecksActive: plan.active,
+    health: pollHealthSummary,
+  });
   return (
-    <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+    <RefreshStatusBar
+      action={<RefreshResultsButton returnTo={returnTo} roundId={roundId} />}
+      summary={summary.text}
+      tone={summary.tone}
+    >
       {outcome ? <Notice tone={outcome.tone}>{outcome.text}</Notice> : null}
       {query.calc === "stale" ? (
         <Notice tone="error">Results were saved. Standings calculation failed, so the export is stale.</Notice>
@@ -48,16 +57,16 @@ export function MatchResultsRefresh({
             : `Рассчитано по ${query.included ?? "0"} из ${query.fixtureCount ?? "0"} матчей.`}
         </Notice>
       ) : null}
-      <p className="mt-2 text-xs text-zinc-600">
+      <p>
         Last refresh attempt {lastPolledAt ? formatWhen(lastPolledAt) : "not recorded"}
         {" · "}
         Last successful source refresh {lastSuccessfulSource ?? "none"}
         {" · "}
         Next automatic check {nextLabel}
       </p>
-      <p className="mt-1 text-xs text-zinc-600">{plan.reason}</p>
+      <p>{plan.reason}</p>
       {checks.length > 0 ? (
-        <ul className="mt-1 space-y-1 text-xs text-zinc-600">
+        <ul className="space-y-1">
           {checks.map((check) => (
             <li key={check.label}>
               {check.label}
@@ -72,10 +81,7 @@ export function MatchResultsRefresh({
           ))}
         </ul>
       ) : null}
-      {sourcesFailed ? <p className="mt-1 text-xs text-red-700">{pollHealthSummary}</p> : pollHealthSummary ? <p className="mt-1 text-xs text-zinc-600">{pollHealthSummary}</p> : null}
-      <div className="mt-3">
-        <RefreshResultsButton returnTo={returnTo} roundId={roundId} />
-      </div>
-    </div>
+      {pollHealthSummary ? <p className={summary.tone === "error" || summary.tone === "warning" ? "text-red-700" : undefined}>{pollHealthSummary}</p> : null}
+    </RefreshStatusBar>
   );
 }

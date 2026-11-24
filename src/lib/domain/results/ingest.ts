@@ -71,14 +71,14 @@ export function roundsSelectedForIngest<T extends { id: string; standingRole: st
 
 export async function ingestSeasonResults(
   seasonId: string,
-  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[]; skipUndated?: boolean },
+  options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[]; skipUndated?: boolean; fetches?: readonly SourceFetchResult[] },
 ): Promise<IngestReport> {
   const rounds = await prisma.round.findMany({
     where: { seasonId },
     include: { matches: true },
   });
   const writable = roundsSelectedForIngest(rounds, options);
-  const fetches = await collectSourceFetches(RESULT_ADAPTERS, readSource);
+  const fetches = options?.fetches ?? await collectSourceFetches(RESULT_ADAPTERS, readSource);
   const previousHealth = await prisma.resultSourceHealth.findMany();
   const previousBySource = new Map(previousHealth.map((row) => [row.source, row]));
   const health: SourceHealth[] = [];
@@ -137,6 +137,10 @@ export async function ingestSeasonResults(
       awayTeam: match.awayTeam,
       roundNumber: round.number,
       resultState: match.resultState,
+      resultResolution: match.resultResolution,
+      resultProvenance: match.resultProvenance,
+      manuallyCorrected: match.manuallyCorrected,
+      resultNote: match.resultNote,
       resultConflict: match.resultConflict,
       conflictAcknowledgedAt: match.conflictAcknowledgedAt,
       actualHomeGoals: match.actualHomeGoals,
@@ -177,6 +181,9 @@ export async function ingestSeasonResults(
             matchStatus: sourceRow.matchStatus ?? "finished",
             completeness: sourceRow.completeness ?? "complete",
             matchId,
+            fetchedAt: new Date(),
+            firstSeenAt: new Date(),
+            lastSeenAt: new Date(),
           },
           update: {
             roundNumber: sourceRow.roundNumber,
@@ -190,6 +197,7 @@ export async function ingestSeasonResults(
             completeness: sourceRow.completeness ?? "complete",
             matchId,
             fetchedAt: new Date(),
+            lastSeenAt: new Date(),
           },
         });
       }
@@ -256,6 +264,24 @@ export async function ingestSeasonResults(
       updated += 1;
     }
     const roundId = openRounds.find((round) => round.matches.some((match) => match.id === fixture.id))?.id;
+    const acknowledge = write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null;
+    const unchanged = fixture.actualHomeGoals === write.actualHomeGoals
+      && fixture.actualAwayGoals === write.actualAwayGoals
+      && fixture.resultState === write.resultState
+      && fixture.resultConflict === write.resultConflict
+      && fixture.resultResolution === write.resultResolution
+      && (fixture.resultNote ?? null) === (write.resultNote ?? null)
+      && (fixture.conflictAcknowledgedAt?.getTime() ?? null) === (acknowledge?.getTime() ?? null);
+    if (unchanged) {
+      continue;
+    }
+    const newlyVerified = write.resultState === "verified"
+      && write.resultResolution === "verified"
+      && fixture.resultState !== "verified"
+      && fixture.resultResolution !== "verified";
+    const newlyProvisional = write.resultState === "confirmed"
+      && write.resultResolution === "provisional"
+      && fixture.resultProvenance === "";
     await prisma.$transaction(async (tx) => {
       if (roundId) {
         await assertRoundMutableTx(tx, roundId);
@@ -269,7 +295,10 @@ export async function ingestSeasonResults(
           resultConflict: write.resultConflict,
           resultResolution: write.resultResolution,
           resultNote: write.resultNote,
-          conflictAcknowledgedAt: write.resultConflict && fixture.resultConflict ? fixture.conflictAcknowledgedAt : null,
+          conflictAcknowledgedAt: acknowledge,
+          ...(newlyVerified ? { resultProvenance: "two-source", resultVersion: { increment: 1 } } : {}),
+          ...(newlyProvisional ? { resultProvenance: "one-source", resultVersion: { increment: 1 } } : {}),
+          ...(!newlyVerified && !newlyProvisional && (write.changedGoals || fixture.resultConflict !== write.resultConflict || fixture.resultState !== write.resultState) ? { resultVersion: { increment: 1 } } : {}),
         },
       });
     });
@@ -291,7 +320,7 @@ export async function ingestSeasonResults(
   };
 }
 
-export async function ingestRoundResults(roundId: string): Promise<IngestReport> {
+export async function ingestRoundResults(roundId: string, fetches?: readonly SourceFetchResult[]): Promise<IngestReport> {
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     select: { seasonId: true, standingRole: true },
@@ -299,5 +328,6 @@ export async function ingestRoundResults(roundId: string): Promise<IngestReport>
   return ingestSeasonResults(round.seasonId, {
     onlyRoundIds: [roundId],
     includeArchivedRoundIds: round.standingRole === ARCHIVED_ROUND ? [roundId] : [],
+    fetches,
   });
 }

@@ -4,11 +4,10 @@ import { connection } from "next/server";
 import {
   readLines,
   readWarnings,
-  setTone,
-  summarizeSets,
-  toSetToneInput,
   predictionTone,
 } from "@/lib/domain/import/review-status";
+import { metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, reviewMetricHref, roundConsistency, roundCounters, roundMetricOf, setsForMetric, type MetricFixture, type MetricSet, type RoundMetric } from "@/lib/domain/review/round-metrics";
+import { MetricPanel } from "./metric-panel";
 import { loadIdentityCatalog } from "@/lib/domain/participants/registry";
 import { effectiveAuthorResolution, resolveAuthor } from "@/lib/domain/participants/resolve-author";
 import {
@@ -76,7 +75,7 @@ export default async function RoundImportPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; saved?: string; refreshed?: string; busy?: string; updated?: string; conflicts?: string; failed?: string; sourceOk?: string; calc?: string; included?: string; fixtureCount?: string; intermediate?: string }>;
+  searchParams: Promise<{ error?: string; imported?: string; parsed?: string; fetched?: string; identity?: string; view?: string; q?: string; metric?: string; saved?: string; refreshed?: string; busy?: string; updated?: string; conflicts?: string; failed?: string; sourceOk?: string; calc?: string; included?: string; fixtureCount?: string; intermediate?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -109,7 +108,36 @@ export default async function RoundImportPage({
   const parsedCommentIds = new Set(
     round.predictionSets.map((set) => set.forumCommentId).filter((id): id is string => Boolean(id)),
   );
-  const summary = summarizeSets(round.predictionSets.map(toSetToneInput));
+  const metricSets: MetricSet[] = round.predictionSets.map((set) => ({
+    id: set.id,
+    status: set.status,
+    selected: set.selected,
+    warningsJson: set.warningsJson,
+    parsedJson: set.parsedJson,
+    rawComment: set.rawComment,
+    predictions: set.predictions,
+    reviewState: set.forumComment?.reviewState,
+    reviewNote: set.forumComment?.reviewNote,
+    authorName: set.forumComment?.authorName ?? set.participant.name,
+    externalId: set.forumComment?.externalId,
+  }));
+  const metricFixtures: MetricFixture[] = round.matches.map((match) => ({
+    id: match.id,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    actualHomeGoals: match.actualHomeGoals,
+    actualAwayGoals: match.actualAwayGoals,
+    resultState: match.resultState,
+    resultResolution: match.resultResolution,
+    resultConflict: match.resultConflict,
+    manuallyCorrected: match.manuallyCorrected,
+    resultProvenance: match.resultProvenance,
+    resultNote: match.resultNote,
+  }));
+  const summary = roundCounters({ comments: round.forumComments, sets: metricSets, fixtures: metricFixtures });
+  const metric = roundMetricOf(query.metric);
+  const covered = new Set(round.predictionSets.filter((set) => set.selected).flatMap((set) => set.predictions.map((row) => row.matchId)));
+  const consistency = roundConsistency({ counters: summary, fixtures: metricFixtures, selectedCoversFixture: (fixtureId) => covered.has(fixtureId) });
   const [catalog, linkTargets] = await Promise.all([
     loadIdentityCatalog(),
     prisma.participant.findMany({
@@ -143,8 +171,7 @@ export default async function RoundImportPage({
   }));
   const factsById = new Map<string, ReviewSetFacts & { tone: ReviewSetFacts["tone"] }>();
   for (const set of round.predictionSets) {
-    const reviewed = setTone(toSetToneInput(set));
-    const tone = set.status === "flagged" && reviewed === "ok" ? "correction" : reviewed;
+    const tone = metricTone(metricSets.find((item) => item.id === set.id)!);
     factsById.set(set.id, {
       participantName: set.participant.name,
       authorName: set.forumComment?.authorName ?? set.participant.name,
@@ -189,6 +216,9 @@ export default async function RoundImportPage({
     if (search.trim()) {
       params.set("q", search.trim());
     }
+    if (metric) {
+      params.set("metric", metric);
+    }
     const suffix = params.toString();
     return `/admin/rounds/${round.id}/review${suffix ? `?${suffix}` : ""}`;
   };
@@ -232,7 +262,7 @@ export default async function RoundImportPage({
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Parser review"
       />
-      <PageBody>
+      <PageBody compact>
         <SeasonLayers current="import" reviewHref={`/admin/rounds/${round.id}/review`} seasonId={round.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         <RoundLockPanel roundId={round.id} />
@@ -251,7 +281,7 @@ export default async function RoundImportPage({
         ) : null}
         {query.saved === "results" ? <Notice tone="success">Actual results saved. They apply to every participant.</Notice> : null}
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-          <CleanMatrix refreshQuery={query} roundId={round.id} />
+          <CleanMatrix refreshQuery={query} roundId={round.id} scoresSaved={query.saved === "score"} />
         </MutationRegion>
         {round.fetchedAt ? (
           <Notice label="Imported parser results" tone="info">
@@ -265,31 +295,56 @@ export default async function RoundImportPage({
             {round.importNotes}
           </Notice>
         ) : null}
-        {summary.conflicts > 0 ? (
-          <Notice tone="warning">
-            {summary.conflicts} {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Duplicate lines and
-            ambiguous fixtures are marked in rose.
-          </Notice>
-        ) : null}
-        {summary.corrections > 0 ? (
-          <Notice tone="warning">
-            {summary.corrections} {summary.corrections === 1 ? "set needs" : "sets need"} a manual correction. Missing
-            scores, swapped clubs, and unmatched lines are marked in amber.
-          </Notice>
-        ) : null}
-
-        <KpiGrid
-          items={[
-            { label: "Comments", value: round.forumComments.length },
-            { label: "Sets", value: round.predictionSets.length },
-            { label: "Selected", value: summary.selected },
-            { label: "Conflicts", value: summary.conflicts, tone: summary.conflicts > 0 ? "danger" : "default" },
-            { label: "Need correction", value: summary.corrections, tone: summary.corrections > 0 ? "warning" : "default" },
-          ]}
-        />
+        {(() => {
+          const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId));
+          const issueTotal = resultIssueCount(issues);
+          const blockingResults = issues.some((row) => row.kind === "blocking");
+          const metricQuery = { view: queue === "review" ? undefined : queue, q: search, metric };
+          const href = (target: RoundMetric) => reviewMetricHref(`/admin/rounds/${round.id}/review`, metricQuery, target);
+          const focus = primaryConsistencyMetric(summary, issues);
+          return (
+            <>
+              <KpiGrid
+                compact
+                items={[
+                  { label: "Comments", value: summary.comments, href: href("comments"), current: metric === "comments" },
+                  { label: "Sets", value: summary.sets, href: href("sets"), current: metric === "sets" },
+                  { label: "Selected", value: summary.selected, href: href("selected"), current: metric === "selected" },
+                  { label: "Conflicts", value: summary.conflicts, href: href("conflicts"), current: metric === "conflicts", tone: summary.conflicts > 0 ? "danger" : "default" },
+                  { label: "Need correction", value: summary.corrections, href: href("corrections"), current: metric === "corrections", tone: summary.corrections > 0 ? "warning" : "default" },
+                  { label: "Result issues", value: issueTotal, href: href("results"), current: metric === "results", tone: blockingResults ? "danger" : issueTotal > 0 ? "warning" : "default" },
+                ]}
+              />
+              <p className="text-sm text-zinc-700">
+                <Link className="font-medium text-zinc-950 underline" href={href(focus)}>{consistency.consistent ? "Consistent" : "Not consistent"}</Link>
+                {consistency.consistent
+                  ? issues.some((row) => row.kind === "pending" || row.kind === "notice")
+                    ? ". The checks on this round passed. Pending fixtures and manual notices are not errors."
+                    : ". The checks on this round passed."
+                  : ". Open a counter for the records."}
+              </p>
+              {metric ? (
+                <MetricPanel
+                  comments={round.forumComments.map((comment) => ({
+                    id: comment.id,
+                    externalId: comment.externalId,
+                    authorName: comment.authorName,
+                    ingestionStatus: comment.ingestionStatus,
+                    reviewState: comment.reviewState,
+                    reviewNote: comment.reviewNote,
+                  }))}
+                  metric={metric}
+                  results={issues}
+                  scored={metricFixtures.filter((fixture) => fixture.actualHomeGoals != null && fixture.actualAwayGoals != null)}
+                  sets={setsForMetric(metricSets, metric)}
+                />
+              ) : null}
+            </>
+          );
+        })()}
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-        <Section
+        <Section compact
           description="Refresh reads the thread again. A repeated comment stays stored once. A new comment updates only the fixtures it names, and only when it was published before that kickoff. An edited comment replaces a fixture only when its edit time is before that kickoff. A change without an edit time stays in review and leaves the stored predictions."
           id="import"
           title="Prediction refresh"
@@ -316,7 +371,7 @@ export default async function RoundImportPage({
           </div>
         </Section>
 
-        <Section
+        <Section compact
           description="The download stores raw text. Parsing keeps a set you have already edited."
           id="fetch"
           title="Import"
@@ -400,7 +455,7 @@ export default async function RoundImportPage({
         </Section>
         </MutationRegion>
 
-        <Section
+        <Section compact
           description="Needs review is the default. Rose rows are parse conflicts. Amber rows still need a score, a fixture, or a swapped-club check."
           id="review"
           title="Parser review"
@@ -417,6 +472,7 @@ export default async function RoundImportPage({
             </FilterLink>
             <form className="flex items-center gap-2" method="get">
               {queue !== "review" ? <input name="view" type="hidden" value={queue} /> : null}
+              {metric ? <input name="metric" type="hidden" value={metric} /> : null}
               <input
                 aria-label="Search slips"
                 className={`${fieldClass} w-44`}
@@ -570,7 +626,7 @@ export default async function RoundImportPage({
         </Section>
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-        <Section
+        <Section compact
           description="Rename a nick, merge two people who are the same, or add a blank set when a comment failed to import."
           id="participants"
           title="Manual override"

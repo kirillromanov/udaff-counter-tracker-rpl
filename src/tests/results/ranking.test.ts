@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyResultDecision, type AlignedObservation } from "@/lib/domain/results/decide";
 import { resolveFixture } from "@/lib/domain/results/policy";
-import { STALE_AFTER_MS } from "@/lib/domain/results/ranking";
+import { STALE_AFTER_MS, sourceConfirmations } from "@/lib/domain/results/ranking";
 
 const now = new Date("2026-10-22T12:00:00Z");
 const fresh = new Date(now.getTime() - 60 * 60 * 1000);
@@ -22,6 +22,73 @@ function row(source: string, role: AlignedObservation["role"], homeGoals: number
     fetchedAt,
   };
 }
+
+describe("configured source identity", () => {
+  it("counts repeated rows and keys from one source as one confirmation", () => {
+    const repeated = sourceConfirmations([
+      row("sport-ru", "primary", 1, 0),
+      { ...row("sport-ru", "primary", 1, 0), sourceKey: "other-url" },
+    ]);
+    expect(repeated.splitSources).toEqual([]);
+    expect(repeated.representatives).toHaveLength(1);
+    const decision = resolveFixture("rodina", [row("sport-ru", "primary", 1, 0), { ...row("sport-ru", "primary", 1, 0), sourceKey: "again" }], new Set(), { now });
+    expect(decision.resolution).toBe("provisional");
+  });
+
+  it("keeps a manually corrected score when a source disagrees", () => {
+    const decision = resolveFixture("rodina", [row("sport-ru", "primary", 1, 0)], new Set(), { now });
+    expect(applyResultDecision({
+      resultState: "verified",
+      resultResolution: "verified",
+      manuallyCorrected: true,
+      actualHomeGoals: 2,
+      actualAwayGoals: 0,
+    }, decision)).toMatchObject({
+      actualHomeGoals: 2,
+      actualAwayGoals: 0,
+      resultState: "verified",
+      resultConflict: true,
+      changedGoals: false,
+    });
+  });
+
+  it("keeps a fixed score when one source disagrees and when two sources agree on a different score", () => {
+    const one = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0)], new Set(), { now });
+    const confirmed = { resultState: "verified", resultResolution: "verified", resultProvenance: "operator-confirmed", actualHomeGoals: 1, actualAwayGoals: 0, resultNote: "Fixed on the review page." };
+    expect(applyResultDecision(confirmed, one)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultConflict: true,
+      changedGoals: false,
+    });
+    const two = resolveFixture("rodina", [row("sport-ru", "primary", 2, 0), row("premierliga", "fallback", 2, 0)], new Set(), { now });
+    expect(applyResultDecision(confirmed, two)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultConflict: true,
+      changedGoals: false,
+    });
+    const locked = { ...confirmed, resultProvenance: "manual", manuallyCorrected: true };
+    expect(applyResultDecision(locked, two)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultConflict: true,
+      changedGoals: false,
+    });
+  });
+
+  it("does not replace an auto-verified score when a later agreement differs", () => {
+    const decision = resolveFixture("rodina", [row("sport-ru", "primary", 3, 0), row("premierliga", "fallback", 3, 0)], new Set(), { now });
+    expect(decision.resolution).toBe("verified");
+    expect(applyResultDecision({ resultState: "verified", resultResolution: "verified", actualHomeGoals: 1, actualAwayGoals: 0 }, decision)).toMatchObject({
+      actualHomeGoals: 1,
+      actualAwayGoals: 0,
+      resultState: "verified",
+      resultConflict: true,
+      changedGoals: false,
+    });
+  });
+});
 
 describe("result confidence ranking", () => {
   const stored = { resultState: "open", actualHomeGoals: null, actualAwayGoals: null };
@@ -71,35 +138,34 @@ describe("result confidence ranking", () => {
     });
 
     const weaker = resolveFixture("rodina", [row("premierliga", "fallback", 2, 2), row("footbolno", "verification", 1, 0)], new Set(), { now });
-    expect(weaker.resolution).toBe("provisional");
-    expect(weaker.selectedSource).toBe("premierliga");
-    expect(weaker.candidates.find((candidate) => candidate.source === "footbolno")?.standing).toBe("downgraded");
+    expect(weaker.resolution).toBe("conflict-review");
+    expect(weaker.selectedSource).toBeNull();
+    expect(weaker.candidates.find((candidate) => candidate.source === "footbolno")?.standing).toBe("flagged");
     expect(applyResultDecision(stored, weaker)).toMatchObject({
-      actualHomeGoals: 2,
-      actualAwayGoals: 2,
-      resultState: "confirmed",
-      resultResolution: "provisional",
-      resultConflict: false,
+      actualHomeGoals: null,
+      actualAwayGoals: null,
+      resultState: "conflict",
+      resultResolution: "conflict-review",
+      resultConflict: true,
+      changedGoals: false,
     });
   });
 
-  it("leaves verification-only evidence as insufficient data", () => {
+  it("verifies two configured sources even when both were previously verification-only", () => {
     const decision = resolveFixture(
       "rodina",
       [row("understat", "verification", 2, 2), row("footbolno", "verification", 2, 2)],
       new Set(),
       { now },
     );
-    expect(decision.resolution).toBe("insufficient");
-    expect(decision.outcome).toBe("none");
-    expect(decision.note).toMatch(/Insufficient data/);
-    expect(decision.candidates.every((candidate) => candidate.reason.includes("cannot accept a score alone"))).toBe(true);
-    expect(applyResultDecision({ resultState: "open", actualHomeGoals: 4, actualAwayGoals: 0 }, decision)).toMatchObject({
-      actualHomeGoals: 4,
-      actualAwayGoals: 0,
-      resultResolution: "insufficient",
-      resultConflict: false,
-      changedGoals: false,
+    expect(decision.resolution).toBe("verified");
+    expect(decision.outcome).toBe("verified");
+    expect(applyResultDecision({ resultState: "open", actualHomeGoals: null, actualAwayGoals: null }, decision)).toMatchObject({
+      actualHomeGoals: 2,
+      actualAwayGoals: 2,
+      resultState: "verified",
+      resultResolution: "verified",
+      changedGoals: true,
     });
   });
 
