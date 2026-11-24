@@ -3,9 +3,9 @@ import { MANUAL_PREDICTION_NOTE } from "@/lib/domain/import/incremental";
 import { isConflictWarning, isCorrectionWarning, setTone, toSetToneInput, type ReviewTone } from "@/lib/domain/import/review-status";
 import { isLegacyManualScore, LABEL_MANUAL_NOT_VERIFIED, LABEL_OLDER_MANUAL, scoreIsFixed } from "@/lib/domain/results/correction";
 
-export type RoundMetric = "comments" | "sets" | "selected" | "conflicts" | "corrections" | "scored" | "stored";
+export type RoundMetric = "comments" | "sets" | "selected" | "conflicts" | "corrections" | "scored" | "stored" | "results";
 
-export const ROUND_METRICS: readonly RoundMetric[] = ["comments", "sets", "selected", "conflicts", "corrections", "scored", "stored"];
+export const ROUND_METRICS: readonly RoundMetric[] = ["comments", "sets", "selected", "conflicts", "corrections", "scored", "stored", "results"];
 
 export function roundMetricOf(value: string | undefined): RoundMetric | null {
   return ROUND_METRICS.includes(value as RoundMetric) ? (value as RoundMetric) : null;
@@ -116,10 +116,132 @@ export function setsForMetric(sets: readonly MetricSet[], metric: RoundMetric | 
   if (metric === "corrections") {
     return sets.filter((set) => metricTone(set) === "correction");
   }
+  if (metric === "comments" || metric === "scored" || metric === "results") {
+    return [];
+  }
   if (metric === "sets" || metric === "stored" || metric == null) {
     return [...sets];
   }
   return [...sets];
+}
+
+/** Toggle a review counter. The same metric again clears it so the panel closes. Other query fields stay. */
+export function reviewMetricHref(path: string, current: { view?: string; q?: string; metric?: string | null }, target: RoundMetric): string {
+  const params = new URLSearchParams();
+  if (current.view && current.view !== "review") {
+    params.set("view", current.view);
+  }
+  if (current.q?.trim()) {
+    params.set("q", current.q.trim());
+  }
+  if (current.metric !== target) {
+    params.set("metric", target);
+  }
+  const suffix = params.toString();
+  return suffix ? `${path}?${suffix}` : path;
+}
+
+export type ResultIssueKind = "blocking" | "notice" | "pending";
+
+export interface ResultIssueRow {
+  id: string;
+  kind: ResultIssueKind;
+  title: string;
+  reason: string;
+  evidence: string;
+  decision: string;
+  actions: string[];
+}
+
+function scoredVerified(fixture: MetricFixture): boolean {
+  return !fixture.resultConflict && (
+    fixture.resultState === "verified"
+    || fixture.resultState === "manual"
+    || fixture.resultResolution === "verified"
+    || fixture.resultResolution === "manual"
+  );
+}
+
+/**
+ * Result diagnostics for the review counter. Pending fixtures are listed and are not issues.
+ * The predicates match roundConsistency and explainResultIssue.
+ */
+export function resultIssueRows(
+  fixtures: readonly MetricFixture[],
+  selectedCoversFixture: (fixtureId: string) => boolean,
+): ResultIssueRow[] {
+  const rows: ResultIssueRow[] = [];
+  for (const fixture of fixtures) {
+    const title = `${fixture.homeTeam} — ${fixture.awayTeam}`;
+    const issue = explainResultIssue(fixture);
+    if (issue) {
+      rows.push({
+        id: fixture.id,
+        kind: fixture.resultConflict && !scoreIsFixed(fixture) ? "blocking" : "notice",
+        title: issue.title,
+        reason: issue.reason,
+        evidence: issue.evidence,
+        decision: issue.decision,
+        actions: issue.actions,
+      });
+    }
+    const scored = fixture.actualHomeGoals != null && fixture.actualAwayGoals != null;
+    if (!scored) {
+      if (!issue) {
+        rows.push({
+          id: `${fixture.id}:pending`,
+          kind: "pending",
+          title,
+          reason: "Pending",
+          evidence: "No full-time score is stored yet.",
+          decision: "Wait for the match. A missing score on a fixture that has not finished is not an error.",
+          actions: ["No action is required until the fixture is finished"],
+        });
+      }
+      continue;
+    }
+    if (!selectedCoversFixture(fixture.id)) {
+      rows.push({
+        id: `${fixture.id}:coverage`,
+        kind: "blocking",
+        title,
+        reason: "No selected prediction",
+        evidence: "This scored fixture has no prediction on a selected set.",
+        decision: "Select a slip that covers this fixture, or leave the score unused.",
+        actions: ["Use this set, if a stored slip should score"],
+      });
+    }
+    if (!scoreIsFixed(fixture) && !scoredVerified(fixture) && !(fixture.resultConflict && !scoreIsFixed(fixture))) {
+      rows.push({
+        id: `${fixture.id}:unverified`,
+        kind: "blocking",
+        title,
+        reason: "Not verified",
+        evidence: `Stored score ${fixture.actualHomeGoals}-${fixture.actualAwayGoals}. One source, or a score that is not verified, does not finish this check.`,
+        decision: "Wait for a second agreeing source, or turn Fix score on and save the full-time score.",
+        actions: ["Use the Fix score toggle under the result refresh on this page"],
+      });
+    }
+  }
+  return rows;
+}
+
+/** Issues a person can act on. Pending fixtures stay out of this count. */
+export function resultIssueCount(rows: readonly ResultIssueRow[]): number {
+  return rows.filter((row) => row.kind !== "pending").length;
+}
+
+export function primaryConsistencyMetric(counters: RoundCounters, rows: readonly ResultIssueRow[]): RoundMetric {
+  if (counters.conflicts > 0) {
+    return "conflicts";
+  }
+  if (counters.corrections > 0) {
+    return "corrections";
+  }
+  if (rows.some((row) => row.kind === "blocking" || row.kind === "notice")) {
+    return "results";
+  }
+  return "results";
 }
 
 export interface IssueExplanation {

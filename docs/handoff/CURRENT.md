@@ -274,6 +274,18 @@ New result decisions count configured source ids. One finished score is provisio
 
 Fix score lives on Parser review, under the result refresh, in one compact block. A wide screen shows two columns. A narrow screen shows one. Each fixture has a small switch and two score fields. Source details open on demand. The switch does not save. Save actual results confirms every score change, including a switch turned off, checks every version, and recalculates the round once when a score number changes. A stale fixture rejects the whole save. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and the exact red text `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
 
+Parser review and the overview use tighter section spacing. The refresh status is one line. Details stays closed until opened and does not request a source. A due time is not shown as a running check. `plan.active` is the only source for "Automatic checks stopped." The worker flag is not inferred. Counters open one panel under the grid. The same counter closes it. `metric` stays in the address, including back and forward. Parse conflicts stay on Conflicts. Slips that need correction stay on Need correction. Result issues counts unfixed result-source conflicts, scored fixtures with no selected prediction, and scored fixtures that are not verified. Fixed scores that sources do not confirm, and older manual scores, are notices in that panel and are not blocking. A fixture with no full-time score is pending in that panel and is not an error. The parser queue is no longer filtered by the selected counter.
+
+## Checks for the compact review presentation
+
+Run on 2026-11-24 in the result-verification worktree. The serving checkout, the prediction worker, port 3000, and the live database were not used.
+
+- `npm test`: 60 files passed, 1 skipped, 381 tests passed, 1 skipped. The private snapshot test stayed skipped.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed.
+- `npm run build`: passed on Next.js 16.4.5 against a disposable database that was removed after the build.
+- The isolated review page at 1440 pixels had no horizontal overflow. The fixture block stayed two columns and 224 pixels tall, with eight switches. Refresh details and the counter panel stayed closed until opened. At 390 pixels the document scroll width stayed 390, the fixtures were one column, and both score fields of a row stayed on one line. Turning a switch on, and turning a saved switch off, left the stored scores and the audit count unchanged. Screenshots of this pass were not captured because the screenshot call timed out.
+
 Round 16, not performed:
 
 - Do not enable result processing until that round is chosen.

@@ -21,8 +21,8 @@ export function buttonClass(variant: "primary" | "secondary" | "ghost" = "second
 export const fieldClass =
   "rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-500";
 
-export function PageBody({ children }: { children: ReactNode }) {
-  return <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">{children}</div>;
+export function PageBody({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
+  return <div className={cx("mx-auto max-w-6xl px-6", compact ? "space-y-3 py-4" : "space-y-6 py-6")}>{children}</div>;
 }
 
 export function PageHeader({
@@ -67,30 +67,34 @@ export function Section({
   description,
   action,
   children,
+  compact = false,
 }: {
   id?: string;
   title: string;
   description?: string;
   action?: ReactNode;
   children: ReactNode;
+  compact?: boolean;
 }) {
   return (
     <section className="rounded-xl border border-zinc-200 bg-white shadow-sm shadow-zinc-200/50" id={id}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+      <div className={cx("flex flex-wrap items-start justify-between gap-2 border-b border-zinc-100", compact ? "px-3 py-2" : "px-5 py-4")}>
         <div>
           <h2 className="text-sm font-semibold tracking-tight text-zinc-950">{title}</h2>
           {description ? <p className="mt-1 max-w-2xl text-sm text-zinc-500">{description}</p> : null}
         </div>
         {action}
       </div>
-      <div className="px-5 py-4">{children}</div>
+      <div className={compact ? "px-3 py-2" : "px-5 py-4"}>{children}</div>
     </section>
   );
 }
 
 export function KpiGrid({
   items,
+  compact = false,
 }: {
+  compact?: boolean;
   items: {
     label: string;
     value: string | number;
@@ -98,17 +102,19 @@ export function KpiGrid({
     href?: string;
     hintHref?: string;
     tone?: "default" | "warning" | "danger";
+    current?: boolean;
   }[];
 }) {
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <dl className={cx("grid grid-cols-2 sm:grid-cols-3", compact ? "gap-2 lg:grid-cols-6" : "gap-3 lg:grid-cols-5")}>
       {items.map((item) => {
         const body = (
           <>
             <dt className="text-xs font-medium tracking-wide text-zinc-500 uppercase">{item.label}</dt>
             <dd
               className={cx(
-                "mt-1 text-2xl font-semibold tabular-nums tracking-tight",
+                "mt-1 font-semibold tabular-nums tracking-tight",
+                compact ? "text-xl" : "text-2xl",
                 item.tone === "danger" && "text-rose-700",
                 item.tone === "warning" && "text-amber-800",
               )}
@@ -118,9 +124,15 @@ export function KpiGrid({
           </>
         );
         return (
-          <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm shadow-zinc-200/40" key={item.label}>
+          <div className={cx("rounded-xl border bg-white shadow-sm shadow-zinc-200/40", compact ? "px-3 py-2" : "px-4 py-3", item.current ? "border-zinc-900" : "border-zinc-200")} key={item.label}>
             {item.href ? (
-              <Link className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900" href={item.href}>
+              <Link
+                aria-controls={item.current ? "metric-panel" : undefined}
+                aria-current={item.current ? "true" : undefined}
+                aria-expanded={item.current ? true : false}
+                className="block rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                href={item.href}
+              >
                 {body}
               </Link>
             ) : (

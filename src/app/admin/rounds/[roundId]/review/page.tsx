@@ -6,7 +6,8 @@ import {
   readWarnings,
   predictionTone,
 } from "@/lib/domain/import/review-status";
-import { explainResultIssue, explainSetIssue, metricTone, roundConsistency, roundCounters, roundMetricOf, setsForMetric, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
+import { metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, reviewMetricHref, roundConsistency, roundCounters, roundMetricOf, setsForMetric, type MetricFixture, type MetricSet, type RoundMetric } from "@/lib/domain/review/round-metrics";
+import { MetricPanel } from "./metric-panel";
 import { loadIdentityCatalog } from "@/lib/domain/participants/registry";
 import { effectiveAuthorResolution, resolveAuthor } from "@/lib/domain/participants/resolve-author";
 import {
@@ -182,16 +183,7 @@ export default async function RoundImportPage({
       tone,
     });
   }
-  const metricIds = new Set((metric && metric !== "comments" && metric !== "scored" ? setsForMetric(metricSets, metric) : metricSets).map((set) => set.id));
-  const visibleSets = round.predictionSets.filter((set) => {
-    if (metric === "comments" || metric === "scored") {
-      return false;
-    }
-    if (metric && !metricIds.has(set.id)) {
-      return false;
-    }
-    return metric ? true : setInQueue(factsById.get(set.id)!, queue, search);
-  });
+  const visibleSets = round.predictionSets.filter((set) => setInQueue(factsById.get(set.id)!, queue, search));
   const visibleByParticipant = new Map<string, typeof visibleSets>();
   for (const set of visibleSets) {
     const group = visibleByParticipant.get(set.participantId) ?? [];
@@ -223,6 +215,9 @@ export default async function RoundImportPage({
     }
     if (search.trim()) {
       params.set("q", search.trim());
+    }
+    if (metric) {
+      params.set("metric", metric);
     }
     const suffix = params.toString();
     return `/admin/rounds/${round.id}/review${suffix ? `?${suffix}` : ""}`;
@@ -267,7 +262,7 @@ export default async function RoundImportPage({
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title="Parser review"
       />
-      <PageBody>
+      <PageBody compact>
         <SeasonLayers current="import" reviewHref={`/admin/rounds/${round.id}/review`} seasonId={round.seasonId} />
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         <RoundLockPanel roundId={round.id} />
@@ -300,67 +295,56 @@ export default async function RoundImportPage({
             {round.importNotes}
           </Notice>
         ) : null}
-        {summary.conflicts > 0 ? (
-          <Notice tone="warning">
-            {summary.conflicts} {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Duplicate lines and
-            ambiguous fixtures are marked in rose.
-          </Notice>
-        ) : null}
-        {summary.corrections > 0 ? (
-          <Notice tone="warning">
-            {summary.corrections} {summary.corrections === 1 ? "set needs" : "sets need"} a manual correction. Missing
-            scores, swapped clubs, and unmatched lines are marked in amber.
-          </Notice>
-        ) : null}
-
-        <KpiGrid
-          items={[
-            { label: "Comments", value: summary.comments, href: `?metric=comments` },
-            { label: "Sets", value: summary.sets, href: `?metric=sets` },
-            { label: "Selected", value: summary.selected, href: `?metric=selected` },
-            { label: "Conflicts", value: summary.conflicts, href: `?metric=conflicts`, tone: summary.conflicts > 0 ? "danger" : "default" },
-            { label: "Need correction", value: summary.corrections, href: `?metric=corrections`, tone: summary.corrections > 0 ? "warning" : "default" },
-          ]}
-        />
-        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="consistency">
-          <h2 className="font-semibold text-zinc-950">{consistency.consistent ? "Consistent" : "Not consistent"}</h2>
-          {consistency.consistent ? <p className="mt-1 text-zinc-600">The checks on this round passed.</p> : null}
-          {consistency.blocking.length > 0 ? (
-            <ul className="mt-2 list-disc pl-5">
-              {consistency.blocking.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          ) : null}
-          {consistency.notes.length > 0 ? (
-            <ul className="mt-2 list-disc pl-5 text-zinc-600">
-              {consistency.notes.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          ) : null}
-        </section>
-        {metricFixtures.some((fixture) => explainResultIssue(fixture)) ? (
-          <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="result-issues">
-            <h2 className="font-semibold text-zinc-950">Result issues</h2>
-            <ul className="mt-2 space-y-3">
-              {metricFixtures.flatMap((fixture) => {
-                const issue = explainResultIssue(fixture);
-                if (!issue) {
-                  return [];
-                }
-                return [
-                  <li className="rounded-md border border-zinc-200 p-3" key={fixture.id}>
-                    <p className="font-medium">{issue.title}</p>
-                    <p className="mt-1">{issue.reason}</p>
-                    <p className="mt-1 text-zinc-700">{issue.evidence}</p>
-                    <p className="mt-1 text-zinc-700">Decide: {issue.decision}</p>
-                    <p className="mt-1 text-zinc-600">Allowed: {issue.actions.join("; ")}.</p>
-                  </li>,
-                ];
-              })}
-            </ul>
-          </section>
-        ) : null}
+        {(() => {
+          const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId));
+          const issueTotal = resultIssueCount(issues);
+          const blockingResults = issues.some((row) => row.kind === "blocking");
+          const metricQuery = { view: queue === "review" ? undefined : queue, q: search, metric };
+          const href = (target: RoundMetric) => reviewMetricHref(`/admin/rounds/${round.id}/review`, metricQuery, target);
+          const focus = primaryConsistencyMetric(summary, issues);
+          return (
+            <>
+              <KpiGrid
+                compact
+                items={[
+                  { label: "Comments", value: summary.comments, href: href("comments"), current: metric === "comments" },
+                  { label: "Sets", value: summary.sets, href: href("sets"), current: metric === "sets" },
+                  { label: "Selected", value: summary.selected, href: href("selected"), current: metric === "selected" },
+                  { label: "Conflicts", value: summary.conflicts, href: href("conflicts"), current: metric === "conflicts", tone: summary.conflicts > 0 ? "danger" : "default" },
+                  { label: "Need correction", value: summary.corrections, href: href("corrections"), current: metric === "corrections", tone: summary.corrections > 0 ? "warning" : "default" },
+                  { label: "Result issues", value: issueTotal, href: href("results"), current: metric === "results", tone: blockingResults ? "danger" : issueTotal > 0 ? "warning" : "default" },
+                ]}
+              />
+              <p className="text-sm text-zinc-700">
+                <Link className="font-medium text-zinc-950 underline" href={href(focus)}>{consistency.consistent ? "Consistent" : "Not consistent"}</Link>
+                {consistency.consistent
+                  ? issues.some((row) => row.kind === "pending" || row.kind === "notice")
+                    ? ". The checks on this round passed. Pending fixtures and manual notices are not errors."
+                    : ". The checks on this round passed."
+                  : ". Open a counter for the records."}
+              </p>
+              {metric ? (
+                <MetricPanel
+                  comments={round.forumComments.map((comment) => ({
+                    id: comment.id,
+                    externalId: comment.externalId,
+                    authorName: comment.authorName,
+                    ingestionStatus: comment.ingestionStatus,
+                    reviewState: comment.reviewState,
+                    reviewNote: comment.reviewNote,
+                  }))}
+                  metric={metric}
+                  results={issues}
+                  scored={metricFixtures.filter((fixture) => fixture.actualHomeGoals != null && fixture.actualAwayGoals != null)}
+                  sets={setsForMetric(metricSets, metric)}
+                />
+              ) : null}
+            </>
+          );
+        })()}
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-        <Section
+        <Section compact
           description="Refresh reads the thread again. A repeated comment stays stored once. A new comment updates only the fixtures it names, and only when it was published before that kickoff. An edited comment replaces a fixture only when its edit time is before that kickoff. A change without an edit time stays in review and leaves the stored predictions."
           id="import"
           title="Prediction refresh"
@@ -387,7 +371,7 @@ export default async function RoundImportPage({
           </div>
         </Section>
 
-        <Section
+        <Section compact
           description="The download stores raw text. Parsing keeps a set you have already edited."
           id="fetch"
           title="Import"
@@ -471,7 +455,7 @@ export default async function RoundImportPage({
         </Section>
         </MutationRegion>
 
-        <Section
+        <Section compact
           description="Needs review is the default. Rose rows are parse conflicts. Amber rows still need a score, a fixture, or a swapped-club check."
           id="review"
           title="Parser review"
@@ -488,6 +472,7 @@ export default async function RoundImportPage({
             </FilterLink>
             <form className="flex items-center gap-2" method="get">
               {queue !== "review" ? <input name="view" type="hidden" value={queue} /> : null}
+              {metric ? <input name="metric" type="hidden" value={metric} /> : null}
               <input
                 aria-label="Search slips"
                 className={`${fieldClass} w-44`}
@@ -500,30 +485,9 @@ export default async function RoundImportPage({
               </button>
             </form>
           </div>
-          {metric === "comments" ? (
-            <ul className="mb-4 space-y-2">
-              {round.forumComments.map((comment) => (
-                <li className="rounded-md border border-zinc-200 px-3 py-2 text-sm" key={comment.id}>
-                  <p className="font-medium">{comment.authorName}{comment.externalId ? ` · comment ${comment.externalId}` : ""}</p>
-                  <p className="text-xs text-zinc-600">Status {comment.ingestionStatus}, review {comment.reviewState}.{comment.reviewNote ? ` ${comment.reviewNote}` : " No review note is stored."}</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {metric === "scored" ? (
-            <ul className="mb-4 space-y-2">
-              {metricFixtures.filter((fixture) => fixture.actualHomeGoals != null && fixture.actualAwayGoals != null).map((fixture) => (
-                <li className="rounded-md border border-zinc-200 px-3 py-2 text-sm" key={fixture.id}>
-                  <p className="font-medium">{fixture.homeTeam} — {fixture.awayTeam}</p>
-                  <p className="text-xs text-zinc-600">Stored score {fixture.actualHomeGoals}-{fixture.actualAwayGoals}. Status {fixture.resultState || "none"}.</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {metric ? <p className="mb-3 text-sm text-zinc-600">Showing {metric === "comments" ? summary.comments : metric === "scored" ? summary.scored : visibleSets.length} records.</p> : null}
-          {participants.length === 0 && metric !== "comments" && metric !== "scored" ? (
+          {participants.length === 0 ? (
             <EmptyState detail="Parse the stored comments, or add a prediction set by hand below." title="No prediction sets yet" />
-          ) : visibleParticipants.length === 0 && metric !== "comments" && metric !== "scored" ? (
+          ) : visibleParticipants.length === 0 ? (
             <EmptyState
               detail={queue === "review" ? "Open Accepted to see slips that can be scored later." : "Try another name or queue."}
               title="Nothing in this queue"
@@ -568,20 +532,6 @@ export default async function RoundImportPage({
                               </SubmitButton>
                             </form>
                           </div>
-                          {(() => {
-                            const issue = explainSetIssue(metricSets.find((item) => item.id === set.id)!);
-                            if (!issue) {
-                              return null;
-                            }
-                            return (
-                              <div className="mt-3 rounded-md border border-zinc-200 bg-white p-3 text-sm">
-                                <p className="font-medium">{issue.reason}</p>
-                                <p className="mt-1 text-zinc-700">{issue.evidence}</p>
-                                <p className="mt-1 text-zinc-700">Decide: {issue.decision}</p>
-                                <p className="mt-1 text-zinc-600">Allowed: {issue.actions.join("; ")}.</p>
-                              </div>
-                            );
-                          })()}
                           <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-white/80 p-3 font-sans text-sm whitespace-pre-wrap text-zinc-800">
                             {set.rawComment || "(empty)"}
                           </pre>
@@ -676,7 +626,7 @@ export default async function RoundImportPage({
         </Section>
 
         <MutationRegion closed={isRoundClosed(round.closedAt)}>
-        <Section
+        <Section compact
           description="Rename a nick, merge two people who are the same, or add a blank set when a comment failed to import."
           id="participants"
           title="Manual override"

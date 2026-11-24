@@ -151,7 +151,7 @@ export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }
   const savedView = calculationView(round) === "saved-calculation";
 
   return (
-    <Section
+    <Section compact
       title="Чистовая таблица / Прогнозы и расчёт"
       description={savedView
         ? "Saved calculation. Each cell and its points come from the stored breakdown. A current candidate is labeled separately and does not replace a saved score or a saved miss."

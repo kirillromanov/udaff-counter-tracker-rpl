@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { beginRoundRefresh, finishRoundRefresh } from "@/lib/domain/results/poll-run";
-import { describeRefreshQuery, hasUnsavedFieldEdits } from "@/lib/domain/results/refresh-status";
+import { describeRefreshQuery, hasUnsavedFieldEdits, refreshSummaryLine } from "@/lib/domain/results/refresh-status";
 
 describe("shared match-result refresh", () => {
   it("renders the same refresh control in the clean matrix and the fixtures results section", () => {
@@ -14,6 +14,25 @@ describe("shared match-result refresh", () => {
     expect(fixtures).toContain('returnTo="fixtures"');
     expect(button).toContain("refreshMatchResultsAction");
     expect(button).toContain("Обновить результаты матчей");
+    const bar = readFileSync("src/app/admin/rounds/[roundId]/refresh-status-bar.tsx", "utf8");
+    const refresh = readFileSync("src/app/admin/rounds/[roundId]/match-results-refresh.tsx", "utf8");
+    expect(bar).toContain('type="button"');
+    expect(bar).toContain("aria-expanded");
+    expect(bar).not.toContain("fetch(");
+    expect(refresh).toContain("RefreshStatusBar");
+    expect(refresh).toContain("Last successful source refresh");
+    expect(refresh).toContain("plan.reason");
+  });
+
+  it("keeps the refresh summary to the latest real state", () => {
+    expect(refreshSummaryLine({ query: {}, lastAttempt: null, automaticChecksActive: true, health: null }).text).toBe("Never checked.");
+    expect(refreshSummaryLine({ query: {}, lastAttempt: null, automaticChecksActive: false, health: null }).text).toMatch(/Automatic checks stopped/);
+    expect(refreshSummaryLine({ query: { busy: "1" }, lastAttempt: "2026-11-20 21:00 UTC+3", automaticChecksActive: false, health: null }).text).toBe("Checking now.");
+    expect(refreshSummaryLine({ query: {}, lastAttempt: "2026-11-20 21:00 UTC+3", automaticChecksActive: true, health: "sport-ru ok" }).text).toBe("Last attempt at 2026-11-20 21:00 UTC+3: completed.");
+    expect(refreshSummaryLine({ query: { refreshed: "1", failed: "4", sourceOk: "0" }, lastAttempt: null, automaticChecksActive: true, health: null })).toMatchObject({ tone: "error" });
+    expect(refreshSummaryLine({ query: { refreshed: "1", failed: "1", sourceOk: "2" }, lastAttempt: null, automaticChecksActive: true, health: null }).text).toMatch(/completed with source errors/);
+    expect(refreshSummaryLine({ query: {}, lastAttempt: "2026-11-20 21:00 UTC+3", automaticChecksActive: true, health: "sport-ru failed: timeout" }).text).toMatch(/failed/);
+    expect(refreshSummaryLine({ query: {}, lastAttempt: "2026-11-20 21:00 UTC+3", automaticChecksActive: true, health: null }).text).not.toMatch(/checking now/i);
   });
 
   it("keeps a failed source check distinct from an unchanged successful check", () => {

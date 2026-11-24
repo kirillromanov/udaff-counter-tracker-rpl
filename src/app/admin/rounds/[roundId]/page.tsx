@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { metricTone, roundConsistency, roundCounters, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
+import { metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, roundConsistency, roundCounters, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
 import { confidenceLabel } from "@/lib/domain/scoring/live-score";
 import { latestSeasonSnapshot } from "@/lib/domain/standings/build-season-standings";
 import { fixtureMode } from "@/lib/domain/standings/load-live";
@@ -132,7 +132,7 @@ export default async function RoundPage({
         nav={<RoundNav roundId={round.id} seasonId={round.seasonId} />}
         title={`${round.number}. ${round.name ?? "Round"}`}
       />
-      <PageBody>
+      <PageBody compact>
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.started ? (
           <Notice tone="success">
@@ -159,55 +159,38 @@ export default async function RoundPage({
             {round.importNotes ? ` ${round.importNotes}` : ""}
           </Notice>
         ) : null}
-        {summary.conflicts > 0 ? (
-          <Notice tone="warning">
-            {summary.conflicts} prediction {summary.conflicts === 1 ? "set has" : "sets have"} a parse conflict. Open review
-            and decide which line counts.
-          </Notice>
-        ) : null}
-        {summary.corrections > 0 ? (
-          <Notice tone="warning">
-            {summary.corrections} {summary.corrections === 1 ? "set needs" : "sets need"} a manual correction before scoring.
-          </Notice>
-        ) : null}
-
         <section id="overview">
-          <KpiGrid
-            items={[
-              { label: "Fixtures scored", value: `${summary.scored}/${summary.fixtures}`, href: `${reviewBase}?metric=scored` },
-              { label: "Comments", value: summary.comments, href: `${reviewBase}?metric=comments` },
-              { label: "Selected sets", value: summary.selected, hint: `${summary.stored} stored`, href: `${reviewBase}?metric=selected`, hintHref: `${reviewBase}?metric=stored` },
-              {
-                label: "Parse conflicts",
-                value: summary.conflicts,
-                href: `${reviewBase}?metric=conflicts`,
-                tone: summary.conflicts > 0 ? "danger" : "default",
-              },
-              {
-                label: "Need correction",
-                value: summary.corrections,
-                href: `${reviewBase}?metric=corrections`,
-                tone: summary.corrections > 0 ? "warning" : "default",
-              },
-            ]}
-          />
-        </section>
-        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm" id="consistency">
-          <h2 className="font-semibold text-zinc-950">{consistency.consistent ? "Consistent" : "Not consistent"}</h2>
-          {consistency.consistent ? <p className="mt-1 text-zinc-600">The checks on this round passed.</p> : null}
-          {consistency.blocking.length > 0 ? (
-            <ul className="mt-2 list-disc pl-5 text-zinc-800">
-              {consistency.blocking.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          ) : null}
-          {consistency.notes.length > 0 ? (
-            <ul className="mt-2 list-disc pl-5 text-zinc-600">
-              {consistency.notes.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          ) : null}
+          {(() => {
+            const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId));
+            const issueTotal = resultIssueCount(issues);
+            const focus = primaryConsistencyMetric(summary, issues);
+            return (
+              <>
+                <KpiGrid
+                  compact
+                  items={[
+                    { label: "Fixtures scored", value: `${summary.scored}/${summary.fixtures}`, href: `${reviewBase}?metric=scored` },
+                    { label: "Comments", value: summary.comments, href: `${reviewBase}?metric=comments` },
+                    { label: "Selected sets", value: summary.selected, hint: `${summary.stored} stored`, href: `${reviewBase}?metric=selected`, hintHref: `${reviewBase}?metric=stored` },
+                    { label: "Parse conflicts", value: summary.conflicts, href: `${reviewBase}?metric=conflicts`, tone: summary.conflicts > 0 ? "danger" : "default" },
+                    { label: "Need correction", value: summary.corrections, href: `${reviewBase}?metric=corrections`, tone: summary.corrections > 0 ? "warning" : "default" },
+                    { label: "Result issues", value: issueTotal, href: `${reviewBase}?metric=results`, tone: issues.some((row) => row.kind === "blocking") ? "danger" : issueTotal > 0 ? "warning" : "default" },
+                  ]}
+                />
+                <p className="mt-2 text-sm text-zinc-700">
+                  <Link className="font-medium text-zinc-950 underline" href={`${reviewBase}?metric=${focus}`}>{consistency.consistent ? "Consistent" : "Not consistent"}</Link>
+                  {consistency.consistent
+                    ? issues.some((row) => row.kind === "pending" || row.kind === "notice")
+                      ? ". The checks on this round passed. Pending fixtures and manual notices are not errors."
+                      : ". The checks on this round passed."
+                    : ". Open the counter on review for the records."}
+                </p>
+              </>
+            );
+          })()}
         </section>
 
-        <Section
+        <Section compact
           action={
             <Link className={buttonClass("secondary")} href={`/admin/rounds/${round.id}/review`}>
               Open review
@@ -241,7 +224,7 @@ export default async function RoundPage({
           ) : null}
         </Section>
 
-        <Section
+        <Section compact
           description="People with at least one prediction set on this round."
           id="participants"
           title="Participants"
@@ -277,7 +260,7 @@ export default async function RoundPage({
           )}
         </Section>
 
-        <Section
+        <Section compact
           action={
             <Link className={buttonClass("secondary")} href={`/admin/rounds/${round.id}/fixtures`}>
               Edit fixtures
@@ -344,7 +327,7 @@ export default async function RoundPage({
           )}
         </Section>
 
-        <Section
+        <Section compact
           action={
             <Link className={buttonClass("secondary")} href={`/admin/seasons/${round.seasonId}/standings`}>
               Full season table

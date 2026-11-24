@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EDIT_TIME_UNKNOWN_NOTE } from "@/lib/domain/import/fixture-deadline";
 import { displayedResultLabel } from "@/lib/domain/results/correction";
-import { explainResultIssue, explainSetIssue, metricTone, roundConsistency, roundCounters, setsForMetric, type MetricSet } from "@/lib/domain/review/round-metrics";
+import { explainResultIssue, explainSetIssue, metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, reviewMetricHref, roundConsistency, roundCounters, setsForMetric, type MetricFixture, type MetricSet } from "@/lib/domain/review/round-metrics";
 
 function set(overrides: Partial<MetricSet> = {}): MetricSet {
   return {
@@ -66,5 +67,57 @@ describe("shared round counters", () => {
     expect(report.blocking.join(" ")).not.toContain("result conflict");
     expect(report.notes.join(" ")).toContain("manual corrected, not source verified");
     expect(roundCounters({ comments: [], sets: [set()], fixtures: [red] }).corrections).toBe(0);
+  });
+});
+
+function fixture(overrides: Partial<MetricFixture> = {}): MetricFixture {
+  return {
+    id: "m",
+    homeTeam: "Home",
+    awayTeam: "Away",
+    actualHomeGoals: null,
+    actualAwayGoals: null,
+    resultState: "",
+    resultResolution: "",
+    resultConflict: false,
+    manuallyCorrected: false,
+    resultProvenance: "",
+    resultNote: null,
+    ...overrides,
+  };
+}
+
+describe("review presentation counters", () => {
+  it("keeps result conflicts out of the parse-conflict counter and pending out of the error count", () => {
+    const conflict = fixture({ id: "conflict", resultConflict: true, resultNote: "sport-ru 1-0; premierliga 2-0" });
+    const pending = fixture({ id: "later" });
+    const unverified = fixture({ id: "provisional", actualHomeGoals: 1, actualAwayGoals: 0, resultState: "provisional", resultResolution: "provisional" });
+    const counters = roundCounters({ comments: [], sets: [], fixtures: [conflict, pending, unverified] });
+    expect(counters.conflicts).toBe(0);
+    const rows = resultIssueRows([conflict, pending, unverified], () => true);
+    expect(rows.find((row) => row.id === "conflict")?.kind).toBe("blocking");
+    expect(rows.find((row) => row.id === "later:pending")?.kind).toBe("pending");
+    expect(rows.find((row) => row.id === "provisional:unverified")?.kind).toBe("blocking");
+    expect(resultIssueCount(rows)).toBe(2);
+    expect(primaryConsistencyMetric(counters, rows)).toBe("results");
+  });
+
+  it("toggles the selected counter in the shareable review URL", () => {
+    const path = "/admin/rounds/round/review";
+    expect(reviewMetricHref(path, { metric: null }, "conflicts")).toBe(`${path}?metric=conflicts`);
+    expect(reviewMetricHref(path, { metric: "conflicts", view: "accepted", q: "ada" }, "conflicts")).toBe(`${path}?view=accepted&q=ada`);
+    expect(reviewMetricHref(path, { metric: "conflicts" }, "results")).toBe(`${path}?metric=results`);
+  });
+
+  it("keeps the review page from showing the old expanded warning blocks", () => {
+    const page = readFileSync("src/app/admin/rounds/[roundId]/review/page.tsx", "utf8");
+    const overview = readFileSync("src/app/admin/rounds/[roundId]/page.tsx", "utf8");
+    const score = readFileSync("src/app/admin/rounds/[roundId]/review/score-lock.tsx", "utf8");
+    expect(page).not.toContain("sets have a parse conflict");
+    expect(page).not.toContain('id="result-issues"');
+    expect(page).toContain("MetricPanel");
+    expect(overview).not.toContain("prediction set has");
+    expect(score).not.toContain("requestSubmit");
+    expect(score).toContain("Save actual results");
   });
 });
