@@ -1,10 +1,12 @@
 import { planPredictionRefresh, selectDuePredictionRoundIds } from "@/lib/domain/import/incremental";
+import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { CHECK_EXHAUSTED_TEXT, planRoundPoll, pollIntervals, selectDueRoundIds, type PollFixture, type PollIntervals } from "@/lib/domain/results/poll";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 
 export interface WorkerRound {
   id: string;
   number: number;
+  seasonSlug: string;
   standingRole: string;
   forumUrl: string | null;
   nextPollAt: Date | null;
@@ -83,7 +85,13 @@ function resultLine(round: WorkerRound, now: Date, intervals: PollIntervals, res
   const due = selectDueRoundIds([round], now, intervals).includes(round.id);
   const plan = planRoundPoll(round.matches, now, intervals);
   if (due) {
-    return line(round, "result-check", true, resultsEnabled ? "run" : "skip", resultsEnabled ? "due" : "results-disabled", plan.nextPollAt);
+    if (!resultsEnabled) {
+      return line(round, "result-check", true, "skip", "results-disabled", plan.nextPollAt);
+    }
+    if (!resultVerificationApplies(round)) {
+      return line(round, "result-check", false, "skip", "outside-result-scope", plan.nextPollAt);
+    }
+    return line(round, "result-check", true, "run", "due", plan.nextPollAt);
   }
   return line(round, "result-check", false, "skip", inactiveReason(round, plan.active, plan.reason, plan.nextPollAt, null, now), plan.nextPollAt);
 }

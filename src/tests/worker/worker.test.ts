@@ -7,6 +7,7 @@ import { acquireClaim } from "@/lib/domain/worker/claims";
 import { readWorkerConfig, workerStartupFailure } from "@/lib/domain/worker/config";
 import { runWorkerCycle, runWorkerLoop, workerReportIsQuiet, type CycleDeps } from "@/lib/domain/worker/cycle";
 import { emitWorkerLine, formatWorkerLine } from "@/lib/domain/worker/log";
+import { RESULT_VERIFICATION_SEASON_SLUG } from "@/lib/domain/results/eligibility";
 import { planWorker, type WorkerRound } from "@/lib/domain/worker/plan";
 import { nextPredictionFetchAtAfterAttempt } from "@/lib/domain/import/prediction-schedule";
 import { RECHECK_MS, workerSleepMs } from "@/lib/domain/worker/sleep";
@@ -37,6 +38,7 @@ function round(overrides: Partial<WorkerRound> = {}): WorkerRound {
   return {
     id: "round-15",
     number: 15,
+    seasonSlug: "other-season",
     standingRole: "operational",
     forumUrl: "https://example.test/round",
     nextPollAt: null,
@@ -113,6 +115,10 @@ describe("worker eligibility", () => {
     const enabledResults = planWorker(
       [
         round(),
+        round({ id: "official-15", number: 15, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG }),
+        round({ id: "official-16", number: 16, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG }),
+        round({ id: "official-17", number: 17, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG }),
+        round({ id: "other-16", number: 16, seasonSlug: "other-season" }),
         round({ id: "closed", number: 14, closedAt: now }),
         round({ id: "archived", number: 13, standingRole: "archived", productionStartedAt: null }),
       ],
@@ -122,7 +128,14 @@ describe("worker eligibility", () => {
     );
     const job = (id: string, name: "prediction-refresh" | "result-check") =>
       enabledResults.find((item) => item.roundId === id && item.job === name);
-    expect(job("round-15", "result-check")).toMatchObject({ disposition: "run", reason: "due" });
+    expect(job("round-15", "result-check")).toMatchObject({ disposition: "skip", reason: "outside-result-scope" });
+    expect(job("round-15", "prediction-refresh")?.disposition).toBe("run");
+    expect(job("official-15", "result-check")).toMatchObject({ disposition: "skip", reason: "outside-result-scope" });
+    expect(job("official-15", "prediction-refresh")?.disposition).toBe("run");
+    expect(job("official-16", "result-check")).toMatchObject({ disposition: "run", reason: "due" });
+    expect(job("official-17", "result-check")).toMatchObject({ disposition: "run", reason: "due" });
+    expect(job("other-16", "result-check")).toMatchObject({ disposition: "skip", reason: "outside-result-scope" });
+    expect(job("other-16", "prediction-refresh")?.disposition).toBe("run");
     expect(job("closed", "result-check")).toMatchObject({ disposition: "skip", reason: "closed" });
     expect(job("archived", "result-check")?.reason).toBe("archived");
     expect(job("round-15", "prediction-refresh")?.nextAt).not.toBe(job("round-15", "result-check")?.nextAt);
@@ -218,13 +231,38 @@ describe("worker operating modes", () => {
     const polled: string[] = [];
     const report = await runWorkerCycle(readWorkerConfig({ ...enabled, WORKER_RESULTS_ENABLED: "1" }, "once"), deps(async () => {
       throw new Error("prediction");
-    }, async () => [round({ nextPredictionFetchAt: new Date("2026-11-21T00:00:00.000Z") })], async (roundId) => {
+    }, async () => [round({
+      id: "round-16",
+      number: 16,
+      seasonSlug: RESULT_VERIFICATION_SEASON_SLUG,
+      nextPredictionFetchAt: new Date("2026-11-21T00:00:00.000Z"),
+    })], async (roundId) => {
       polled.push(roundId);
       return { ...idle, nextAt: new Date(now.getTime() + 5 * 60_000).toISOString() };
     }));
-    expect(polled).toEqual(["round-15"]);
+    expect(polled).toEqual(["round-16"]);
     expect(report.processed).toBe(1);
     expect(report.lines.find((item) => item.job === "prediction-refresh")?.reason).toBe("not-due");
+  });
+
+  it("does not poll round 15 of this season or round 16 of another season", async () => {
+    const polled: string[] = [];
+    const seen: string[] = [];
+    const report = await runWorkerCycle(readWorkerConfig({ ...enabled, WORKER_RESULTS_ENABLED: "1" }, "once"), deps(async (roundId) => {
+      seen.push(roundId);
+      return idle;
+    }, async () => [
+      round({ id: "early", number: 15, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG }),
+      round({ id: "other", number: 16, seasonSlug: "other-season", nextPredictionFetchAt: new Date("2026-11-21T00:00:00.000Z") }),
+    ], async (roundId) => {
+      polled.push(roundId);
+      return idle;
+    }));
+    expect(polled).toEqual([]);
+    expect(seen).toEqual(["early"]);
+    expect(report.lines.find((item) => item.roundId === "early" && item.job === "result-check")?.reason).toBe("outside-result-scope");
+    expect(report.lines.find((item) => item.roundId === "other" && item.job === "result-check")?.reason).toBe("outside-result-scope");
+    expect(report.lines.find((item) => item.roundId === "early" && item.job === "prediction-refresh")?.disposition).toBe("run");
   });
 
   it("rechecks within 60 seconds after a failure instead of sleeping the prediction interval", async () => {

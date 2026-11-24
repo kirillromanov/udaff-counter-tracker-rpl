@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { RESULT_VERIFICATION_SEASON_SLUG } from "@/lib/domain/results/eligibility";
 import { authoritativeScoreChanges, formatDraftScore } from "@/lib/domain/results/score-draft";
 
 describe("score drafts before a shared save", () => {
@@ -78,7 +79,7 @@ describe("shared score save on an isolated database", () => {
     ]);
     const { saveScoreLockBatch, ResultCorrectionError } = correction;
     const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    const season = await db.season.create({ data: { name: "batch", slug: `batch-${Date.now()}` } });
+    const season = await db.season.create({ data: { name: "batch", slug: RESULT_VERIFICATION_SEASON_SLUG } });
     const person = await db.participant.create({ data: { name: "Batch", normalizedName: `batch-${Date.now()}` } });
     await db.seasonParticipant.create({ data: { seasonId: season.id, participantId: person.id } });
     const round = await db.round.create({

@@ -7,6 +7,7 @@ import { fixtureCheckStatus, fixturePhase, fixturePhaseLabel, planRoundPoll, pol
 import type { RefreshQuery } from "@/lib/domain/results/refresh-status";
 import { prisma } from "@/lib/db/prisma";
 import { SubmitButton } from "../../../submit-button";
+import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { displayedResultLabel, isLegacyManualScore, recomputeFromSources, scoreIsFixed, sourceAgreement, type SourceAgreement } from "@/lib/domain/results/correction";
 import { alignToFixture } from "@/lib/domain/results/decide";
 import { automaticResultLabel } from "@/lib/domain/results/score-draft";
@@ -102,6 +103,7 @@ export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }
     return null;
   }
 
+  const verificationApplies = resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number });
   const order = new Map<string, number>(KNOWN_PARTICIPANTS.map((name, index) => [name, index]));
   const roster = round.season.participants
     .map((membership) => membership.participant)
@@ -186,6 +188,7 @@ export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }
         now={now}
         plan={pollPlan}
         pollHealthSummary={round.pollHealthSummary}
+        allowRefresh={verificationApplies}
         query={refreshQuery}
         returnTo="review"
         roundId={round.id}
@@ -195,7 +198,7 @@ export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }
           No source comments are stored for this round. Empty cells are not proof that a participant submitted nothing.
         </p>
       ) : null}
-      <ResultScoreBlock justSaved={scoresSaved} roundId={round.id} rows={fixtures.map((match): ScoreBlockRow => {
+      {verificationApplies ? <ResultScoreBlock justSaved={scoresSaved} roundId={round.id} rows={fixtures.map((match): ScoreBlockRow => {
         const phase = fixturePhase(match, now);
         const aligned = match.resultObservations.flatMap((row) => {
           const observation = alignToFixture(match, row);
@@ -241,7 +244,9 @@ export async function CleanMatrix({ roundId, refreshQuery, scoresSaved = false }
             seen: row.lastSeenAt ? formatMoscow(row.lastSeenAt) : row.firstSeenAt ? formatMoscow(row.firstSeenAt) : "time not stored",
           })),
         };
-      })} />
+      })} /> : (
+        <p className="mb-3 text-sm text-zinc-600">Stored results on this round stay as saved. Score correction starts at round 16 of this season.</p>
+      )}
 
       <form action={saveMatrixAction}>
         <input name="roundId" type="hidden" value={round.id} />

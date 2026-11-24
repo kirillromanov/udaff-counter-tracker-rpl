@@ -8,6 +8,7 @@ import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
 import { saveFixtureStructure } from "@/lib/domain/fixtures/save-structure";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
+import { assertResultVerificationRound } from "@/lib/domain/results/scope";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
 
 function hubPath(roundId: string): string {
@@ -47,6 +48,7 @@ export async function refreshMatchResultsAction(formData: FormData): Promise<voi
   const path = returnTo === "review" ? reviewPath(roundId) : fixturesPath(roundId);
   try {
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
     const report = await refreshRoundResults(roundId);
     refresh(roundId);
@@ -175,6 +177,7 @@ export async function fetchResultsAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
     const report = await ingestAndTrack(round.seasonId);
     refresh(roundId);
@@ -189,6 +192,7 @@ export async function pollDueAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const report = await pollDueRounds();
     refresh(roundId);
     if (!report.checked) {
@@ -229,6 +233,7 @@ export async function pollRoundAction(formData: FormData): Promise<void> {
   const roundId = String(formData.get("roundId") ?? "");
   try {
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const report = await pollDueRounds({ forceRoundId: roundId });
     refresh(roundId);
     if (!report.checked) {
@@ -248,6 +253,7 @@ export async function acknowledgeConflictAction(formData: FormData): Promise<voi
   const roundId = String(formData.get("roundId") ?? "");
   try {
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const matchId = String(formData.get("matchId") ?? "");
     const match = await prisma.match.findUnique({ where: { id: matchId } });
     if (!match || !match.resultConflict) {

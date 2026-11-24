@@ -77,3 +77,21 @@ export function displayedResultLabel(match: {
   }
   return legacy;
 }
+
+/** Rounds outside the verification scope keep the stored phase label. */
+export function resultLabelForRound(
+  applies: boolean,
+  match: {
+    resultProvenance: string;
+    manuallyCorrected: boolean;
+    resultConflict: boolean;
+    resultState?: string;
+  },
+  legacy: string,
+  agreement?: SourceAgreement | null,
+): string {
+  if (!applies) {
+    return legacy;
+  }
+  return displayedResultLabel(match, legacy, agreement);
+}

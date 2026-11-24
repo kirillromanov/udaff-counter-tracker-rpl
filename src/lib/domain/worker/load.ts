@@ -9,6 +9,7 @@ export async function loadWorkerRounds(): Promise<WorkerRound[]> {
     select: {
       id: true,
       number: true,
+      season: { select: { slug: true } },
       standingRole: true,
       forumUrl: true,
       nextPollAt: true,
@@ -36,6 +37,7 @@ export async function loadWorkerRounds(): Promise<WorkerRound[]> {
   return rounds.map((round) => ({
     id: round.id,
     number: round.number,
+    seasonSlug: round.season.slug,
     standingRole: round.standingRole,
     forumUrl: round.forumUrl,
     nextPollAt: round.nextPollAt,

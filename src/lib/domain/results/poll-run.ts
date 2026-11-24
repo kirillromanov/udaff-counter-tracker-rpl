@@ -5,7 +5,9 @@ import { assertRoundMutable, assertRoundMutableTx } from "@/lib/domain/rounds/ro
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
 import { recalculateRound, type RoundCalculationReport } from "@/lib/domain/standings/recalculate-round";
 import { ROUND_STATUS_STALE } from "@/lib/domain/standings/intermediate";
+import { ResultScopeError, resultVerificationApplies } from "./eligibility";
 import { ingestRoundResults, ingestSeasonResults, type IngestReport } from "./ingest";
+import { assertResultVerificationRound } from "./scope";
 import type { SourceFetchResult } from "./types";
 import {
   advanceFixtureCheck,
@@ -103,6 +105,7 @@ export async function refreshRoundResults(
       return busyResultReport();
     }
     await assertRoundMutable(roundId);
+    await assertResultVerificationRound(roundId);
     const report = await ingestRoundResults(roundId, options?.fetches);
     await assertRoundMutable(roundId);
     await syncRoundPollState(roundId, new Date(), report.sources, options?.automatic === true);
@@ -293,6 +296,7 @@ export async function syncSeasonPollState(
   sources: IngestReport["sources"],
   options?: { includeArchivedRoundIds?: readonly string[] },
 ): Promise<void> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId }, select: { slug: true } });
   const rounds = await prisma.round.findMany({
     where: { seasonId },
     include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
@@ -302,6 +306,9 @@ export async function syncSeasonPollState(
   const summary = sourceHealthSummary(sources);
   const lastSuccessfulSource = strongestSuccessfulSource(sources);
   for (const round of rounds) {
+    if (!season || !resultVerificationApplies({ seasonSlug: season.slug, number: round.number })) {
+      continue;
+    }
     if (round.closedAt || (round.standingRole === ARCHIVED_ROUND && !extra.has(round.id))) {
       continue;
     }
@@ -349,9 +356,21 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
   const now = options?.now ?? new Date();
   const intervals = pollIntervals();
   const rounds = await prisma.round.findMany({
-    include: { matches: { include: { resultObservations: { select: { matchStatus: true } } } } },
+    include: {
+      season: { select: { slug: true } },
+      matches: { include: { resultObservations: { select: { matchStatus: true } } } },
+    },
   });
+  if (options?.forceRoundId) {
+    const forced = rounds.find((round) => round.id === options.forceRoundId);
+    if (forced && !resultVerificationApplies({ seasonSlug: forced.season.slug, number: forced.number })) {
+      throw new ResultScopeError();
+    }
+  }
   for (const round of rounds) {
+    if (!resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number })) {
+      continue;
+    }
     if (round.closedAt) {
       continue;
     }
@@ -393,7 +412,10 @@ export async function pollDueRounds(options?: { now?: Date; forceRoundId?: strin
       now,
       intervals,
       options?.forceRoundId,
-    ),
+    ).filter((id) => {
+      const round = rounds.find((item) => item.id === id);
+      return round != null && resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number });
+    }),
   );
   if (dueIds.size === 0) {
     return { checked: false, roundIds: [], seasons: [] };

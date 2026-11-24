@@ -6,6 +6,7 @@ import { alignToFixture } from "./decide";
 import { rankFixtureResult, type RankableObservation } from "./ranking";
 import { fixturePhase, type FixturePhase, type PollFixture } from "./poll";
 import { scoreIsFixed, sourceAgreement } from "./result-label";
+import { assertResultVerificationRound } from "./scope";
 
 export {
   LABEL_FIXED,
@@ -15,6 +16,7 @@ export {
   LABEL_VERIFIED_FIXED,
   displayedResultLabel,
   isLegacyManualScore,
+  resultLabelForRound,
   scoreIsFixed,
   sourceAgreement,
   type SourceAgreement,
@@ -258,6 +260,7 @@ export async function applyManualResult(input: {
   const score = parseFullTimeScore(input.home, input.away);
   const now = input.now ?? new Date();
   const { match } = await loadMutableMatch(input.matchId);
+  await assertResultVerificationRound(match.roundId);
   assertVersion(match, input.version);
   assertFinished(match, now);
   const alreadyVerified = match.resultState === "verified"
@@ -334,6 +337,7 @@ export async function rollbackManualResult(input: {
   }
   const now = input.now ?? new Date();
   const { match } = await loadMutableMatch(input.matchId);
+  await assertResultVerificationRound(match.roundId);
   assertVersion(match, input.version);
   if (!scoreIsFixed(match)) {
     return { recalculated: false };
@@ -419,6 +423,7 @@ export async function saveScoreLockBatch(input: {
   if (round.standingRole === ARCHIVED_ROUND) {
     throw new ResultCorrectionError("An archived reference round keeps its stored result. This action does not change it.");
   }
+  await assertResultVerificationRound(round.id);
   const byId = new Map(round.matches.map((match) => [match.id, match]));
   const planned: {
     match: MatchRow;

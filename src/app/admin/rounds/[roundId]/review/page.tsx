@@ -6,6 +6,7 @@ import {
   readWarnings,
   predictionTone,
 } from "@/lib/domain/import/review-status";
+import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { metricTone, primaryConsistencyMetric, resultIssueCount, resultIssueRows, reviewMetricHref, roundConsistency, roundCounters, roundMetricOf, setsForMetric, type MetricFixture, type MetricSet, type RoundMetric } from "@/lib/domain/review/round-metrics";
 import { MetricPanel } from "./metric-panel";
 import { loadIdentityCatalog } from "@/lib/domain/participants/registry";
@@ -137,7 +138,8 @@ export default async function RoundImportPage({
   const summary = roundCounters({ comments: round.forumComments, sets: metricSets, fixtures: metricFixtures });
   const metric = roundMetricOf(query.metric);
   const covered = new Set(round.predictionSets.filter((set) => set.selected).flatMap((set) => set.predictions.map((row) => row.matchId)));
-  const consistency = roundConsistency({ counters: summary, fixtures: metricFixtures, selectedCoversFixture: (fixtureId) => covered.has(fixtureId) });
+  const verificationApplies = resultVerificationApplies({ seasonSlug: round.season.slug, number: round.number });
+  const consistency = roundConsistency({ counters: summary, fixtures: metricFixtures, selectedCoversFixture: (fixtureId) => covered.has(fixtureId), verificationApplies });
   const [catalog, linkTargets] = await Promise.all([
     loadIdentityCatalog(),
     prisma.participant.findMany({
@@ -296,7 +298,7 @@ export default async function RoundImportPage({
           </Notice>
         ) : null}
         {(() => {
-          const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId));
+          const issues = resultIssueRows(metricFixtures, (fixtureId) => covered.has(fixtureId), { verificationApplies });
           const issueTotal = resultIssueCount(issues);
           const blockingResults = issues.some((row) => row.kind === "blocking");
           const metricQuery = { view: queue === "review" ? undefined : queue, q: search, metric };

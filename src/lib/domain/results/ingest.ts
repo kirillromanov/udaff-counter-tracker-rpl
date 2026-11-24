@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { ResultScopeError, resultVerificationApplies } from "./eligibility";
 import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
 import { assertRoundMutableTx, closedRoundIdSet } from "@/lib/domain/rounds/round-lock-db";
 import { ARCHIVED_ROUND } from "@/lib/domain/standings/round-role";
@@ -73,11 +74,28 @@ export async function ingestSeasonResults(
   seasonId: string,
   options?: { includeArchivedRoundIds?: readonly string[]; onlyRoundIds?: readonly string[]; skipUndated?: boolean; fetches?: readonly SourceFetchResult[] },
 ): Promise<IngestReport> {
+  const season = await prisma.season.findUnique({ where: { id: seasonId }, select: { slug: true } });
   const rounds = await prisma.round.findMany({
     where: { seasonId },
     include: { matches: true },
   });
-  const writable = roundsSelectedForIngest(rounds, options);
+  if (options?.onlyRoundIds) {
+    const byId = new Map(rounds.map((round) => [round.id, round]));
+    const outside = options.onlyRoundIds.some((id) => {
+      const round = byId.get(id);
+      return !season || !round || !resultVerificationApplies({ seasonSlug: season.slug, number: round.number });
+    });
+    if (outside) {
+      throw new ResultScopeError();
+    }
+  }
+  const eligible = season
+    ? rounds.filter((round) => resultVerificationApplies({ seasonSlug: season.slug, number: round.number }))
+    : [];
+  const writable = roundsSelectedForIngest(eligible, options);
+  if (writable.length === 0) {
+    return { confirmed: 0, verified: 0, conflicts: 0, insufficient: 0, updated: 0, sources: [] };
+  }
   const fetches = options?.fetches ?? await collectSourceFetches(RESULT_ADAPTERS, readSource);
   const previousHealth = await prisma.resultSourceHealth.findMany();
   const previousBySource = new Map(previousHealth.map((row) => [row.source, row]));

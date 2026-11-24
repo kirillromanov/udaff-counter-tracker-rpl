@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { RESULT_VERIFICATION_SEASON_SLUG } from "@/lib/domain/results/eligibility";
 import type { SourceFetchResult, SourceRole } from "@/lib/domain/results/types";
 
 function row(source: string, role: SourceRole, homeTeam: string, awayTeam: string, homeGoals: number, awayGoals: number, sourceKey: string) {
@@ -54,7 +55,7 @@ describe("verified manually replacement", () => {
       import("@/lib/domain/results/poll-run"),
     ]);
     const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    const season = await db.season.create({ data: { name: "replace", slug: "replace" } });
+    const season = await db.season.create({ data: { name: "replace", slug: RESULT_VERIFICATION_SEASON_SLUG } });
     const person = await db.participant.create({ data: { name: "Reviewer", normalizedName: "reviewer-replace" } });
     await db.seasonParticipant.create({ data: { seasonId: season.id, participantId: person.id } });
     const kickoff = new Date("2026-11-20T16:00:00.000Z");

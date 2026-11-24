@@ -100,6 +100,18 @@ describe("review presentation counters", () => {
     expect(rows.find((row) => row.id === "provisional:unverified")?.kind).toBe("blocking");
     expect(resultIssueCount(rows)).toBe(2);
     expect(primaryConsistencyMetric(counters, rows)).toBe("results");
+    const legacy = fixture({ id: "old", actualHomeGoals: 1, actualAwayGoals: 0, resultState: "manual", resultProvenance: "" });
+    const stored = resultIssueRows([conflict, pending, unverified, legacy], () => true, { verificationApplies: false });
+    expect(stored.map((row) => row.reason)).toEqual(["Pending", "Pending"]);
+    const report = roundConsistency({
+      counters,
+      fixtures: [conflict, unverified, legacy],
+      selectedCoversFixture: () => true,
+      verificationApplies: false,
+    });
+    expect(report.blocking).toEqual([]);
+    expect(report.notes.join(" ")).not.toContain("older manual score");
+    expect(report.notes.join(" ")).not.toContain("not verified");
   });
 
   it("toggles the selected counter in the shareable review URL", () => {
