@@ -1,6 +1,6 @@
 # Testing
 
-`npm test` runs Vitest. The suite does not need the live database. `src/tests/rounds/production-activation.test.ts` creates a temporary database with `prisma db push --skip-generate` and never uses `prisma/dev.db`. `src/tests/import/refresh-idempotency-snapshot.test.ts` stays skipped unless `PREDICTION_IDEMPOTENCY_SNAPSHOT` names a private database copy. That test copies the file again and does not open the live database.
+`npm test` runs Vitest. The suite does not need the live database. `src/tests/rounds/production-activation.test.ts` creates a temporary database with `prisma db push --skip-generate` and never uses `prisma/dev.db`. `src/tests/import/refresh-idempotency-snapshot.test.ts` stays skipped unless `PREDICTION_IDEMPOTENCY_SNAPSHOT` names a private database copy. That test copies the file again and does not open the live database. `src/tests/db/result-verification-migration.test.ts` always refuses a relative, missing, empty, or unexpected database. Its copy of a private backup runs only when `RESULT_SCHEMA_BACKUP` is an absolute path; the test copies that file and does not open the live database.
 
 `npm run lint` is ESLint. `npx tsc --noEmit` is the typecheck; `package.json` has no `typecheck` script.
 
@@ -22,5 +22,6 @@
 | Moscow kickoff conversion | `src/tests/time/moscow.test.ts` |
 | Disabled worker, 60-second recheck, one overdue fetch, claims, logs, LaunchAgent, and no automatic scoring | `src/tests/worker/worker.test.ts` |
 | Repeated prediction refresh keeps equivalent prediction ids | `src/tests/import/refresh-idempotency.test.ts` |
+| Additive result schema, absolute path, and no Match rebuild | `src/tests/db/result-verification-migration.test.ts` |
 
 A passing test run does not prove the live SQLite file is unchanged. Compare a read-only `PRAGMA integrity_check` and row counts before and after any command that might write, and do not run import, poll, refresh, seed, or recalculate scripts as part of a documentation or test pass.

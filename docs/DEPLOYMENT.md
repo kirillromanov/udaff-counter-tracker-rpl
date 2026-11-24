@@ -16,7 +16,7 @@ Create `.env` on the host from `.env.example`. Set `DATABASE_URL` to a path on p
 
 ## 3. Persistent data
 
-Provision an empty SQLite file with `npm run db:generate` and `npm run db:push`, or copy a verified backup into place and run an integrity check. `db:push` has no migration history to replay. `npm run db:seed` deletes seasons and participants; it is not a production step.
+Provision an empty SQLite file with `npm run db:generate` and `npm run db:push`, or copy a verified backup into place and run an integrity check. `db:push` has no migration history to replay. An existing database that already has the pre-change `Match` table uses `scripts/apply-result-verification-schema.ts` instead of `db push`. `npm run db:seed` deletes seasons and participants; it is not a production step.
 
 Transferring the current season means restoring a backup taken with `sqlite3 .backup`, not cloning GitHub. Recalculating or re-importing is a separate decision and is not part of copying the file.
 
@@ -28,17 +28,21 @@ There is no in-process poller. A separate worker can refresh predictions when `W
 
 A worker-only source change does not require a web rebuild. Stop the worker with `zsh scripts/worker-agent.sh stop` before updating the checkout it runs from, so an old process does not refresh during the update. Fast-forward that checkout, run `zsh scripts/worker-agent.sh install` to rewrite the plist, then `zsh scripts/worker-agent.sh start` once. `RunAtLoad` starts the process; do not kickstart it as well. A reboot starts this user agent only after that user logs in. `zsh scripts/worker-agent.sh stop` unloads it and leaves it stopped. Logs stay at `~/Library/Logs/udaff-counter-tracker/worker.log`. Missing `.env` or `node_modules` exits 1 and is retried after the 60-second throttle, not reported as a healthy exit.
 
-## Result verification deploy, not performed
+## Additive result schema deploy, not performed
 
-This order is a plan. None of it has been done.
+This replaces an earlier plan that used `npx prisma db push` for the result-verification columns. That push was not run. On the current live `Match` table, Prisma's SQLite diff builds a replacement table so `resultProvenance`, `manuallyCorrected`, and `resultVersion` sit before `resultNote`, copies the old rows, and drops `Match`. Those three columns can be added with `ALTER TABLE ... ADD COLUMN`, and the same diff is empty afterwards. Do not run the rebuild.
 
-1. Not performed. Take a SQLite backup of the live database and check its integrity. Do not restore it as part of this plan.
-2. Not performed. Stop the prediction worker with `zsh scripts/worker-agent.sh stop`. Leave `WORKER_RESULTS_ENABLED` unset.
-3. Not performed. Fast-forward the serving checkout to the reviewed commit. Do not seed, and do not use `--accept-data-loss` or `--force-reset`.
-4. Not performed. Apply the additive schema with `npx prisma db push` against that database only. The new columns default to empty, false, or zero, and `firstSeenAt` stays null. If this step fails, stop. Do not start the web server or the worker on the new source. The previous database file is unchanged if the push did not finish; if it did finish and the following build fails, the new columns can stay because existing result values are not rewritten. Restore the backup only if a later check shows a stored score, status, or observation changed.
-5. Not performed. Build with the live `DATABASE_URL` only for the running server's own file, then restart one `next start` with `--hostname 127.0.0.1 --port 3000`.
-6. Not performed. Start one prediction worker with `zsh scripts/worker-agent.sh start`. Do not enable result processing.
-7. Not performed. Read back one closed round and the active round. Stored scores, statuses, prediction ids, and the warnings on comments 5707 and 5713 must match the backup. New source-observation times stay empty on old rows.
+None of the steps below has been done. The serving checkout and the prediction-only worker stay on the restored revision. `WORKER_RESULTS_ENABLED` stays unset.
+
+1. Not performed. Quiesce the existing supervisors. Stop the worker with `zsh scripts/worker-agent.sh stop`, then stop the web agent with `launchctl bootout gui/$(id -u)/com.udaff.counter-tracker`. Do not rewrite the plists and do not drop `--hostname 127.0.0.1`.
+2. Not performed. Take a new backup at this moment, from the absolute live file: `sqlite3 "file:/absolute/path/prisma/dev.db?mode=ro" ".backup '/path/outside/the/repo/dev.db'"`, then `PRAGMA integrity_check`. Record a private baseline of the stored rows. Do not reuse an older backup as the file to migrate. Do not restore that backup as an automatic recovery.
+3. Not performed. Fast-forward the serving checkout to the reviewed commit. Do not seed, and do not use `--accept-data-loss` or `--force-reset`. The lockfile is unchanged from the running revision, so do not run `npm ci` unless it has changed.
+4. Not performed. Preflight the absolute database path. `scripts/apply-result-verification-schema.ts` does not read `DATABASE_URL` or `.env`. It refuses a relative path, a `file:` URL, a missing file, an empty file, and any schema that is not the complete reviewed start or the complete reviewed target. A refusal happens before a write, and a missing path is not created.
+5. Not performed. Apply `npx tsx scripts/apply-result-verification-schema.ts --database /absolute/path/prisma/dev.db`. The script adds the three `Match` columns, nullable `firstSeenAt` and `lastSeenAt`, and empty `ResultAudit` with its index and foreign key, in one transaction. A second run prints `already applied` only after the full target catalog matches. It does not write a Prisma migration history row. Do not run `prisma db push` or a diff that contains `DROP TABLE "Match"`.
+6. Not performed. Build, then start one `next start --hostname 127.0.0.1 --port 3000`. Read the historical rounds. Compare them with the new baseline. Existing scores, ids, timestamps, warnings, baselines, and checkpoints must match. The new columns stay `''`, false, `0`, or null, and `ResultAudit` stays empty.
+7. Not performed. Start one prediction worker with `zsh scripts/worker-agent.sh start`. Leave `WORKER_RESULTS_ENABLED` unset. Before leaving it up, `npm run worker:plan` must show no prediction run for rounds 1–15. If one of those rounds is due, stop the worker and do not change a clock or a round lifecycle.
+
+If step 4 refuses, stop. The database was not opened for write. If a statement fails, the transaction rolls back and nothing is marked applied. Confirm the starting catalog and the new baseline, then leave both services stopped. Do not restore the backup automatically, do not drop a column, and do not rebuild `Match`. A partial or incompatible schema is refused and left as it was found.
 
 The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
 

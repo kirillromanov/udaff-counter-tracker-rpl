@@ -1,0 +1,792 @@
+{
+  "start": [
+    {
+      "type": "index",
+      "name": "ForumComment_roundId_externalId_key",
+      "table": "ForumComment",
+      "sql": "CREATE UNIQUE INDEX \"ForumComment_roundId_externalId_key\" ON \"ForumComment\"(\"roundId\", \"externalId\")"
+    },
+    {
+      "type": "index",
+      "name": "ForumComment_roundId_postedAt_idx",
+      "table": "ForumComment",
+      "sql": "CREATE INDEX \"ForumComment_roundId_postedAt_idx\" ON \"ForumComment\"(\"roundId\", \"postedAt\")"
+    },
+    {
+      "type": "index",
+      "name": "IgnoredForumAuthor_normalized_key",
+      "table": "IgnoredForumAuthor",
+      "sql": "CREATE UNIQUE INDEX \"IgnoredForumAuthor_normalized_key\" ON \"IgnoredForumAuthor\"(\"normalized\")"
+    },
+    {
+      "type": "index",
+      "name": "Match_roundId_idx",
+      "table": "Match",
+      "sql": "CREATE INDEX \"Match_roundId_idx\" ON \"Match\"(\"roundId\")"
+    },
+    {
+      "type": "index",
+      "name": "ParticipantAlias_normalized_key",
+      "table": "ParticipantAlias",
+      "sql": "CREATE UNIQUE INDEX \"ParticipantAlias_normalized_key\" ON \"ParticipantAlias\"(\"normalized\")"
+    },
+    {
+      "type": "index",
+      "name": "ParticipantAlias_participantId_idx",
+      "table": "ParticipantAlias",
+      "sql": "CREATE INDEX \"ParticipantAlias_participantId_idx\" ON \"ParticipantAlias\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Participant_forumNick_key",
+      "table": "Participant",
+      "sql": "CREATE UNIQUE INDEX \"Participant_forumNick_key\" ON \"Participant\"(\"forumNick\")"
+    },
+    {
+      "type": "index",
+      "name": "Participant_normalizedName_key",
+      "table": "Participant",
+      "sql": "CREATE UNIQUE INDEX \"Participant_normalizedName_key\" ON \"Participant\"(\"normalizedName\")"
+    },
+    {
+      "type": "index",
+      "name": "PredictionSet_forumCommentId_idx",
+      "table": "PredictionSet",
+      "sql": "CREATE INDEX \"PredictionSet_forumCommentId_idx\" ON \"PredictionSet\"(\"forumCommentId\")"
+    },
+    {
+      "type": "index",
+      "name": "PredictionSet_roundId_participantId_idx",
+      "table": "PredictionSet",
+      "sql": "CREATE INDEX \"PredictionSet_roundId_participantId_idx\" ON \"PredictionSet\"(\"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Prediction_predictionSetId_matchId_key",
+      "table": "Prediction",
+      "sql": "CREATE UNIQUE INDEX \"Prediction_predictionSetId_matchId_key\" ON \"Prediction\"(\"predictionSetId\", \"matchId\")"
+    },
+    {
+      "type": "index",
+      "name": "ReconciliationDecision_participantId_idx",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE INDEX \"ReconciliationDecision_participantId_idx\" ON \"ReconciliationDecision\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "ReconciliationDecision_seasonId_afterRoundNumber_subjectName_key",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE UNIQUE INDEX \"ReconciliationDecision_seasonId_afterRoundNumber_subjectName_key\" ON \"ReconciliationDecision\"(\"seasonId\", \"afterRoundNumber\", \"subjectName\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultFetchLog_fetchedAt_idx",
+      "table": "ResultFetchLog",
+      "sql": "CREATE INDEX \"ResultFetchLog_fetchedAt_idx\" ON \"ResultFetchLog\"(\"fetchedAt\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultObservation_matchId_idx",
+      "table": "ResultObservation",
+      "sql": "CREATE INDEX \"ResultObservation_matchId_idx\" ON \"ResultObservation\"(\"matchId\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultObservation_source_sourceKey_key",
+      "table": "ResultObservation",
+      "sql": "CREATE UNIQUE INDEX \"ResultObservation_source_sourceKey_key\" ON \"ResultObservation\"(\"source\", \"sourceKey\")"
+    },
+    {
+      "type": "index",
+      "name": "RoundScore_roundId_participantId_key",
+      "table": "RoundScore",
+      "sql": "CREATE UNIQUE INDEX \"RoundScore_roundId_participantId_key\" ON \"RoundScore\"(\"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Round_seasonId_number_key",
+      "table": "Round",
+      "sql": "CREATE UNIQUE INDEX \"Round_seasonId_number_key\" ON \"Round\"(\"seasonId\", \"number\")"
+    },
+    {
+      "type": "index",
+      "name": "ScoringConfig_seasonId_key",
+      "table": "ScoringConfig",
+      "sql": "CREATE UNIQUE INDEX \"ScoringConfig_seasonId_key\" ON \"ScoringConfig\"(\"seasonId\")"
+    },
+    {
+      "type": "index",
+      "name": "SeasonParticipant_seasonId_participantId_key",
+      "table": "SeasonParticipant",
+      "sql": "CREATE UNIQUE INDEX \"SeasonParticipant_seasonId_participantId_key\" ON \"SeasonParticipant\"(\"seasonId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Season_slug_key",
+      "table": "Season",
+      "sql": "CREATE UNIQUE INDEX \"Season_slug_key\" ON \"Season\"(\"slug\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingSnapshot_seasonId_roundId_participantId_key",
+      "table": "StandingSnapshot",
+      "sql": "CREATE UNIQUE INDEX \"StandingSnapshot_seasonId_roundId_participantId_key\" ON \"StandingSnapshot\"(\"seasonId\", \"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingSnapshot_seasonId_roundId_rank_idx",
+      "table": "StandingSnapshot",
+      "sql": "CREATE INDEX \"StandingSnapshot_seasonId_roundId_rank_idx\" ON \"StandingSnapshot\"(\"seasonId\", \"roundId\", \"rank\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpointRow_checkpointId_rank_key",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE UNIQUE INDEX \"StandingsCheckpointRow_checkpointId_rank_key\" ON \"StandingsCheckpointRow\"(\"checkpointId\", \"rank\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpointRow_participantId_idx",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE INDEX \"StandingsCheckpointRow_participantId_idx\" ON \"StandingsCheckpointRow\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpoint_seasonId_afterRoundNumber_source_key",
+      "table": "StandingsCheckpoint",
+      "sql": "CREATE UNIQUE INDEX \"StandingsCheckpoint_seasonId_afterRoundNumber_source_key\" ON \"StandingsCheckpoint\"(\"seasonId\", \"afterRoundNumber\", \"source\")"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ForumComment_1",
+      "table": "ForumComment",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_IgnoredForumAuthor_1",
+      "table": "IgnoredForumAuthor",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Match_1",
+      "table": "Match",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ParticipantAlias_1",
+      "table": "ParticipantAlias",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Participant_1",
+      "table": "Participant",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_PredictionSet_1",
+      "table": "PredictionSet",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Prediction_1",
+      "table": "Prediction",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ReconciliationDecision_1",
+      "table": "ReconciliationDecision",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultFetchLog_1",
+      "table": "ResultFetchLog",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultObservation_1",
+      "table": "ResultObservation",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultSourceHealth_1",
+      "table": "ResultSourceHealth",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_RoundScore_1",
+      "table": "RoundScore",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Round_1",
+      "table": "Round",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ScoringConfig_1",
+      "table": "ScoringConfig",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_SeasonParticipant_1",
+      "table": "SeasonParticipant",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Season_1",
+      "table": "Season",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingSnapshot_1",
+      "table": "StandingSnapshot",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingsCheckpointRow_1",
+      "table": "StandingsCheckpointRow",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingsCheckpoint_1",
+      "table": "StandingsCheckpoint",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "ForumComment",
+      "table": "ForumComment",
+      "sql": "CREATE TABLE \"ForumComment\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"sourceUrl\" TEXT NOT NULL,\n    \"externalId\" TEXT,\n    \"authorName\" TEXT NOT NULL,\n    \"postedAt\" DATETIME,\n    \"rawHtml\" TEXT NOT NULL,\n    \"rawText\" TEXT NOT NULL,\n    \"reviewState\" TEXT NOT NULL DEFAULT 'stored',\n    \"reviewNote\" TEXT,\n    \"importAnyway\" BOOLEAN NOT NULL DEFAULT false,\n    \"ingestionStatus\" TEXT NOT NULL DEFAULT 'unchanged',\n    \"lastFetchedAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ForumComment_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "IgnoredForumAuthor",
+      "table": "IgnoredForumAuthor",
+      "sql": "CREATE TABLE \"IgnoredForumAuthor\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"normalized\" TEXT NOT NULL,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+    },
+    {
+      "type": "table",
+      "name": "Match",
+      "table": "Match",
+      "sql": "CREATE TABLE \"Match\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"kickoffAt\" DATETIME,\n    \"homeTeam\" TEXT NOT NULL,\n    \"awayTeam\" TEXT NOT NULL,\n    \"sortOrder\" INTEGER NOT NULL DEFAULT 0,\n    \"isMatchOfTheRound\" BOOLEAN NOT NULL DEFAULT false,\n    \"actualHomeGoals\" INTEGER,\n    \"actualAwayGoals\" INTEGER,\n    \"resultState\" TEXT NOT NULL DEFAULT 'open',\n    \"resultConflict\" BOOLEAN NOT NULL DEFAULT false,\n    \"resultResolution\" TEXT NOT NULL DEFAULT '',\n    \"resultNote\" TEXT,\n    \"conflictAcknowledgedAt\" DATETIME,\n    \"autoCheckAttempts\" INTEGER NOT NULL DEFAULT 0,\n    \"autoCheckKickoffAt\" DATETIME,\n    \"autoCheckNextAt\" DATETIME,\n    \"autoCheckHistory\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"Match_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Participant",
+      "table": "Participant",
+      "sql": "CREATE TABLE \"Participant\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"forumNick\" TEXT,\n    \"normalizedName\" TEXT,\n    \"archivedAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "ParticipantAlias",
+      "table": "ParticipantAlias",
+      "sql": "CREATE TABLE \"ParticipantAlias\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"participantId\" TEXT NOT NULL,\n    \"alias\" TEXT NOT NULL,\n    \"normalized\" TEXT NOT NULL,\n    \"isPrimary\" BOOLEAN NOT NULL DEFAULT false,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"ParticipantAlias_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Prediction",
+      "table": "Prediction",
+      "sql": "CREATE TABLE \"Prediction\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"predictionSetId\" TEXT NOT NULL,\n    \"matchId\" TEXT NOT NULL,\n    \"homeGoals\" INTEGER,\n    \"awayGoals\" INTEGER,\n    \"ignored\" BOOLEAN NOT NULL DEFAULT false,\n    \"markedAsMt\" BOOLEAN NOT NULL DEFAULT false,\n    \"rawLine\" TEXT,\n    \"confidence\" REAL,\n    \"warning\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"Prediction_predictionSetId_fkey\" FOREIGN KEY (\"predictionSetId\") REFERENCES \"PredictionSet\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"Prediction_matchId_fkey\" FOREIGN KEY (\"matchId\") REFERENCES \"Match\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "PredictionSet",
+      "table": "PredictionSet",
+      "sql": "CREATE TABLE \"PredictionSet\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"forumCommentId\" TEXT,\n    \"source\" TEXT NOT NULL DEFAULT 'manual',\n    \"rawComment\" TEXT,\n    \"status\" TEXT NOT NULL DEFAULT 'draft',\n    \"selected\" BOOLEAN NOT NULL DEFAULT false,\n    \"selection\" TEXT NOT NULL DEFAULT 'auto',\n    \"confidence\" REAL,\n    \"warningsJson\" TEXT NOT NULL DEFAULT '[]',\n    \"parsedJson\" TEXT NOT NULL DEFAULT '[]',\n    \"manuallyEdited\" BOOLEAN NOT NULL DEFAULT false,\n    \"attributionMethod\" TEXT NOT NULL DEFAULT 'author',\n    \"attributionEvidence\" TEXT NOT NULL DEFAULT '',\n    \"attributionReview\" TEXT NOT NULL DEFAULT 'clear',\n    \"blockKey\" TEXT NOT NULL DEFAULT '',\n    \"sourceExcerpt\" TEXT NOT NULL DEFAULT '',\n    \"correctionLog\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"PredictionSet_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"PredictionSet_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"PredictionSet_forumCommentId_fkey\" FOREIGN KEY (\"forumCommentId\") REFERENCES \"ForumComment\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ReconciliationDecision",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE TABLE \"ReconciliationDecision\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"afterRoundNumber\" INTEGER NOT NULL,\n    \"subjectName\" TEXT NOT NULL,\n    \"participantId\" TEXT,\n    \"action\" TEXT NOT NULL,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ReconciliationDecision_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"ReconciliationDecision_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultFetchLog",
+      "table": "ResultFetchLog",
+      "sql": "CREATE TABLE \"ResultFetchLog\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"source\" TEXT NOT NULL,\n    \"url\" TEXT NOT NULL,\n    \"status\" TEXT NOT NULL,\n    \"role\" TEXT NOT NULL DEFAULT 'fallback',\n    \"matchCount\" INTEGER NOT NULL DEFAULT 0,\n    \"error\" TEXT,\n    \"fetchedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultObservation",
+      "table": "ResultObservation",
+      "sql": "CREATE TABLE \"ResultObservation\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"source\" TEXT NOT NULL,\n    \"sourceKey\" TEXT NOT NULL,\n    \"roundNumber\" INTEGER,\n    \"homeTeam\" TEXT NOT NULL,\n    \"awayTeam\" TEXT NOT NULL,\n    \"homeGoals\" INTEGER NOT NULL,\n    \"awayGoals\" INTEGER NOT NULL,\n    \"role\" TEXT NOT NULL DEFAULT 'fallback',\n    \"confidence\" TEXT NOT NULL DEFAULT 'medium',\n    \"matchStatus\" TEXT NOT NULL DEFAULT 'finished',\n    \"completeness\" TEXT NOT NULL DEFAULT 'complete',\n    \"matchId\" TEXT,\n    \"fetchedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"ResultObservation_matchId_fkey\" FOREIGN KEY (\"matchId\") REFERENCES \"Match\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultSourceHealth",
+      "table": "ResultSourceHealth",
+      "sql": "CREATE TABLE \"ResultSourceHealth\" (\n    \"source\" TEXT NOT NULL PRIMARY KEY,\n    \"role\" TEXT NOT NULL,\n    \"lastSuccessAt\" DATETIME,\n    \"lastFailureAt\" DATETIME,\n    \"consecutiveFailures\" INTEGER NOT NULL DEFAULT 0,\n    \"degraded\" BOOLEAN NOT NULL DEFAULT false,\n    \"lastError\" TEXT,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "Round",
+      "table": "Round",
+      "sql": "CREATE TABLE \"Round\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"number\" INTEGER NOT NULL,\n    \"name\" TEXT,\n    \"forumUrl\" TEXT,\n    \"fetchedAt\" DATETIME,\n    \"sourceSnapshot\" TEXT,\n    \"importNotes\" TEXT,\n    \"status\" TEXT NOT NULL DEFAULT 'draft',\n    \"standingRole\" TEXT NOT NULL DEFAULT 'operational',\n    \"pollStatus\" TEXT NOT NULL DEFAULT 'scheduled',\n    \"lastPolledAt\" DATETIME,\n    \"nextPollAt\" DATETIME,\n    \"lastSuccessfulSource\" TEXT,\n    \"pollHealthSummary\" TEXT,\n    \"lastPredictionFetchAt\" DATETIME,\n    \"nextPredictionFetchAt\" DATETIME,\n    \"predictionFetchSummary\" TEXT,\n    \"closedAt\" DATETIME,\n    \"closureLog\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL, \"productionStartedAt\" DATETIME,\n    CONSTRAINT \"Round_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "RoundScore",
+      "table": "RoundScore",
+      "sql": "CREATE TABLE \"RoundScore\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"matchPoints\" INTEGER NOT NULL,\n    \"roundBonusPoints\" INTEGER NOT NULL,\n    \"exactCount\" INTEGER NOT NULL,\n    \"neighborCount\" INTEGER NOT NULL,\n    \"diffCount\" INTEGER NOT NULL,\n    \"outcomeCount\" INTEGER NOT NULL,\n    \"missCount\" INTEGER NOT NULL,\n    \"isRoundWinner\" BOOLEAN NOT NULL DEFAULT false,\n    \"breakdownJson\" TEXT NOT NULL,\n    \"calculatedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"RoundScore_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"RoundScore_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ScoringConfig",
+      "table": "ScoringConfig",
+      "sql": "CREATE TABLE \"ScoringConfig\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"exactPoints\" INTEGER NOT NULL DEFAULT 10,\n    \"neighborPoints\" INTEGER NOT NULL DEFAULT 6,\n    \"diffPoints\" INTEGER NOT NULL DEFAULT 4,\n    \"outcomePoints\" INTEGER NOT NULL DEFAULT 3,\n    \"missPoints\" INTEGER NOT NULL DEFAULT -1,\n    \"zeroTotalBonus\" INTEGER NOT NULL DEFAULT 1,\n    \"nilNilBonus\" INTEGER NOT NULL DEFAULT 2,\n    \"bigDiffBonus\" INTEGER NOT NULL DEFAULT 3,\n    \"bigDiffMin\" INTEGER NOT NULL DEFAULT 3,\n    \"highTotalBonus\" INTEGER NOT NULL DEFAULT 4,\n    \"highTotalMin\" INTEGER NOT NULL DEFAULT 5,\n    \"roundTotalGoalsBonus\" INTEGER NOT NULL DEFAULT 3,\n    \"mtMultiplier\" INTEGER NOT NULL DEFAULT 2,\n    \"mtAppliesToNegative\" BOOLEAN NOT NULL DEFAULT true,\n    \"bonusesRequireRewardedBase\" BOOLEAN NOT NULL DEFAULT true,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ScoringConfig_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Season",
+      "table": "Season",
+      "sql": "CREATE TABLE \"Season\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"slug\" TEXT NOT NULL,\n    \"startsAt\" DATETIME,\n    \"endsAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "SeasonParticipant",
+      "table": "SeasonParticipant",
+      "sql": "CREATE TABLE \"SeasonParticipant\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"status\" TEXT NOT NULL DEFAULT 'included',\n    \"joinedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"excludedAt\" DATETIME,\n    CONSTRAINT \"SeasonParticipant_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"SeasonParticipant_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingSnapshot",
+      "table": "StandingSnapshot",
+      "sql": "CREATE TABLE \"StandingSnapshot\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"rank\" INTEGER NOT NULL,\n    \"previousRank\" INTEGER,\n    \"movement\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"roundWins\" INTEGER NOT NULL,\n    \"calculatedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"StandingSnapshot_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingSnapshot_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingSnapshot_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingsCheckpoint",
+      "table": "StandingsCheckpoint",
+      "sql": "CREATE TABLE \"StandingsCheckpoint\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"afterRoundNumber\" INTEGER NOT NULL,\n    \"source\" TEXT NOT NULL DEFAULT 'manual',\n    \"label\" TEXT NOT NULL,\n    \"rawText\" TEXT NOT NULL,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"StandingsCheckpoint_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingsCheckpointRow",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE TABLE \"StandingsCheckpointRow\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"checkpointId\" TEXT NOT NULL,\n    \"participantId\" TEXT,\n    \"rank\" INTEGER NOT NULL,\n    \"movement\" TEXT NOT NULL,\n    \"movementDelta\" INTEGER NOT NULL,\n    \"previousRank\" INTEGER,\n    \"displayName\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"markerCount\" INTEGER NOT NULL,\n    \"rawLine\" TEXT NOT NULL,\n    CONSTRAINT \"StandingsCheckpointRow_checkpointId_fkey\" FOREIGN KEY (\"checkpointId\") REFERENCES \"StandingsCheckpoint\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingsCheckpointRow_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    }
+  ],
+  "target": [
+    {
+      "type": "index",
+      "name": "ForumComment_roundId_externalId_key",
+      "table": "ForumComment",
+      "sql": "CREATE UNIQUE INDEX \"ForumComment_roundId_externalId_key\" ON \"ForumComment\"(\"roundId\", \"externalId\")"
+    },
+    {
+      "type": "index",
+      "name": "ForumComment_roundId_postedAt_idx",
+      "table": "ForumComment",
+      "sql": "CREATE INDEX \"ForumComment_roundId_postedAt_idx\" ON \"ForumComment\"(\"roundId\", \"postedAt\")"
+    },
+    {
+      "type": "index",
+      "name": "IgnoredForumAuthor_normalized_key",
+      "table": "IgnoredForumAuthor",
+      "sql": "CREATE UNIQUE INDEX \"IgnoredForumAuthor_normalized_key\" ON \"IgnoredForumAuthor\"(\"normalized\")"
+    },
+    {
+      "type": "index",
+      "name": "Match_roundId_idx",
+      "table": "Match",
+      "sql": "CREATE INDEX \"Match_roundId_idx\" ON \"Match\"(\"roundId\")"
+    },
+    {
+      "type": "index",
+      "name": "ParticipantAlias_normalized_key",
+      "table": "ParticipantAlias",
+      "sql": "CREATE UNIQUE INDEX \"ParticipantAlias_normalized_key\" ON \"ParticipantAlias\"(\"normalized\")"
+    },
+    {
+      "type": "index",
+      "name": "ParticipantAlias_participantId_idx",
+      "table": "ParticipantAlias",
+      "sql": "CREATE INDEX \"ParticipantAlias_participantId_idx\" ON \"ParticipantAlias\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Participant_forumNick_key",
+      "table": "Participant",
+      "sql": "CREATE UNIQUE INDEX \"Participant_forumNick_key\" ON \"Participant\"(\"forumNick\")"
+    },
+    {
+      "type": "index",
+      "name": "Participant_normalizedName_key",
+      "table": "Participant",
+      "sql": "CREATE UNIQUE INDEX \"Participant_normalizedName_key\" ON \"Participant\"(\"normalizedName\")"
+    },
+    {
+      "type": "index",
+      "name": "PredictionSet_forumCommentId_idx",
+      "table": "PredictionSet",
+      "sql": "CREATE INDEX \"PredictionSet_forumCommentId_idx\" ON \"PredictionSet\"(\"forumCommentId\")"
+    },
+    {
+      "type": "index",
+      "name": "PredictionSet_roundId_participantId_idx",
+      "table": "PredictionSet",
+      "sql": "CREATE INDEX \"PredictionSet_roundId_participantId_idx\" ON \"PredictionSet\"(\"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Prediction_predictionSetId_matchId_key",
+      "table": "Prediction",
+      "sql": "CREATE UNIQUE INDEX \"Prediction_predictionSetId_matchId_key\" ON \"Prediction\"(\"predictionSetId\", \"matchId\")"
+    },
+    {
+      "type": "index",
+      "name": "ReconciliationDecision_participantId_idx",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE INDEX \"ReconciliationDecision_participantId_idx\" ON \"ReconciliationDecision\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "ReconciliationDecision_seasonId_afterRoundNumber_subjectName_key",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE UNIQUE INDEX \"ReconciliationDecision_seasonId_afterRoundNumber_subjectName_key\" ON \"ReconciliationDecision\"(\"seasonId\", \"afterRoundNumber\", \"subjectName\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultAudit_matchId_idx",
+      "table": "ResultAudit",
+      "sql": "CREATE INDEX \"ResultAudit_matchId_idx\" ON \"ResultAudit\"(\"matchId\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultFetchLog_fetchedAt_idx",
+      "table": "ResultFetchLog",
+      "sql": "CREATE INDEX \"ResultFetchLog_fetchedAt_idx\" ON \"ResultFetchLog\"(\"fetchedAt\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultObservation_matchId_idx",
+      "table": "ResultObservation",
+      "sql": "CREATE INDEX \"ResultObservation_matchId_idx\" ON \"ResultObservation\"(\"matchId\")"
+    },
+    {
+      "type": "index",
+      "name": "ResultObservation_source_sourceKey_key",
+      "table": "ResultObservation",
+      "sql": "CREATE UNIQUE INDEX \"ResultObservation_source_sourceKey_key\" ON \"ResultObservation\"(\"source\", \"sourceKey\")"
+    },
+    {
+      "type": "index",
+      "name": "RoundScore_roundId_participantId_key",
+      "table": "RoundScore",
+      "sql": "CREATE UNIQUE INDEX \"RoundScore_roundId_participantId_key\" ON \"RoundScore\"(\"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Round_seasonId_number_key",
+      "table": "Round",
+      "sql": "CREATE UNIQUE INDEX \"Round_seasonId_number_key\" ON \"Round\"(\"seasonId\", \"number\")"
+    },
+    {
+      "type": "index",
+      "name": "ScoringConfig_seasonId_key",
+      "table": "ScoringConfig",
+      "sql": "CREATE UNIQUE INDEX \"ScoringConfig_seasonId_key\" ON \"ScoringConfig\"(\"seasonId\")"
+    },
+    {
+      "type": "index",
+      "name": "SeasonParticipant_seasonId_participantId_key",
+      "table": "SeasonParticipant",
+      "sql": "CREATE UNIQUE INDEX \"SeasonParticipant_seasonId_participantId_key\" ON \"SeasonParticipant\"(\"seasonId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "Season_slug_key",
+      "table": "Season",
+      "sql": "CREATE UNIQUE INDEX \"Season_slug_key\" ON \"Season\"(\"slug\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingSnapshot_seasonId_roundId_participantId_key",
+      "table": "StandingSnapshot",
+      "sql": "CREATE UNIQUE INDEX \"StandingSnapshot_seasonId_roundId_participantId_key\" ON \"StandingSnapshot\"(\"seasonId\", \"roundId\", \"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingSnapshot_seasonId_roundId_rank_idx",
+      "table": "StandingSnapshot",
+      "sql": "CREATE INDEX \"StandingSnapshot_seasonId_roundId_rank_idx\" ON \"StandingSnapshot\"(\"seasonId\", \"roundId\", \"rank\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpointRow_checkpointId_rank_key",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE UNIQUE INDEX \"StandingsCheckpointRow_checkpointId_rank_key\" ON \"StandingsCheckpointRow\"(\"checkpointId\", \"rank\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpointRow_participantId_idx",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE INDEX \"StandingsCheckpointRow_participantId_idx\" ON \"StandingsCheckpointRow\"(\"participantId\")"
+    },
+    {
+      "type": "index",
+      "name": "StandingsCheckpoint_seasonId_afterRoundNumber_source_key",
+      "table": "StandingsCheckpoint",
+      "sql": "CREATE UNIQUE INDEX \"StandingsCheckpoint_seasonId_afterRoundNumber_source_key\" ON \"StandingsCheckpoint\"(\"seasonId\", \"afterRoundNumber\", \"source\")"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ForumComment_1",
+      "table": "ForumComment",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_IgnoredForumAuthor_1",
+      "table": "IgnoredForumAuthor",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Match_1",
+      "table": "Match",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ParticipantAlias_1",
+      "table": "ParticipantAlias",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Participant_1",
+      "table": "Participant",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_PredictionSet_1",
+      "table": "PredictionSet",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Prediction_1",
+      "table": "Prediction",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ReconciliationDecision_1",
+      "table": "ReconciliationDecision",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultAudit_1",
+      "table": "ResultAudit",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultFetchLog_1",
+      "table": "ResultFetchLog",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultObservation_1",
+      "table": "ResultObservation",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ResultSourceHealth_1",
+      "table": "ResultSourceHealth",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_RoundScore_1",
+      "table": "RoundScore",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Round_1",
+      "table": "Round",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_ScoringConfig_1",
+      "table": "ScoringConfig",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_SeasonParticipant_1",
+      "table": "SeasonParticipant",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_Season_1",
+      "table": "Season",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingSnapshot_1",
+      "table": "StandingSnapshot",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingsCheckpointRow_1",
+      "table": "StandingsCheckpointRow",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_StandingsCheckpoint_1",
+      "table": "StandingsCheckpoint",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "ForumComment",
+      "table": "ForumComment",
+      "sql": "CREATE TABLE \"ForumComment\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"sourceUrl\" TEXT NOT NULL,\n    \"externalId\" TEXT,\n    \"authorName\" TEXT NOT NULL,\n    \"postedAt\" DATETIME,\n    \"rawHtml\" TEXT NOT NULL,\n    \"rawText\" TEXT NOT NULL,\n    \"reviewState\" TEXT NOT NULL DEFAULT 'stored',\n    \"reviewNote\" TEXT,\n    \"importAnyway\" BOOLEAN NOT NULL DEFAULT false,\n    \"ingestionStatus\" TEXT NOT NULL DEFAULT 'unchanged',\n    \"lastFetchedAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ForumComment_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "IgnoredForumAuthor",
+      "table": "IgnoredForumAuthor",
+      "sql": "CREATE TABLE \"IgnoredForumAuthor\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"normalized\" TEXT NOT NULL,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+    },
+    {
+      "type": "table",
+      "name": "Match",
+      "table": "Match",
+      "sql": "CREATE TABLE \"Match\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"kickoffAt\" DATETIME,\n    \"homeTeam\" TEXT NOT NULL,\n    \"awayTeam\" TEXT NOT NULL,\n    \"sortOrder\" INTEGER NOT NULL DEFAULT 0,\n    \"isMatchOfTheRound\" BOOLEAN NOT NULL DEFAULT false,\n    \"actualHomeGoals\" INTEGER,\n    \"actualAwayGoals\" INTEGER,\n    \"resultState\" TEXT NOT NULL DEFAULT 'open',\n    \"resultConflict\" BOOLEAN NOT NULL DEFAULT false,\n    \"resultResolution\" TEXT NOT NULL DEFAULT '',\n    \"resultNote\" TEXT,\n    \"conflictAcknowledgedAt\" DATETIME,\n    \"autoCheckAttempts\" INTEGER NOT NULL DEFAULT 0,\n    \"autoCheckKickoffAt\" DATETIME,\n    \"autoCheckNextAt\" DATETIME,\n    \"autoCheckHistory\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL, \"resultProvenance\" TEXT NOT NULL DEFAULT '', \"manuallyCorrected\" BOOLEAN NOT NULL DEFAULT false, \"resultVersion\" INTEGER NOT NULL DEFAULT 0,\n    CONSTRAINT \"Match_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Participant",
+      "table": "Participant",
+      "sql": "CREATE TABLE \"Participant\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"forumNick\" TEXT,\n    \"normalizedName\" TEXT,\n    \"archivedAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "ParticipantAlias",
+      "table": "ParticipantAlias",
+      "sql": "CREATE TABLE \"ParticipantAlias\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"participantId\" TEXT NOT NULL,\n    \"alias\" TEXT NOT NULL,\n    \"normalized\" TEXT NOT NULL,\n    \"isPrimary\" BOOLEAN NOT NULL DEFAULT false,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"ParticipantAlias_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Prediction",
+      "table": "Prediction",
+      "sql": "CREATE TABLE \"Prediction\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"predictionSetId\" TEXT NOT NULL,\n    \"matchId\" TEXT NOT NULL,\n    \"homeGoals\" INTEGER,\n    \"awayGoals\" INTEGER,\n    \"ignored\" BOOLEAN NOT NULL DEFAULT false,\n    \"markedAsMt\" BOOLEAN NOT NULL DEFAULT false,\n    \"rawLine\" TEXT,\n    \"confidence\" REAL,\n    \"warning\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"Prediction_predictionSetId_fkey\" FOREIGN KEY (\"predictionSetId\") REFERENCES \"PredictionSet\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"Prediction_matchId_fkey\" FOREIGN KEY (\"matchId\") REFERENCES \"Match\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "PredictionSet",
+      "table": "PredictionSet",
+      "sql": "CREATE TABLE \"PredictionSet\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"forumCommentId\" TEXT,\n    \"source\" TEXT NOT NULL DEFAULT 'manual',\n    \"rawComment\" TEXT,\n    \"status\" TEXT NOT NULL DEFAULT 'draft',\n    \"selected\" BOOLEAN NOT NULL DEFAULT false,\n    \"selection\" TEXT NOT NULL DEFAULT 'auto',\n    \"confidence\" REAL,\n    \"warningsJson\" TEXT NOT NULL DEFAULT '[]',\n    \"parsedJson\" TEXT NOT NULL DEFAULT '[]',\n    \"manuallyEdited\" BOOLEAN NOT NULL DEFAULT false,\n    \"attributionMethod\" TEXT NOT NULL DEFAULT 'author',\n    \"attributionEvidence\" TEXT NOT NULL DEFAULT '',\n    \"attributionReview\" TEXT NOT NULL DEFAULT 'clear',\n    \"blockKey\" TEXT NOT NULL DEFAULT '',\n    \"sourceExcerpt\" TEXT NOT NULL DEFAULT '',\n    \"correctionLog\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"PredictionSet_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"PredictionSet_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"PredictionSet_forumCommentId_fkey\" FOREIGN KEY (\"forumCommentId\") REFERENCES \"ForumComment\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ReconciliationDecision",
+      "table": "ReconciliationDecision",
+      "sql": "CREATE TABLE \"ReconciliationDecision\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"afterRoundNumber\" INTEGER NOT NULL,\n    \"subjectName\" TEXT NOT NULL,\n    \"participantId\" TEXT,\n    \"action\" TEXT NOT NULL,\n    \"note\" TEXT,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ReconciliationDecision_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"ReconciliationDecision_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultAudit",
+      "table": "ResultAudit",
+      "sql": "CREATE TABLE \"ResultAudit\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"matchId\" TEXT NOT NULL,\n    \"roundId\" TEXT NOT NULL,\n    \"action\" TEXT NOT NULL,\n    \"actor\" TEXT NOT NULL,\n    \"previousHome\" INTEGER,\n    \"previousAway\" INTEGER,\n    \"previousState\" TEXT NOT NULL,\n    \"previousResolution\" TEXT NOT NULL,\n    \"previousMarker\" BOOLEAN NOT NULL,\n    \"nextHome\" INTEGER,\n    \"nextAway\" INTEGER,\n    \"nextState\" TEXT NOT NULL,\n    \"nextResolution\" TEXT NOT NULL,\n    \"nextMarker\" BOOLEAN NOT NULL,\n    \"reason\" TEXT NOT NULL DEFAULT '',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"ResultAudit_matchId_fkey\" FOREIGN KEY (\"matchId\") REFERENCES \"Match\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultFetchLog",
+      "table": "ResultFetchLog",
+      "sql": "CREATE TABLE \"ResultFetchLog\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"source\" TEXT NOT NULL,\n    \"url\" TEXT NOT NULL,\n    \"status\" TEXT NOT NULL,\n    \"role\" TEXT NOT NULL DEFAULT 'fallback',\n    \"matchCount\" INTEGER NOT NULL DEFAULT 0,\n    \"error\" TEXT,\n    \"fetchedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultObservation",
+      "table": "ResultObservation",
+      "sql": "CREATE TABLE \"ResultObservation\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"source\" TEXT NOT NULL,\n    \"sourceKey\" TEXT NOT NULL,\n    \"roundNumber\" INTEGER,\n    \"homeTeam\" TEXT NOT NULL,\n    \"awayTeam\" TEXT NOT NULL,\n    \"homeGoals\" INTEGER NOT NULL,\n    \"awayGoals\" INTEGER NOT NULL,\n    \"role\" TEXT NOT NULL DEFAULT 'fallback',\n    \"confidence\" TEXT NOT NULL DEFAULT 'medium',\n    \"matchStatus\" TEXT NOT NULL DEFAULT 'finished',\n    \"completeness\" TEXT NOT NULL DEFAULT 'complete',\n    \"matchId\" TEXT,\n    \"fetchedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, \"firstSeenAt\" DATETIME, \"lastSeenAt\" DATETIME,\n    CONSTRAINT \"ResultObservation_matchId_fkey\" FOREIGN KEY (\"matchId\") REFERENCES \"Match\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ResultSourceHealth",
+      "table": "ResultSourceHealth",
+      "sql": "CREATE TABLE \"ResultSourceHealth\" (\n    \"source\" TEXT NOT NULL PRIMARY KEY,\n    \"role\" TEXT NOT NULL,\n    \"lastSuccessAt\" DATETIME,\n    \"lastFailureAt\" DATETIME,\n    \"consecutiveFailures\" INTEGER NOT NULL DEFAULT 0,\n    \"degraded\" BOOLEAN NOT NULL DEFAULT false,\n    \"lastError\" TEXT,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "Round",
+      "table": "Round",
+      "sql": "CREATE TABLE \"Round\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"number\" INTEGER NOT NULL,\n    \"name\" TEXT,\n    \"forumUrl\" TEXT,\n    \"fetchedAt\" DATETIME,\n    \"sourceSnapshot\" TEXT,\n    \"importNotes\" TEXT,\n    \"status\" TEXT NOT NULL DEFAULT 'draft',\n    \"standingRole\" TEXT NOT NULL DEFAULT 'operational',\n    \"pollStatus\" TEXT NOT NULL DEFAULT 'scheduled',\n    \"lastPolledAt\" DATETIME,\n    \"nextPollAt\" DATETIME,\n    \"lastSuccessfulSource\" TEXT,\n    \"pollHealthSummary\" TEXT,\n    \"lastPredictionFetchAt\" DATETIME,\n    \"nextPredictionFetchAt\" DATETIME,\n    \"predictionFetchSummary\" TEXT,\n    \"closedAt\" DATETIME,\n    \"closureLog\" TEXT NOT NULL DEFAULT '[]',\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL, \"productionStartedAt\" DATETIME,\n    CONSTRAINT \"Round_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "RoundScore",
+      "table": "RoundScore",
+      "sql": "CREATE TABLE \"RoundScore\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"matchPoints\" INTEGER NOT NULL,\n    \"roundBonusPoints\" INTEGER NOT NULL,\n    \"exactCount\" INTEGER NOT NULL,\n    \"neighborCount\" INTEGER NOT NULL,\n    \"diffCount\" INTEGER NOT NULL,\n    \"outcomeCount\" INTEGER NOT NULL,\n    \"missCount\" INTEGER NOT NULL,\n    \"isRoundWinner\" BOOLEAN NOT NULL DEFAULT false,\n    \"breakdownJson\" TEXT NOT NULL,\n    \"calculatedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"RoundScore_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"RoundScore_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "ScoringConfig",
+      "table": "ScoringConfig",
+      "sql": "CREATE TABLE \"ScoringConfig\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"exactPoints\" INTEGER NOT NULL DEFAULT 10,\n    \"neighborPoints\" INTEGER NOT NULL DEFAULT 6,\n    \"diffPoints\" INTEGER NOT NULL DEFAULT 4,\n    \"outcomePoints\" INTEGER NOT NULL DEFAULT 3,\n    \"missPoints\" INTEGER NOT NULL DEFAULT -1,\n    \"zeroTotalBonus\" INTEGER NOT NULL DEFAULT 1,\n    \"nilNilBonus\" INTEGER NOT NULL DEFAULT 2,\n    \"bigDiffBonus\" INTEGER NOT NULL DEFAULT 3,\n    \"bigDiffMin\" INTEGER NOT NULL DEFAULT 3,\n    \"highTotalBonus\" INTEGER NOT NULL DEFAULT 4,\n    \"highTotalMin\" INTEGER NOT NULL DEFAULT 5,\n    \"roundTotalGoalsBonus\" INTEGER NOT NULL DEFAULT 3,\n    \"mtMultiplier\" INTEGER NOT NULL DEFAULT 2,\n    \"mtAppliesToNegative\" BOOLEAN NOT NULL DEFAULT true,\n    \"bonusesRequireRewardedBase\" BOOLEAN NOT NULL DEFAULT true,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL,\n    CONSTRAINT \"ScoringConfig_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "Season",
+      "table": "Season",
+      "sql": "CREATE TABLE \"Season\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"name\" TEXT NOT NULL,\n    \"slug\" TEXT NOT NULL,\n    \"startsAt\" DATETIME,\n    \"endsAt\" DATETIME,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"updatedAt\" DATETIME NOT NULL\n)"
+    },
+    {
+      "type": "table",
+      "name": "SeasonParticipant",
+      "table": "SeasonParticipant",
+      "sql": "CREATE TABLE \"SeasonParticipant\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"status\" TEXT NOT NULL DEFAULT 'included',\n    \"joinedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    \"excludedAt\" DATETIME,\n    CONSTRAINT \"SeasonParticipant_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"SeasonParticipant_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingSnapshot",
+      "table": "StandingSnapshot",
+      "sql": "CREATE TABLE \"StandingSnapshot\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"roundId\" TEXT NOT NULL,\n    \"participantId\" TEXT NOT NULL,\n    \"rank\" INTEGER NOT NULL,\n    \"previousRank\" INTEGER,\n    \"movement\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"roundWins\" INTEGER NOT NULL,\n    \"calculatedAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"StandingSnapshot_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingSnapshot_roundId_fkey\" FOREIGN KEY (\"roundId\") REFERENCES \"Round\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingSnapshot_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingsCheckpoint",
+      "table": "StandingsCheckpoint",
+      "sql": "CREATE TABLE \"StandingsCheckpoint\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"seasonId\" TEXT NOT NULL,\n    \"afterRoundNumber\" INTEGER NOT NULL,\n    \"source\" TEXT NOT NULL DEFAULT 'manual',\n    \"label\" TEXT NOT NULL,\n    \"rawText\" TEXT NOT NULL,\n    \"createdAt\" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n    CONSTRAINT \"StandingsCheckpoint_seasonId_fkey\" FOREIGN KEY (\"seasonId\") REFERENCES \"Season\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE\n)"
+    },
+    {
+      "type": "table",
+      "name": "StandingsCheckpointRow",
+      "table": "StandingsCheckpointRow",
+      "sql": "CREATE TABLE \"StandingsCheckpointRow\" (\n    \"id\" TEXT NOT NULL PRIMARY KEY,\n    \"checkpointId\" TEXT NOT NULL,\n    \"participantId\" TEXT,\n    \"rank\" INTEGER NOT NULL,\n    \"movement\" TEXT NOT NULL,\n    \"movementDelta\" INTEGER NOT NULL,\n    \"previousRank\" INTEGER,\n    \"displayName\" TEXT NOT NULL,\n    \"totalPoints\" INTEGER NOT NULL,\n    \"markerCount\" INTEGER NOT NULL,\n    \"rawLine\" TEXT NOT NULL,\n    CONSTRAINT \"StandingsCheckpointRow_checkpointId_fkey\" FOREIGN KEY (\"checkpointId\") REFERENCES \"StandingsCheckpoint\" (\"id\") ON DELETE CASCADE ON UPDATE CASCADE,\n    CONSTRAINT \"StandingsCheckpointRow_participantId_fkey\" FOREIGN KEY (\"participantId\") REFERENCES \"Participant\" (\"id\") ON DELETE SET NULL ON UPDATE CASCADE\n)"
+    }
+  ]
+}

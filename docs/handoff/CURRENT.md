@@ -379,6 +379,24 @@ zsh scripts/worker-agent.sh stop
 
 See [../OPERATIONS.md](../OPERATIONS.md).
 
+## Additive result schema, not deployed
+
+`scripts/apply-result-verification-schema.ts` adds `resultProvenance`, `manuallyCorrected`, and `resultVersion` to `Match`, nullable `firstSeenAt` and `lastSeenAt` to `ResultObservation`, and empty `ResultAudit` with its foreign key and index. The statements are ordinary `ADD COLUMN`, `CREATE TABLE`, and `CREATE INDEX` calls in one transaction. The path has to be absolute. A missing, empty, relative, partial, or unexpected database is refused before a write, and a missing file is not created. A second run prints `already applied` only when the whole target catalog matches. Nothing is written to a Prisma migration table.
+
+Prisma's diff from the pre-change `Match` table still proposes `CREATE TABLE "new_Match"`, an insert of the old columns, `DROP TABLE "Match"`, and a rename. That rebuild only puts the three new columns before `resultNote`. `ResultObservation` is already an `ADD COLUMN` in that diff, and `ResultAudit` is already a new table. After the additive statements, the same diff is empty. There is no remaining schema drift and the rebuild was not run.
+
+The live database was not migrated. The serving checkout remains the restored revision `f6a8583a5b0f`. The web listener and the prediction-only worker were left running. `WORKER_RESULTS_ENABLED` stays unset. Result verification still applies only to season `rpl-demo-2026`, round 16 and later. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed.
+
+## Checks for the additive schema
+
+Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. The serving checkout, port 3000, the prediction worker, and the live database were not changed. `RESULT_SCHEMA_BACKUP` pointed at a private copy source. Each backup test copied that file into a new directory. The source file's size and modification time were unchanged. `npm ci` reported 11 audit findings (7 moderate, 4 high). None were patched.
+
+- `npm test`: 62 files passed, 1 skipped, 395 tests passed, 1 skipped. The private prediction-snapshot test stayed skipped. The new file covers a relative path, a missing file, an empty file, an unexpected database, one apply, a second `already applied`, a partial column, an incompatible `ResultAudit`, rollback after an induced failure, Prisma reads of the neutral defaults, and an empty Prisma diff.
+- `npm run lint`: passed.
+- `npx tsc --noEmit`: passed. The production build typechecked the same source again.
+- `npm run build`: passed on Next.js 16.4.5. `prisma db push` for that build used a new disposable file and did not use `--accept-data-loss`. That file was removed.
+- A second disposable copy was migrated and served on `127.0.0.1:3024` only. Read-only pages for the season, standings, round 1, and closed rounds 14 and 15 returned 200. Round 15 review still shows comments 5707 and 5713 as needing review, and it says score correction starts at round 16. The fixtures page says result checks for that round stay off. Original column hashes, integrity, and foreign-key check matched the copy source before the server was stopped. The disposable copy was removed. No result mutation and no round 16 fixture were created.
+
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
@@ -390,6 +408,7 @@ See [../OPERATIONS.md](../OPERATIONS.md).
 
 ## Do not do next
 
+- Do not deploy this branch, run `prisma db push` against the live database, or apply the `new_Match` rebuild. The additive script stays unused until the operator approves it.
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
