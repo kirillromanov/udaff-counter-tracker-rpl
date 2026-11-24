@@ -1,6 +1,6 @@
 # Domain and data model
 
-The schema is `prisma/schema.prisma`. SQLite stores dates as integers. There is no `prisma/migrations` directory. `scripts/apply-result-verification-schema.ts` is the checked-in additive change for an existing database: `Match.resultProvenance`, `Match.manuallyCorrected`, `Match.resultVersion`, nullable `ResultObservation.firstSeenAt` and `lastSeenAt`, and `ResultAudit`. It does not rebuild `Match` or rewrite stored rows. It has not been applied to the live database. `scripts/backfill-production-started.ts` is the one data backfill that sets `productionStartedAt = createdAt` for operational rows that are still null.
+The schema is `prisma/schema.prisma`. SQLite stores dates as integers. There is no `prisma/migrations` directory. `scripts/apply-result-verification-schema.ts` is the checked-in additive change for an existing database: `Match.resultProvenance`, `Match.manuallyCorrected`, `Match.resultVersion`, nullable `ResultObservation.firstSeenAt` and `lastSeenAt`, and `ResultAudit`. It does not rebuild `Match` or rewrite stored rows. It was applied once to the live database with revision `3bd98e758503a528910acb606b2a56f9c933c450`. A second run reports `already applied`. Do not run it again. `scripts/backfill-production-started.ts` is the one data backfill that sets `productionStartedAt = createdAt` for operational rows that are still null.
 
 ## Season
 
