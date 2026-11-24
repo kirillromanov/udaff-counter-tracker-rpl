@@ -399,6 +399,10 @@ Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. T
 - `npm run build`: passed on Next.js 16.4.5. `prisma db push` for that build used a new disposable file and did not use `--accept-data-loss`. That file was removed.
 - A second disposable copy was migrated and served on `127.0.0.1:3024` only. Read-only pages for the season, standings, round 1, and closed rounds 14 and 15 returned 200. Round 15 review still shows comments 5707 and 5713 as needing review, and it says score correction starts at round 16. The fixtures page says result checks for that round stay off. Original column hashes, integrity, and foreign-key check matched the copy source before the server was stopped. The disposable copy was removed. No result mutation and no round 16 fixture were created.
 
+## Review counter scroll
+
+Parser review counters are same-page `metric` links. Next.js scrolls to the top of the page when that page's top is above the viewport, which is the default `Link` scroll. Those six counters and the consistency link on the review page set `scroll={false}`. Other `KpiGrid` links, including the overview counters that open the review page, keep the normal page scroll. Query parameters, Back, and Forward are unchanged. There is no browser test runner in this repository; the scroll check is a manual isolated review.
+
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).

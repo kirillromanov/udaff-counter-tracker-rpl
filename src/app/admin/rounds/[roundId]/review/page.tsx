@@ -309,16 +309,16 @@ export default async function RoundImportPage({
               <KpiGrid
                 compact
                 items={[
-                  { label: "Comments", value: summary.comments, href: href("comments"), current: metric === "comments" },
-                  { label: "Sets", value: summary.sets, href: href("sets"), current: metric === "sets" },
-                  { label: "Selected", value: summary.selected, href: href("selected"), current: metric === "selected" },
-                  { label: "Conflicts", value: summary.conflicts, href: href("conflicts"), current: metric === "conflicts", tone: summary.conflicts > 0 ? "danger" : "default" },
-                  { label: "Need correction", value: summary.corrections, href: href("corrections"), current: metric === "corrections", tone: summary.corrections > 0 ? "warning" : "default" },
-                  { label: "Result issues", value: issueTotal, href: href("results"), current: metric === "results", tone: blockingResults ? "danger" : issueTotal > 0 ? "warning" : "default" },
+                  { label: "Comments", value: summary.comments, href: href("comments"), current: metric === "comments", scroll: false },
+                  { label: "Sets", value: summary.sets, href: href("sets"), current: metric === "sets", scroll: false },
+                  { label: "Selected", value: summary.selected, href: href("selected"), current: metric === "selected", scroll: false },
+                  { label: "Conflicts", value: summary.conflicts, href: href("conflicts"), current: metric === "conflicts", tone: summary.conflicts > 0 ? "danger" : "default", scroll: false },
+                  { label: "Need correction", value: summary.corrections, href: href("corrections"), current: metric === "corrections", tone: summary.corrections > 0 ? "warning" : "default", scroll: false },
+                  { label: "Result issues", value: issueTotal, href: href("results"), current: metric === "results", tone: blockingResults ? "danger" : issueTotal > 0 ? "warning" : "default", scroll: false },
                 ]}
               />
               <p className="text-sm text-zinc-700">
-                <Link className="font-medium text-zinc-950 underline" href={href(focus)}>{consistency.consistent ? "Consistent" : "Not consistent"}</Link>
+                <Link className="font-medium text-zinc-950 underline" href={href(focus)} scroll={false}>{consistency.consistent ? "Consistent" : "Not consistent"}</Link>
                 {consistency.consistent
                   ? issues.some((row) => row.kind === "pending" || row.kind === "notice")
                     ? ". The checks on this round passed. Pending fixtures and manual notices are not errors."
