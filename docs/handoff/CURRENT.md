@@ -270,9 +270,11 @@ The supervised loop waits at most 60 seconds, then reads the wall clock and the 
 
 ## Result scope, not deployed
 
+The deployment record below is the current production state. This section is the earlier review.
+
 Result verification on this branch applies only to season `rpl-demo-2026`, round 16 and later. `src/lib/domain/results/eligibility.ts` is the check. Manual save, rollback, refresh, ingest, due polling, conflict acknowledgement, and the worker result line refuse an earlier round before a fetch or a stored-result write. Prediction refresh is unchanged. Rounds 1–15 keep the stored phase label. The serving checkout, the worker, and `prisma/dev.db` were not changed. Round 16 does not exist in the live season. `WORKER_RESULTS_ENABLED` stays unset.
 
-A read-only look at the live database showed one season, `rpl-demo-2026`, and rounds 1–15. Rounds 1–13 are archived, scored, not started, and not closed. Rounds 14 and 15 are operational, scored, started, and closed. The live `Match` table does not yet have the result-verification columns.
+A read-only look at the live database showed one season, `rpl-demo-2026`, and rounds 1–15. Rounds 1–13 are archived, scored, not started, and not closed. Rounds 14 and 15 are operational, scored, started, and closed. At this review the live `Match` table did not yet have the result-verification columns. The deployment below added them.
 
 ## Checks for the result scope guard
 
@@ -286,9 +288,11 @@ Run on 2026-11-24 in a worktree of `35dac04db10010731811a9e01194e05e097ea107`. T
 
 ## Result verification, not deployed
 
+The deployment record below is the current production state. This section is the earlier review.
+
 New result decisions count configured source ids. One finished score is provisional. Two ids with the same finished score are verified. A later automatic disagreement keeps the verified score and shows a conflict. Operator verification and rollback live on the fixtures page. Parser review and the round overview share `roundCounters`. Sleep, logout/login, and reboot behavior of the worker are still untested on this Mac. `WORKER_RESULTS_ENABLED` stays unset. This change does not write the live database.
 
-Fix score lives on Parser review, under the result refresh, in one compact block. A wide screen shows two columns. A narrow screen shows one. Each fixture has a small switch and two score fields. Source details open on demand. The switch does not save. Save actual results confirms every score change, including a switch turned off, checks every version, and recalculates the round once when a score number changes. A stale fixture rejects the whole save. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and the exact red text `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed. An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
+Fix score lives on Parser review, under the result refresh, in one compact block. A wide screen shows two columns. A narrow screen shows one. Each fixture has a small switch and two score fields. Source details open on demand. The switch does not save. Save actual results confirms every score change, including a switch turned off, checks every version, and recalculates the round once when a score number changes. A stale fixture rejects the whole save. Labels: `verified, fixed manually`, `fixed manually. Only one source agrees.`, and the exact red text `manual corrected, not source verified`. An older empty-provenance manual row stays stored and shows `older manual score`. Fixtures save no longer changes a score. The completed deployment is recorded in [../DEPLOYMENT.md](../DEPLOYMENT.md). An isolated review uses `scripts/isolated-review-seed.mjs` and port 3016, never the live database.
 
 Parser review and the overview use tighter section spacing. The refresh status is one line. Details stays closed until opened and does not request a source. A due time is not shown as a running check. `plan.active` is the only source for "Automatic checks stopped." The worker flag is not inferred. Counters open one panel under the grid. The same counter closes it. `metric` stays in the address, including back and forward. Parse conflicts stay on Conflicts. Slips that need correction stay on Need correction. Result issues counts unfixed result-source conflicts, scored fixtures with no selected prediction, and scored fixtures that are not verified. Fixed scores that sources do not confirm, and older manual scores, are notices in that panel and are not blocking. A fixture with no full-time score is pending in that panel and is not an error. The parser queue is no longer filtered by the selected counter.
 
@@ -379,13 +383,11 @@ zsh scripts/worker-agent.sh stop
 
 See [../OPERATIONS.md](../OPERATIONS.md).
 
-## Additive result schema, not deployed
+## Additive result schema, deployed
 
-`scripts/apply-result-verification-schema.ts` adds `resultProvenance`, `manuallyCorrected`, and `resultVersion` to `Match`, nullable `firstSeenAt` and `lastSeenAt` to `ResultObservation`, and empty `ResultAudit` with its foreign key and index. The statements are ordinary `ADD COLUMN`, `CREATE TABLE`, and `CREATE INDEX` calls in one transaction. The path has to be absolute. A missing, empty, relative, partial, or unexpected database is refused before a write, and a missing file is not created. A second run prints `already applied` only when the whole target catalog matches. Nothing is written to a Prisma migration table.
+Revision `3bd98e758503a528910acb606b2a56f9c933c450` is the serving checkout. Production build `seHUpIzJaQYzWLsPOGA-q` listens on `127.0.0.1:3000`. One prediction worker is running, with results disabled and a 60-minute interval. Round 16 does not exist. Historical rounds were not refreshed, recalculated, or relabeled. Comments 5707 and 5713 stayed pending review.
 
-Prisma's diff from the pre-change `Match` table still proposes `CREATE TABLE "new_Match"`, an insert of the old columns, `DROP TABLE "Match"`, and a rename. That rebuild only puts the three new columns before `resultNote`. `ResultObservation` is already an `ADD COLUMN` in that diff, and `ResultAudit` is already a new table. After the additive statements, the same diff is empty. There is no remaining schema drift and the rebuild was not run.
-
-The live database was not migrated. The serving checkout remains the restored revision `f6a8583a5b0f`. The web listener and the prediction-only worker were left running. `WORKER_RESULTS_ENABLED` stays unset. Result verification still applies only to season `rpl-demo-2026`, round 16 and later. The deployment order in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed.
+`scripts/apply-result-verification-schema.ts` was applied once to the live database by absolute path. The second run printed `already applied`. Original business-column hashes matched the fresh backup taken before the change. Integrity and foreign-key checks passed, the new defaults were neutral, and the follow-up Prisma diff was empty. The `Match` rebuild was not run. Do not run the migration again. The instructions stay in [../DEPLOYMENT.md](../DEPLOYMENT.md), separate from this record.
 
 ## Checks for the additive schema
 
@@ -400,7 +402,8 @@ Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. T
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running web process is Next.js 16.4.5 build `-ViUojczofhfmwOlfN68r` from merge `c12c410ac859cfa74f19afb34a9ca8a23feccca4`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
+- The running web process is Next.js 16.4.5 build `seHUpIzJaQYzWLsPOGA-q` from `3bd98e758503a528910acb606b2a56f9c933c450`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
+- Dependency audit follow-up: the deployment `npm audit` reported 11 findings, 7 moderate and 4 high, including `effect` in the Prisma CLI chain. None were patched. See [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
 - Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. The 13:07 UTC+3 cycle added comments 5715–5718 without changing those rows. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
@@ -408,7 +411,8 @@ Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. T
 
 ## Do not do next
 
-- Do not deploy this branch, run `prisma db push` against the live database, or apply the `new_Match` rebuild. The additive script stays unused until the operator approves it.
+- Do not repeat the additive migration, redeploy this documentation change, run `prisma db push` against the live database, or apply the `new_Match` rebuild. A second script run should only report `already applied`.
+- Do not create round 16 or set `WORKER_RESULTS_ENABLED=1` to exercise the new result workflow.
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
