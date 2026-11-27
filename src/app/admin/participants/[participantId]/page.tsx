@@ -69,7 +69,7 @@ export default async function ParticipantPage({
         {query.saved ? <Notice tone="success">Saved.</Notice> : null}
 
         <Section title="Name">
-          <form action={updateParticipantAction} className="flex flex-wrap items-end gap-2">
+          <form action={updateParticipantAction} className="flex flex-wrap items-end gap-2" key={participant.id}>
             <input name="participantId" type="hidden" value={participant.id} />
             <label className="text-xs font-medium text-zinc-500">
               Display name
@@ -101,7 +101,7 @@ export default async function ParticipantPage({
               </li>
             ))}
           </ul>
-          <form action={addAliasAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-4">
+          <form action={addAliasAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-4" key={`${participant.id}:alias`}>
             <input name="participantId" type="hidden" value={participant.id} />
             <label className="text-xs font-medium text-zinc-500">
               Add alias
