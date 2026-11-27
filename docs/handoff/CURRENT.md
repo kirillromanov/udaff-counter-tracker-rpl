@@ -407,7 +407,7 @@ Parser review counters are same-page `metric` links. Next.js scrolls to the top 
 
 A decorated `6aJI6ec` line was left with the comment author because NFKC turns the trademark sign into the letters TM and glues them to the nickname. `matchTokens` strips symbols before that fold. The nickname and `мну` still apply only inside a neofit comment. A registry alias matches when a header line is exactly that alias. Two different people flag the slip.
 
-Teams remain strings on `Match`. `TeamName` holds three spellings and is not in the live database. The fixtures page saves spellings without reparsing. An exact spelling scores above the older similarity fallback, so the longer name is not read as Dynamo Moscow. A short `Динамо` beside Makhachkala's opponent still uses that fallback. Bare `МТ` / `MT` are decoration and do not change the stored Match of the Round.
+Teams remain strings on `Match`. `TeamName` holds three spellings and is not in the live database. The fixtures page saves spellings without reparsing. An exact spelling scores above the older similarity fallback. A longer spelling is not read as Dynamo Moscow. A short `Динамо` is resolved by the opponent when both Dynamo clubs are in the round, and a contradictory pair stays unmatched. Bare `МТ` / `MT` are decoration and do not change the stored Match of the Round.
 
 The automatic worker does not parse round 16 while `productionStartedAt` is null. An unchanged stored comment is not rewritten by the next cycle unless that round is due and the stored rows are not equivalent to a new parse. Applying this change needs an explicit reparse after approval. The production alias list has no `6aJI6ec` row. Do not insert it from this note.
 

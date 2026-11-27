@@ -148,6 +148,17 @@ describe("team spellings", () => {
     expect(matched?.ambiguous).toBe(false);
   });
 
+  it("resolves bare Динамо by the opponent and does not guess the other club", () => {
+    expect(matchFixture("Локомотив", "Динамо", fixtures)?.fixtureId).toBe("loko");
+    expect(matchFixture("Кр Советов", "Динамо", fixtures)?.fixtureId).toBe("krylia");
+    expect(matchFixture("Крылья Советов", "Динамо Мх", fixtures)).toBeNull();
+    expect(matchFixture("Крылья Советов", "Динамо Махачкала", fixtures)).toBeNull();
+    expect(matchFixture("Кр Советов", "Динамо Мх", fixtures)).toBeNull();
+    expect(matchFixture("Локомотив", "Динамо Москва", fixtures)).toBeNull();
+    expect(matchFixture("Динамо Мх", "Крылья Советов", fixtures)).toBeNull();
+    expect(matchFixture("Динамо Махачкала", "Крылья Советов", fixtures)).toBeNull();
+  });
+
   it("rejects colliding and empty spellings with the same key the parser uses", () => {
     const own = validateTeamAliasDrafts(
       [{ name: "Динамо Мх", aliases: ["Динамо", "", ""] }],
@@ -175,6 +186,17 @@ describe("team spellings", () => {
         teamKey("Динамо Махачкала"),
       ]);
     }
+
+    const latinX = "Динамо Мx";
+    const historical = validateTeamAliasDrafts(
+      [{ name: latinX, aliases: ["Махачкала", "Динамо Махачкала", "Динамо Мх"] }],
+      [
+        { name: "Динамо", aliases: [] },
+        { name: "Динамо Махачкала", aliases: [] },
+        { name: "Динамо Мх", aliases: [] },
+      ],
+    );
+    expect(historical.ok).toBe(true);
   });
 });
 

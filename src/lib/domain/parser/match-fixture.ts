@@ -91,18 +91,48 @@ function exactLabel(slip: string, label: string): boolean {
   return sameTokens(matchTokens(slip), matchTokens(label));
 }
 
+function aliasTokenList(value: string): string[] {
+  const folded = aliasTokens(value);
+  return folded ? folded.split(" ") : [];
+}
+
+function dynamoFamily(tokens: readonly string[]): boolean {
+  return tokens.includes("динамо") || tokens.includes("махачкала");
+}
+
 /**
- * An exact spelling scores 1. "Динамо Махачкала" equals that spelling and
- * does not equal "Динамо", so the longer name is not given to Dynamo Moscow.
- * A shorter side that is not an exact spelling still uses the older
- * similarity score, which is how "Динамо — Акрон" stays Dynamo Makhachkala.
+ * A longer Dynamo spelling must not inherit the short name's score.
+ * "Динамо Махачкала" and "Динамо Москва" are not evidence for bare
+ * "Динамо", and "Динамо Москва" is not evidence for Makhachkala.
+ * The short slip "Динамо" still fits the longer label, so the opponent
+ * can choose the fixture.
+ */
+function crossDynamoRejected(slip: string, label: string): boolean {
+  const slipTokens = aliasTokenList(slip);
+  const labelTokens = aliasTokenList(label);
+  if (!dynamoFamily(slipTokens) || !dynamoFamily(labelTokens) || slipTokens.join(" ") === labelTokens.join(" ")) {
+    return false;
+  }
+  return slipTokens.some((token) => !labelTokens.some((labelToken) => (
+    token === labelToken || tokenPairScore(token, labelToken) > 0
+  )));
+}
+
+/**
+ * An exact spelling scores 1. A longer Dynamo spelling does not score
+ * against the other Dynamo. A short "Динамо" still matches the longer
+ * name, and the opponent selects the fixture. A line that names one
+ * Dynamo beside the other Dynamo's opponent stays unmatched.
  */
 function scoreSide(slip: string, labels: readonly string[]): number {
   if (labels.some((label) => exactLabel(slip, label))) {
     return 1;
   }
-  const scores = labels.map((label) => teamSimilarity(slip, label));
-  return scores.length === 0 ? 0 : Math.max(...scores);
+  const usable = labels.filter((label) => !crossDynamoRejected(slip, label));
+  if (usable.length === 0) {
+    return 0;
+  }
+  return Math.max(...usable.map((label) => teamSimilarity(slip, label)));
 }
 
 function pairScore(home: string, away: string, fixture: FixtureRef): number {

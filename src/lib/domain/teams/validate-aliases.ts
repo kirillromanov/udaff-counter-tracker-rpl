@@ -1,5 +1,10 @@
 import { teamKey } from "@/lib/domain/parser/normalize";
 
+/** Stored Makhachkala strings differ by spelling. Bare "динамо" is Dynamo Moscow. */
+function makhachkalaForm(key: string): boolean {
+  return key.includes("махачкала") || / м[хx]$/u.test(key);
+}
+
 export interface TeamAliasDraft {
   name: string;
   aliases: readonly string[];
@@ -21,6 +26,8 @@ export interface ValidatedTeamAliases {
  * Blank fields are unused slots. A value that normalizes to nothing, a
  * repeated spelling on the same team, the team's own canonical name, or
  * another team's name or spelling is rejected with a sentence the form can show.
+ * Two stored Makhachkala strings may share those spellings. Dynamo Moscow's
+ * name "Динамо" still cannot be one of them.
  * The key is the same `teamKey` the parser uses.
  */
 export function validateTeamAliasDrafts(
@@ -102,7 +109,11 @@ export function validateTeamAliasDrafts(
         if (otherKey === team.normalizedName) {
           continue;
         }
-        if (otherKey === alias.normalized || other.aliases.has(alias.normalized)) {
+        const sameMakhachkalaName = otherKey === alias.normalized
+          && alias.normalized !== "динамо"
+          && makhachkalaForm(team.normalizedName)
+          && makhachkalaForm(otherKey);
+        if (!sameMakhachkalaName && (otherKey === alias.normalized || other.aliases.has(alias.normalized))) {
           return {
             ok: false,
             message: `"${alias.alias}" is already a name or spelling of ${other.name}.`,
