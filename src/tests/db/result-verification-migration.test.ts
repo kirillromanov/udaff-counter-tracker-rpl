@@ -126,8 +126,10 @@ describe.skipIf(!backupPath)("result verification schema migration on a backup c
     });
     expect(statSync(source).mtimeMs).toBe(sourceStat.mtimeMs);
     expect(statSync(source).size).toBe(sourceStat.size);
-    expect(prismaDiff(copy)).toMatch(/empty migration/);
-    expect(prismaDiff(copy)).not.toMatch(/DROP TABLE|new_Match|RedefineTables/);
+    const diff = prismaDiff(copy);
+    expect(diff).toContain('CREATE TABLE "TeamName"');
+    expect(diff).toContain('CREATE TABLE "TeamNameAlias"');
+    expect(diff).not.toMatch(/DROP TABLE|new_Match|RedefineTables/);
   }, 30_000);
 
   it("lets Prisma read the migrated copy", async () => {

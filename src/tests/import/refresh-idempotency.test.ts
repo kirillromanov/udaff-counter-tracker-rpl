@@ -312,4 +312,65 @@ describe("prediction refresh idempotency", () => {
       await db.$disconnect();
     }
   });
+
+  it("keeps prediction ids when the same two-slip comment is parsed twice", async () => {
+    const [{ PrismaClient }, { parseStoredComments }, { createParticipant }] = await Promise.all([
+      import("@prisma/client"),
+      import("@/lib/domain/import/persist-import"),
+      import("@/lib/domain/participants/registry"),
+    ]);
+    const db = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const raw = [
+      "6aJI6ec™",
+      line("2-1"),
+      "мну",
+      line("0-1"),
+    ].join("\n");
+    try {
+      const season = await db.season.findFirstOrThrow();
+      const round = await db.round.create({
+        data: {
+          seasonId: season.id,
+          number: 17,
+          forumUrl: "https://example.test/two-slip",
+          standingRole: "operational",
+          productionStartedAt: new Date("2026-11-19T12:00:00.000Z"),
+          status: "open",
+          matches: { create: [{ homeTeam: "Ростов", awayTeam: "Крылья Советов", kickoffAt: kickoff, sortOrder: 1 }] },
+          forumComments: {
+            create: {
+              externalId: "slip-1",
+              sourceUrl: "https://example.test/two-slip",
+              authorName: "neofit",
+              postedAt,
+              rawHtml: "<p>slip</p>",
+              rawText: raw,
+              ingestionStatus: "new",
+            },
+          },
+        },
+      });
+      await createParticipant("neofit");
+      await createParticipant("БалБес");
+      await parseStoredComments(round.id);
+      const first = await db.prediction.findMany({
+        where: { predictionSet: { roundId: round.id } },
+        include: { predictionSet: true },
+        orderBy: { homeGoals: "asc" },
+      });
+      expect(first.map((row) => row.predictionSet.participantId).length).toBe(2);
+      const owners = await db.participant.findMany({
+        where: { id: { in: first.map((row) => row.predictionSet.participantId) } },
+      });
+      expect(owners.map((person) => person.name).sort()).toEqual(["neofit", "БалБес"]);
+      await parseStoredComments(round.id, { force: true });
+      const second = await db.prediction.findMany({
+        where: { predictionSet: { roundId: round.id } },
+        orderBy: { homeGoals: "asc" },
+      });
+      expect(second.map((row) => row.id)).toEqual(first.map((row) => row.id));
+    } finally {
+      await db.$disconnect();
+    }
+  });
 });

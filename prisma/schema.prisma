@@ -453,6 +453,32 @@ model ReconciliationDecision {
   @@index([participantId])
 }
 
+/// Canonical club name plus up to three extra spellings. Not a match row.
+/// Saving a spelling does not reparse comments or change stored predictions.
+model TeamName {
+  id             String   @id @default(cuid())
+  name           String
+  normalizedName String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  aliases TeamNameAlias[]
+}
+
+model TeamNameAlias {
+  id         String   @id @default(cuid())
+  teamNameId String
+  slot       Int
+  alias      String
+  normalized String   @unique
+  createdAt  DateTime @default(now())
+
+  teamName TeamName @relation(fields: [teamNameId], references: [id], onDelete: Cascade)
+
+  @@unique([teamNameId, slot])
+  @@index([teamNameId])
+}
+
 model ScoringConfig {
   id                         String   @id @default(cuid())
   seasonId                   String   @unique

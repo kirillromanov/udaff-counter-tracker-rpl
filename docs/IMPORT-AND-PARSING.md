@@ -24,7 +24,9 @@ Tests: `src/tests/forum/schedule-source.test.ts`.
 
 A line with teams but no score is kept so the cell can be filled in. Clocks, prices, and ordinary dashed sentences are skipped. `(МТ)` on a prediction does not change the official fixture flag. Manual edits are kept when the thread is parsed again.
 
-Team names go through `normalizeTeamName`. Short forms such as `Динамо Мх` and `Кр Советов` are handled by the parser's alias list, not by a second schedule scanner.
+Team names on a fixture are plain strings. `matchTokens` removes punctuation and symbols before NFKC, then folds case, so a trademark sign does not become the letters TM. A header line matches a participant only when those words are exactly the keyword. Zero matches leave the comment author. One match selects that person. Two different people flag the slip. Inside a neofit comment, `6aJI6ec` and `балбес` select БалБес, and a line that is only `мну` returns the following slip to neofit. Those two keywords are not written into the alias table.
+
+`TeamName` stores up to three extra spellings. The fixtures page saves them and does not reparse. Matching uses the teams in the round being parsed. An exact spelling scores above the older similarity fallback, so `Динамо Махачкала` is not read as `Динамо`. A short `Динамо` beside Makhachkala's opponent still uses that fallback, and `Кр Советов` does too when no saved spelling matches. Two fixtures within the existing gap are flagged rather than guessed. `(МТ)`, a bare `МТ` or `MT`, `*2`, and `матч тура` are decoration. They do not change `Match.isMatchOfTheRound`.
 
 ## People
 

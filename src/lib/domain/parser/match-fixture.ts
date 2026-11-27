@@ -1,5 +1,5 @@
 import type { FixtureRef } from "./types";
-import { normalizeTeamName } from "./normalize";
+import { matchTokens, normalizeTeamName, sameTokens } from "./normalize";
 
 /**
  * Forum nicknames that should compare equal to the full club token.
@@ -81,8 +81,32 @@ export function teamSimilarity(left: string, right: string): number {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-function pairScore(home: string, away: string, fixtureHome: string, fixtureAway: string): number {
-  return (teamSimilarity(home, fixtureHome) + teamSimilarity(away, fixtureAway)) / 2;
+function labelsOf(fixture: FixtureRef, side: "home" | "away"): string[] {
+  const canonical = side === "home" ? fixture.homeTeam : fixture.awayTeam;
+  const extra = side === "home" ? fixture.homeAliases : fixture.awayAliases;
+  return [canonical, ...(extra ?? [])];
+}
+
+function exactLabel(slip: string, label: string): boolean {
+  return sameTokens(matchTokens(slip), matchTokens(label));
+}
+
+/**
+ * An exact spelling scores 1. "Динамо Махачкала" equals that spelling and
+ * does not equal "Динамо", so the longer name is not given to Dynamo Moscow.
+ * A shorter side that is not an exact spelling still uses the older
+ * similarity score, which is how "Динамо — Акрон" stays Dynamo Makhachkala.
+ */
+function scoreSide(slip: string, labels: readonly string[]): number {
+  if (labels.some((label) => exactLabel(slip, label))) {
+    return 1;
+  }
+  const scores = labels.map((label) => teamSimilarity(slip, label));
+  return scores.length === 0 ? 0 : Math.max(...scores);
+}
+
+function pairScore(home: string, away: string, fixture: FixtureRef): number {
+  return (scoreSide(home, labelsOf(fixture, "home")) + scoreSide(away, labelsOf(fixture, "away"))) / 2;
 }
 
 export function matchFixture(
@@ -96,8 +120,8 @@ export function matchFixture(
 
   const ranked = fixtures
     .map((fixture) => {
-      const direct = pairScore(homeName, awayName, fixture.homeTeam, fixture.awayTeam);
-      const swapped = pairScore(homeName, awayName, fixture.awayTeam, fixture.homeTeam);
+      const direct = pairScore(homeName, awayName, fixture);
+      const swapped = pairScore(awayName, homeName, fixture);
       const useSwap = swapped > direct;
       return {
         fixtureId: fixture.id,
