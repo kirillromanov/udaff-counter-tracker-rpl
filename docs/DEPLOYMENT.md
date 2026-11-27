@@ -59,11 +59,11 @@ If the path preflight refuses, stop. The database was not opened for write. If a
 
 The additive script was applied once when `785b9c3` was deployed. `TeamName` and `TeamNameAlias` exist. Do not run `scripts/apply-team-alias-schema.ts` again. A second run prints `already applied` only when the catalog already matches. It does not read `DATABASE_URL` or `.env`, does not rebuild `Match`, and does not write a Prisma migration row. No spelling was inserted by that deploy. The live `6aJI6ec` nick was not added as a participant alias.
 
-Spellings are edited at `/admin/teams` after a later deploy of that page. Saving does not parse comments. Parse predictions on the affected round is a separate operator action. Do not start production on round 16 as part of saving spellings.
+Spellings are edited at `/admin/teams`. Saving does not parse comments. Parse predictions on the affected round is a separate operator action. Starting production is also separate. Round 16 was started later by the operator; that start is recorded in [handoff/CURRENT.md](handoff/CURRENT.md).
 
-## Per-round result switch — not performed
+## Per-round result switch — performed on 2026-11-27
 
-These steps are the proposed sequence for before 16:00 Moscow time on 2026-11-28. They have not been run. Do not run them until the operator approves the pull request. Do not set `WORKER_RESULTS_ENABLED` while preparing the pull request, and do not change round 16 from this document.
+The sequence below was run for merge `c64a9efbb8306863fcc7ed56eaf889d40028cefa`. The serving build id is `TpWHTlSY1yKYX9upkkX7D`. The agent applied the additive script, started the web, and restarted the worker once with `WORKER_RESULTS_ENABLED=1` after `worker:plan` showed the prediction line was not due. The agent did not turn round 16's switch on. A later read-only query found the operator had turned it on at 14:16:47 Moscow time. Do not repeat the sequence from this document.
 
 1. Deploy the reviewed commit to the serving checkout. Build with a disposable `DATABASE_URL`. Do not run `prisma db push` on the live file.
 2. Quiesce the web and worker the same way as the earlier additive schema. Take a fresh backup of the absolute live file. Rehearse `npx tsx scripts/apply-results-processing-schema.ts --database /absolute/copy.db` on a copy. The script adds `resultsProcessing BOOLEAN NOT NULL DEFAULT false` in one transaction. It refuses any other catalog. A second run prints `already applied` only when the full target catalog matches. It does not rebuild a table and does not backfill.
@@ -72,7 +72,7 @@ These steps are the proposed sequence for before 16:00 Moscow time on 2026-11-28
 5. On the round 16 page, turn result processing on. The page shows on or off after the click and writes a closure-log line with actor `local-admin`, the time, and from/to. No restart is required for that click. Rounds started after the deploy set the column true in the same transaction as Start production. A round that is already started keeps the stored value until the page is used.
 6. `npm run results:observe -- --database /absolute/copy.db --round 15` is the read-only rehearsal. It is not a button. It writes nothing.
 
-Rollback: turn the round switch off on the page. That needs no restart. To stop every result line, remove `WORKER_RESULTS_ENABLED` and restart the worker once. Do not restore the database automatically. A score written by a later live check would remain until an operator corrects it. This sequence has not written one.
+Rollback: turn the round switch off on the page. That needs no restart. To stop every result line, remove `WORKER_RESULTS_ENABLED` and restart the worker once. Do not restore the database automatically. A score written by a later live check would remain until an operator corrects it. The 2026-11-27 deploy did not write a result score. The operator's later switch click wrote the column and the closure log only.
 
 The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
 

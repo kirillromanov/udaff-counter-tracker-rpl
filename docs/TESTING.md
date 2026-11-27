@@ -2,7 +2,7 @@
 
 `npm test` runs Vitest. The suite does not need the live database. `src/tests/rounds/production-activation.test.ts` creates a temporary database with `prisma db push --skip-generate` and never uses `prisma/dev.db`. `src/tests/import/refresh-idempotency-snapshot.test.ts` stays skipped unless `PREDICTION_IDEMPOTENCY_SNAPSHOT` names a private database copy. That test copies the file again and does not open the live database. `src/tests/db/result-verification-migration.test.ts` always refuses a relative, missing, empty, or unexpected database. Its copy of a private backup runs only when `RESULT_SCHEMA_BACKUP` is an absolute path; the test copies that file and does not open the live database. `src/tests/db/results-processing-migration.test.ts` refuses the same kinds of path. The apply rehearsal uses a private snapshot copy and is not part of `npm test`.
 
-`npm run lint` is ESLint. `npx tsc --noEmit` is the typecheck; `package.json` has no `typecheck` script.
+`npm run lint` is ESLint. `npx tsc --noEmit` is the typecheck; `package.json` has no `typecheck` script. This repository has no `.github` workflow directory, so those checks are local.
 
 `npm run build` is a production Next.js build. It rewrites `.next/`. Do not run it in the checkout that `next start` is serving. A clean check belongs in a temporary copy with its own `DATABASE_URL`.
 

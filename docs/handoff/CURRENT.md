@@ -1,5 +1,41 @@
 # Current handoff
 
+<a id="resume-here"></a>
+
+## Resume here (2026-11-27, Moscow time, UTC+3)
+
+Production `main` is `c64a9efbb8306863fcc7ed56eaf889d40028cefa`, the merge of pull request #38. The serving web build is `TpWHTlSY1yKYX9upkkX7D` (Next.js 16.4.5) on `127.0.0.1:3000`. This documentation commit does not replace that build.
+
+Round 16 of `rpl-demo-2026` is operational and open. Production started at 13:11:45 Moscow time. A read-only query at 14:26 Moscow time found `resultsProcessing` true. The closure log shows the operator turned it on at 14:16:47 Moscow time, actor `local-admin`, from false to true. The worker start line at 14:14:51 Moscow time says `results=true`. The first automatic result check is 16:00 Moscow time on 2026-11-28, two hours after the Rubin–Akron kickoff. Do not poll, refresh, parse, or turn the switch off from a documentation session.
+
+The eight fixtures have no goals. Kickoffs in Moscow time: 28 Nov 14:00 Rubin–Akron, 16:30 CSKA–Zenit, 19:00 Baltika–Akhmat; 29 Nov 13:00 Orenburg–Rodina, 15:15 Rostov–Krasnodar (Match of the Round), 17:30 Krylia–Dynamo, 19:45 Lokomotiv–`Динамо Мx`; 30 Nov 19:30 Fakel–Spartak. The stored away name ends in Latin `x` (`U+0078`). Its key is `динамо мx`. Saved aliases on that key are `Махачкала`, `Динамо Махачкала`, and Cyrillic `Динамо Мх`. `Крылья Советов` has alias `Кр Советов`.
+
+Rounds 1–13 are archived, scored, not closed, and unstarted. Rounds 14 and 15 are operational, scored, closed, and started. Comments 5707 and 5713 on round 15 still need review.
+
+The serving checkout was clean except an untracked root `dev.db`, which is not the live database. Do not delete it and do not push that checkout's branch. Private paths, backup folders, and process names are outside Git. See [../RUNBOOK.md](../RUNBOOK.md).
+
+### How to resume
+
+Run these before editing. They do not write the database. Do not print `.env`.
+
+```sh
+git fetch origin
+git rev-parse HEAD origin/main
+git status -sb
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+sqlite3 "file:$LIVE?mode=ro" "SELECT number, resultsProcessing, status, standingRole, closedAt IS NULL, productionStartedAt FROM Round r JOIN Season s ON s.id=r.seasonId WHERE s.slug='rpl-demo-2026' ORDER BY number;"
+```
+
+`$LIVE` is the absolute path recorded outside Git, not a relative `prisma/dev.db` opened for write. `npm run worker:plan` is also read-only. A `run` line there is the planner's prediction, not a fetch that already happened. Confirm the worker log's last `worker start` line before trusting an older note about `results=true`.
+
+### Open items
+
+- Two audit groups remain. They were not upgraded. See [../SECURITY.md](../SECURITY.md).
+- The season page Create round number input uses `defaultValue` and has no React key. It was not clicked in this pass. See [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+- At 14:26 Moscow time, round 16 `lastPredictionFetchAt` was 14:17:24 and `nextPredictionFetchAt` was 15:17:24. The worker log has no run line after the 14:14:51 start. This pass did not find which process wrote that timestamp. Do not rewrite it.
+- Stored `ResultSourceHealth` rows were not refreshed by this pass. football-data and understat are stored as degraded. The other five sources have a stored success at 20:58 Moscow time on 2026-11-22. A 2026-11-27 observe rehearsal on a copy is not a new live fetch.
+- Do not merge or deploy this documentation pull request unless the operator asks. The first result check needs no further code if the switch and the worker flag stay as they were at this read.
+
 ## Revision
 
 - Date: 2026-11-19
@@ -407,7 +443,7 @@ Parser review counters are same-page `metric` links. Next.js scrolls to the top 
 
 The parser from pull request #35 is on `main` at `785b9c305db74d0471292ad5999a7b1ee4ed42e3` and was deployed as build `VfdMcxVdPdxuasX46-Ai8`. `TeamName` and `TeamNameAlias` are already on the live database. Do not run `scripts/apply-team-alias-schema.ts` again. A read-only snapshot on 2026-11-27 found both tables empty. Round 16 was still unstarted. Do not start it from this note.
 
-`matchTokens` strips symbols before NFKC, so a trademark sign is not glued onto `6aJI6ec`. That nickname and `мну` apply only inside a neofit comment. Do not insert a `6aJI6ec` participant alias.
+`matchTokens` strips symbols before NFKC, so a trademark sign is not glued onto `6aJI6ec`. That nickname and `мну` apply only inside a neofit comment. Do not insert a `6aJI6ec` participant alias. The empty-table and unstarted sentences above are that checkpoint only. The later read is in [Resume here](#resume-here).
 
 The stored away team on the Lokomotiv fixture is `Динамо Мx` with a Latin `x` (`U+0078`). Its key is `динамо мx`, which is not the key of `Динамо Мх` or `Динамо Махачкала`. With no saved spelling, `Локомотив — Махачкала` does not match that fixture. Saving `Махачкала` on that stored name, then Parse predictions, is what attaches the line. The worker still skips the round while `productionStartedAt` is null.
 
@@ -415,32 +451,32 @@ Spellings are edited at `/admin/teams`, linked from Contest admin and from the f
 
 The spelling form for every club is the same `/admin/teams/spellings` page, chosen by the `key` query. `ClubSpellingsForm` is keyed by that club key. The three fields use `defaultValue`, which React keeps when the same inputs stay mounted, so a later club would otherwise show the previous club's text and a save would store it under the new name. The server read is `teamName.findUnique` on that same key. The participant name and alias forms are keyed by participant id, and the round forum URL forms are keyed by round id, for the same reason.
 
-## Per-round result switch, not deployed
+## Per-round result switch, deployed
 
-A pull request adds `Round.resultsProcessing`, default false, through `scripts/apply-results-processing-schema.ts`. That script was rehearsed on a private snapshot copy and was not applied to the live database. Start production sets the column true only for a round that is started after the column exists, in the same transaction, and records `local-admin` in the closure log. An already-started round, including round 16, keeps the stored value. The round page turns it on or off without a restart. The worker runs a result line only when `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1` at process start, and the column is true. `worker:plan` says `results-disabled` or `round-switch-off`. `npm run results:observe` prints a would-be score and writes nothing.
+`Round.resultsProcessing` is on the live database. `scripts/apply-results-processing-schema.ts` was applied once on 2026-11-27. Do not run it again. Start production sets the column true only for a round that is started after the column exists, in the same transaction, and records `local-admin` in the closure log. Round 16 was already started, so it stayed false until the operator used the round page at 14:16:47 Moscow time. The worker runs a result line only when `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1` at process start, and the column is true. `worker:plan` says `results-disabled` or `round-switch-off` when a line is due and a gate is closed. `npm run results:observe` prints a would-be score and writes nothing.
 
-The result matcher uses `teamKey` plus saved `TeamName` / `TeamNameAlias` spellings, then the existing similarity fallback. It does not fold Latin `x` to Cyrillic `х`. English source names for Dynamo Makhachkala still become `Динамо Махачкала` in `ENGLISH_CLUBS`; the saved alias is what reaches the Latin-x fixture. Krylia's English names become `Крылья Советов` directly.
+The result matcher uses `teamKey` plus saved `TeamName` / `TeamNameAlias` spellings, then the existing similarity fallback. It does not fold Latin `x` to Cyrillic `х`. English source names for Dynamo Makhachkala still become `Динамо Махачкала` in `ENGLISH_CLUBS`; the saved alias is what reaches the Latin-x fixture. Krylia's English names become `Крылья Советов` directly. The reasons are in [../decisions/010-result-switch-and-spellings.md](../decisions/010-result-switch-and-spellings.md).
 
-The production sequence in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed: deploy, apply the script, one worker restart with `WORKER_RESULTS_ENABLED=1` only when `worker:plan` shows the prediction line is not due, then turn round 16 on from the page. Rollback is the page switch, or unsetting the env flag and restarting the worker. Do not restore the database automatically.
+The production sequence in [../DEPLOYMENT.md](../DEPLOYMENT.md) was performed through the arming restart. The agent did not click the round switch. Rollback is the page switch, or unsetting the env flag and restarting the worker. Do not restore the database automatically.
 
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
-- The running web process is Next.js 16.4.5 build `seHUpIzJaQYzWLsPOGA-q` from `3bd98e758503a528910acb606b2a56f9c933c450`. It listens only on `127.0.0.1:3000`. A later docs commit does not replace that build.
+- The running web process is Next.js 16.4.5 build `TpWHTlSY1yKYX9upkkX7D` from `c64a9efbb8306863fcc7ed56eaf889d40028cefa`. It listens only on `127.0.0.1:3000`. This documentation commit does not replace that build.
 - Dependency audit follow-up: the deployment `npm audit` reported 11 findings, 7 moderate and 4 high, including `effect` in the Prisma CLI chain. None were patched. See [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 - No authentication and no TLS. The web command remains `npm run start -- --hostname 127.0.0.1 --port 3000`.
-- Prediction refresh is supervised. `WORKER_ENABLED=1` and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. `WORKER_RESULTS_ENABLED` is unset. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. The 13:07 UTC+3 cycle added comments 5715–5718 without changing those rows. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
+- Prediction refresh is supervised. `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1`, and `PREDICTION_REFRESH_INTERVAL_MINUTES=60` are in the live environment. Round 16's result switch was on at the 14:26 Moscow time read. The 10:34 UTC+3 fetch kept all 91 prediction ids and 14 set ids. The 13:07 UTC+3 cycle added comments 5715–5718 without changing those rows. Saved calculations stay on the stored breakdown. Round 15's publication times are normalized. Comments on other rounds keep the legacy encoding. Do not shift those times. Live comments were not relabeled, and the earlier replaced prediction ids were not restored.
 - The running checkout can lag `main` until an explicit update. Merging source does not restart it.
 - Server deployment is not designed beyond [../DEPLOYMENT.md](../DEPLOYMENT.md).
 
 ## Do not do next
 
 - Do not repeat the additive migration, redeploy this documentation change, run `prisma db push` against the live database, or apply the `new_Match` rebuild. A second script run should only report `already applied`.
-- Do not start, close, reparse, or recalculate round 16 from an agent session. Do not run `scripts/apply-team-alias-schema.ts` again. Do not insert a `6aJI6ec` alias. Do not set `WORKER_RESULTS_ENABLED=1`. Spellings are an operator save on Teams, followed by Parse predictions on that round.
+- Do not start, close, reparse, or recalculate round 16 from an agent session. Do not run `scripts/apply-team-alias-schema.ts` or `scripts/apply-results-processing-schema.ts` again. Do not insert a `6aJI6ec` alias. Do not change `WORKER_RESULTS_ENABLED` or round 16's switch. Spellings are an operator save on Teams, followed by Parse predictions on that round.
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
-- Do not set `WORKER_RESULTS_ENABLED=1`. Do not add cron, a web-process timer, or a second worker. Stop the existing worker with `zsh scripts/worker-agent.sh stop`.
+- Do not add cron, a web-process timer, or a second worker. Stop the existing worker with `zsh scripts/worker-agent.sh stop` only when an approved quiesce needs it.
 - Do not force a prediction refresh with `forceRoundId`. The supervised worker fetches a round when `nextPredictionFetchAt` is due. Do not rewrite that timestamp by hand.
 - Do not recalculate archived or closed rounds. Do not bulk-shift the remaining legacy `postedAt` values. A legacy publication time on any round other than the corrected round 15 stays uncertain.
 - Do not clear comments 5707 or 5713. Both keep the unresolved-edit note and their previous prediction rows. 5701 is already `unchanged`. Do not bulk-relabel stored `new` comments, and do not restore prediction ids from an older copy.
