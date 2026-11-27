@@ -1,8 +1,11 @@
 import { normalizeTeamName } from "@/lib/domain/parser/normalize";
 
 /**
- * Names published by external sources, mapped to the club names stored on
- * contest fixtures. Longer patterns win.
+ * Names published by external sources, mapped to contest club names.
+ * Longer patterns win. There is no Latin/Cyrillic lookalike fold.
+ * Dynamo Makhachkala's English names become "Динамо Махачкала", which is
+ * not the stored Latin-x fixture. A saved spelling is what connects them.
+ * Krylia's English names become "Крылья Советов", which matches that fixture.
  */
 const ENGLISH_CLUBS: readonly [string, string][] = [
   ["спартак москва", "Спартак"],

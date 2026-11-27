@@ -84,6 +84,8 @@ export interface RoundRefreshReport extends IngestReport {
   calculation: RoundCalculationReport["status"] | "skipped" | "stale";
   included: number;
   total: number;
+  /** Set when the per-round switch refused the check before any fetch or write. */
+  skippedReason?: "round-switch-off";
 }
 
 /**
@@ -106,6 +108,26 @@ export async function refreshRoundResults(
     }
     await assertRoundMutable(roundId);
     await assertResultVerificationRound(roundId);
+    const gate = await prisma.round.findUniqueOrThrow({
+      where: { id: roundId },
+      select: { resultsProcessing: true },
+    });
+    if (!gate.resultsProcessing) {
+      return {
+        busy: false,
+        recalculated: false,
+        calculation: "skipped",
+        included: 0,
+        total: 0,
+        confirmed: 0,
+        verified: 0,
+        conflicts: 0,
+        insufficient: 0,
+        updated: 0,
+        sources: [],
+        skippedReason: "round-switch-off",
+      };
+    }
     const report = await ingestRoundResults(roundId, options?.fetches);
     await assertRoundMutable(roundId);
     await syncRoundPollState(roundId, new Date(), report.sources, options?.automatic === true);

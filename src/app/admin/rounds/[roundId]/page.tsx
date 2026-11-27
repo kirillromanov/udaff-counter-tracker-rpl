@@ -28,7 +28,7 @@ import {
   buttonClass,
   fieldClass,
 } from "../../ui";
-import { calculateRoundAction, saveForumUrlAction } from "./workflow-actions";
+import { calculateRoundAction, saveForumUrlAction, setResultsProcessingAction } from "./workflow-actions";
 
 export const instant = false;
 
@@ -37,7 +37,7 @@ export default async function RoundPage({
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; closed?: string; reopened?: string; started?: string }>;
+  searchParams: Promise<{ error?: string; closed?: string; reopened?: string; started?: string; results?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -144,6 +144,22 @@ export default async function RoundPage({
         ) : null}
         {query.closed ? <Notice tone="success">Round closed. Saved data is unchanged.</Notice> : null}
         {query.reopened ? <Notice tone="success">Production reopened. Nothing was fetched or recalculated.</Notice> : null}
+        {query.results === "on" ? (
+          <Notice tone="success">Result processing is on for this round. The worker still needs its boot-time result flag.</Notice>
+        ) : null}
+        {query.results === "off" ? (
+          <Notice tone="success">Result processing is off for this round. No restart is required.</Notice>
+        ) : null}
+        {archived || closed ? null : (
+          <form action={setResultsProcessingAction} className="flex flex-wrap items-center gap-2">
+            <input name="roundId" type="hidden" value={round.id} />
+            <input name="enabled" type="hidden" value={round.resultsProcessing ? "0" : "1"} />
+            <span className="text-sm text-stone-700">
+              Result processing: <strong>{round.resultsProcessing ? "on" : "off"}</strong>
+            </span>
+            <SubmitButton pendingLabel="Saving" variant="secondary">{round.resultsProcessing ? "Turn off" : "Turn on"}</SubmitButton>
+          </form>
+        )}
         {round.importNotes?.startsWith("Fixture source:") && round.status !== "imported" ? (
           <Notice label="Fixture source" tone="info">
             {round.importNotes}

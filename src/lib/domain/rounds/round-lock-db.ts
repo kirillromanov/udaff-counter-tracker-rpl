@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { OPERATIONAL_ROUND } from "@/lib/domain/standings/round-role";
-import { RoundClosedError, planClose, planReopen, planStart } from "./round-lock";
+import { ARCHIVED_ROUND, OPERATIONAL_ROUND } from "@/lib/domain/standings/round-role";
+import { LOCAL_OPERATOR, RoundClosedError, appendClosureLog, planClose, planReopen, planStart } from "./round-lock";
 
 /** Shared guard for every round-data mutation. Closing and reopening do not use this. */
 export async function assertRoundMutable(roundId: string): Promise<void> {
@@ -148,7 +148,11 @@ export async function startProductionRound(
         closedAt: null,
         standingRole: OPERATIONAL_ROUND,
       },
-      data: { productionStartedAt: next.productionStartedAt, closureLog: next.closureLog },
+      data: {
+        productionStartedAt: next.productionStartedAt,
+        closureLog: next.closureLog,
+        resultsProcessing: true,
+      },
     });
     if (updated.count === 1) {
       return { changed: true };
@@ -164,5 +168,56 @@ export async function startProductionRound(
       return { changed: false };
     }
     throw new Error("Production could not be started.");
+  });
+}
+
+/**
+ * Turn result processing on or off for one open round.
+ * Closed rounds are rejected before the closure log is rewritten.
+ * An already-started round keeps its stored value until this call.
+ */
+export async function setRoundResultsProcessing(
+  roundId: string,
+  enabled: boolean,
+  at = new Date(),
+  db: Pick<PrismaClient, "$transaction"> = prisma,
+): Promise<{ changed: boolean; enabled: boolean }> {
+  return db.$transaction(async (tx) => {
+    const round = await tx.round.findUnique({
+      where: { id: roundId },
+      select: { closedAt: true, closureLog: true, resultsProcessing: true, standingRole: true },
+    });
+    if (!round) {
+      throw new Error("Round not found");
+    }
+    if (round.closedAt) {
+      throw new RoundClosedError();
+    }
+    if (round.standingRole === ARCHIVED_ROUND) {
+      throw new Error("An archived round does not run result processing.");
+    }
+    if (round.resultsProcessing === enabled) {
+      return { changed: false, enabled };
+    }
+    const closureLog = appendClosureLog(round.closureLog, "results-processing", at, {
+      actor: LOCAL_OPERATOR,
+      from: round.resultsProcessing,
+      to: enabled,
+    });
+    const updated = await tx.round.updateMany({
+      where: { id: roundId, closedAt: null, resultsProcessing: round.resultsProcessing },
+      data: { resultsProcessing: enabled, closureLog },
+    });
+    if (updated.count === 1) {
+      return { changed: true, enabled };
+    }
+    const current = await tx.round.findUniqueOrThrow({
+      where: { id: roundId },
+      select: { closedAt: true, resultsProcessing: true },
+    });
+    if (current.closedAt) {
+      throw new RoundClosedError();
+    }
+    return { changed: false, enabled: current.resultsProcessing };
   });
 }

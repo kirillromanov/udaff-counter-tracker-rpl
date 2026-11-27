@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
-import { assertRoundMutable, closeProductionRound, reopenProductionRound, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
+import { assertRoundMutable, closeProductionRound, reopenProductionRound, setRoundResultsProcessing, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
 import { forumUrlSchema } from "@/lib/domain/forum/fetch-post";
 import { saveFixtureStructure } from "@/lib/domain/fixtures/save-structure";
 import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
@@ -50,6 +50,9 @@ export async function refreshMatchResultsAction(formData: FormData): Promise<voi
     await assertResultVerificationRound(roundId);
     const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { seasonId: true } });
     const report = await refreshRoundResults(roundId);
+    if (report.skippedReason === "round-switch-off") {
+      redirect(`${path}?error=${encodeURIComponent("Result processing is off for this round.")}`);
+    }
     refresh(roundId);
     revalidatePath(`/admin/seasons/${round.seasonId}/standings`);
     if (report.busy) {
@@ -321,6 +324,18 @@ export async function startProductionAction(formData: FormData): Promise<void> {
       revalidateSeasonRoundList(round.seasonId);
     }
     redirect(`${hubPath(roundId)}?started=1`);
+  } catch (error) {
+    fail(hubPath(roundId), error);
+  }
+}
+
+export async function setResultsProcessingAction(formData: FormData): Promise<void> {
+  const roundId = String(formData.get("roundId") ?? "");
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  try {
+    const result = await setRoundResultsProcessing(roundId, enabled);
+    refresh(roundId);
+    redirect(`${hubPath(roundId)}?results=${result.enabled ? "on" : "off"}`);
   } catch (error) {
     fail(hubPath(roundId), error);
   }

@@ -16,6 +16,7 @@ export async function loadWorkerRounds(): Promise<WorkerRound[]> {
       nextPredictionFetchAt: true,
       closedAt: true,
       productionStartedAt: true,
+      resultsProcessing: true,
       matches: {
         select: {
           kickoffAt: true,
@@ -44,6 +45,7 @@ export async function loadWorkerRounds(): Promise<WorkerRound[]> {
     nextPredictionFetchAt: round.nextPredictionFetchAt,
     closedAt: round.closedAt,
     productionStartedAt: round.productionStartedAt,
+    resultsProcessing: round.resultsProcessing,
     matches: round.matches.map(toFixture),
   }));
 }

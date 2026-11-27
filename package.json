@@ -17,6 +17,8 @@
     "identity:sync": "tsx scripts/sync-identities.ts",
     "results:ingest": "tsx scripts/ingest-results.ts",
     "results:poll": "tsx scripts/poll-results.ts",
+    "results:observe": "tsx scripts/observe-round-results.ts",
+    "schema:results-processing": "tsx scripts/apply-results-processing-schema.ts",
     "predictions:refresh": "tsx scripts/refresh-predictions.ts",
     "baseline:round13": "tsx scripts/install-baseline-round-13.ts",
     "diagnostics:replay-1-13": "tsx scripts/replay-rounds-1-13.ts",

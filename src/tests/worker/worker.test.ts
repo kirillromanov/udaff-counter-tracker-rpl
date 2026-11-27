@@ -45,6 +45,7 @@ function round(overrides: Partial<WorkerRound> = {}): WorkerRound {
     nextPredictionFetchAt: null,
     closedAt: null,
     productionStartedAt: started,
+    resultsProcessing: true,
     matches: [fixture()],
     ...overrides,
   };
@@ -138,6 +139,18 @@ describe("worker eligibility", () => {
     expect(job("other-16", "prediction-refresh")?.disposition).toBe("run");
     expect(job("closed", "result-check")).toMatchObject({ disposition: "skip", reason: "closed" });
     expect(job("archived", "result-check")?.reason).toBe("archived");
+    const switchedOff = planWorker(
+      [round({ id: "held", number: 16, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG, resultsProcessing: false })],
+      now,
+      intervals,
+      { resultsEnabled: true },
+    );
+    expect(switchedOff.find((item) => item.job === "result-check")).toMatchObject({
+      eligible: true,
+      disposition: "skip",
+      reason: "round-switch-off",
+    });
+    expect(line([round({ number: 16, seasonSlug: RESULT_VERIFICATION_SEASON_SLUG, resultsProcessing: true })], "result-check").reason).toBe("results-disabled");
     expect(job("round-15", "prediction-refresh")?.nextAt).not.toBe(job("round-15", "result-check")?.nextAt);
   });
 

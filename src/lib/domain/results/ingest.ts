@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
+import { teamKey } from "@/lib/domain/parser/normalize";
+import { teamAliasesByKey } from "@/lib/domain/teams/save-aliases";
 import { ResultScopeError, resultVerificationApplies } from "./eligibility";
 import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
 import { assertRoundMutableTx, closedRoundIdSet } from "@/lib/domain/rounds/round-lock-db";
@@ -148,11 +150,14 @@ export async function ingestSeasonResults(
   }
   const openRounds = writable.filter((round) => !closedIds.has(round.id));
 
+  const spellings = await teamAliasesByKey();
   const fixtures = openRounds.flatMap((round) =>
     round.matches.map((match) => ({
       id: match.id,
       homeTeam: match.homeTeam,
       awayTeam: match.awayTeam,
+      homeAliases: spellings.get(teamKey(match.homeTeam)) ?? [],
+      awayAliases: spellings.get(teamKey(match.awayTeam)) ?? [],
       roundNumber: round.number,
       resultState: match.resultState,
       resultResolution: match.resultResolution,

@@ -415,6 +415,14 @@ Spellings are edited at `/admin/teams`, linked from Contest admin and from the f
 
 The spelling form for every club is the same `/admin/teams/spellings` page, chosen by the `key` query. `ClubSpellingsForm` is keyed by that club key. The three fields use `defaultValue`, which React keeps when the same inputs stay mounted, so a later club would otherwise show the previous club's text and a save would store it under the new name. The server read is `teamName.findUnique` on that same key. The participant name and alias forms are keyed by participant id, and the round forum URL forms are keyed by round id, for the same reason.
 
+## Per-round result switch, not deployed
+
+A pull request adds `Round.resultsProcessing`, default false, through `scripts/apply-results-processing-schema.ts`. That script was rehearsed on a private snapshot copy and was not applied to the live database. Start production sets the column true only for a round that is started after the column exists, in the same transaction, and records `local-admin` in the closure log. An already-started round, including round 16, keeps the stored value. The round page turns it on or off without a restart. The worker runs a result line only when `WORKER_ENABLED=1`, `WORKER_RESULTS_ENABLED=1` at process start, and the column is true. `worker:plan` says `results-disabled` or `round-switch-off`. `npm run results:observe` prints a would-be score and writes nothing.
+
+The result matcher uses `teamKey` plus saved `TeamName` / `TeamNameAlias` spellings, then the existing similarity fallback. It does not fold Latin `x` to Cyrillic `х`. English source names for Dynamo Makhachkala still become `Динамо Махачкала` in `ENGLISH_CLUBS`; the saved alias is what reaches the Latin-x fixture. Krylia's English names become `Крылья Советов` directly.
+
+The production sequence in [../DEPLOYMENT.md](../DEPLOYMENT.md) is not performed: deploy, apply the script, one worker restart with `WORKER_RESULTS_ENABLED=1` only when `worker:plan` shows the prediction line is not due, then turn round 16 on from the page. Rollback is the page switch, or unsetting the env flag and restarting the worker. Do not restore the database automatically.
+
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).

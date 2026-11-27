@@ -60,7 +60,7 @@ describe("verified manually replacement", () => {
     await db.seasonParticipant.create({ data: { seasonId: season.id, participantId: person.id } });
     const kickoff = new Date("2026-11-20T16:00:00.000Z");
     const round = await db.round.create({
-      data: { seasonId: season.id, number: 16, name: "16", standingRole: "operational", productionStartedAt: kickoff, status: "open" },
+      data: { seasonId: season.id, number: 16, name: "16", standingRole: "operational", productionStartedAt: kickoff, resultsProcessing: true, status: "open" },
     });
     const replaced = await db.match.create({
       data: {

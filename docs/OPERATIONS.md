@@ -41,7 +41,7 @@ Names only. Values stay in the untracked `.env`. See `.env.example`.
 | `RESULT_POLL_INTERVAL_MINUTES` | No | Default 60. Passed into due selection. The fixture clock is kickoff plus 120 minutes, then 5 |
 | `RESULT_POLL_LIVE_INTERVAL_MINUTES` | No | Default 15. Same limitation as the regular interval |
 | `WORKER_ENABLED` | No | Exact `1` allows worker cycles. Any other value does no processing |
-| `WORKER_RESULTS_ENABLED` | No | Exact `1`, and `WORKER_ENABLED=1`, allows result checks. Off by itself |
+| `WORKER_RESULTS_ENABLED` | No | Exact `1`, and `WORKER_ENABLED=1`, allows result checks. Read once at process start. Off by itself. A round also needs `resultsProcessing` |
 | `PREDICTION_REFRESH_INTERVAL_MINUTES` | No | Gap written into `nextPredictionFetchAt` after a prediction attempt. Integer from 5 to 1440. No default. The live environment sets 60 |
 | `WORKER_SCAN_MINUTES` | No | Optional shorter ceiling. The supervised wait is already at most 60 seconds, and the smallest accepted scan is 5 minutes, so a set value does not change that wait. It does not set a task due time |
 | `WORKER_LOCK_DIR` | No | Claim files shared by the worker, web refresh, and CLI. Default `~/Library/Application Support/udaff-counter-tracker/worker-locks` |
@@ -73,7 +73,8 @@ The worker is one sequential process, `scripts/worker.ts`. It is not a Next.js t
 
 | Command | Effect |
 | --- | --- |
-| `npm run worker:plan` | Prints eligible and skipped rounds. Reads scheduling columns only. Creates no claim file and fetches nothing |
+| `npm run worker:plan` | Prints eligible and skipped rounds. Reads scheduling columns, including `resultsProcessing`, only. A due result line is `results-disabled` when the boot flag is off and `round-switch-off` when the flag is on and the round switch is off. Creates no claim file and fetches nothing |
+| `npm run results:observe -- --database /absolute/copy.db --round 15` | Read-only. Prints the score a check would store. Writes no match, observation, fetch log, source health, score, audit, or claim. Pass `--fixtures` to use a recorded file instead of live requests |
 | `WORKER_ENABLED=1 PREDICTION_REFRESH_INTERVAL_MINUTES=60 npm run worker:once` | One prediction cycle. The live environment already sets both values |
 | `WORKER_ENABLED=1 WORKER_RESULTS_ENABLED=1 npm run worker:once` | Also runs due result checks. Do not set this on the live database until approved |
 | `zsh scripts/worker-agent.sh install` | Writes `~/Library/LaunchAgents/com.udaff.counter-tracker.worker.plist` and does not bootstrap it |
