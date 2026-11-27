@@ -13,6 +13,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link className="text-zinc-600 hover:text-zinc-950" href="/admin/participants">
               Participants
             </Link>
+            <Link className="text-zinc-600 hover:text-zinc-950" href="/admin/teams">
+              Teams
+            </Link>
             <span className="text-xs text-zinc-400">Local</span>
           </nav>
         </div>

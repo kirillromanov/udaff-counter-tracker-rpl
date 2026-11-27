@@ -24,11 +24,16 @@ export default async function AdminPage({
   return (
     <>
       <PageHeader
-        description="Open a season for rounds and its roster, or open Participants for the registry."
+        description="Open a season for rounds and its roster, Participants for the registry, or Teams for club spellings."
         nav={
-          <Link className={buttonClass("secondary")} href="/admin/participants">
-            Participant registry
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link className={buttonClass("secondary")} href="/admin/participants">
+              Participant registry
+            </Link>
+            <Link className={buttonClass("secondary")} href="/admin/teams">
+              Teams
+            </Link>
+          </div>
         }
         title="Seasons"
       />

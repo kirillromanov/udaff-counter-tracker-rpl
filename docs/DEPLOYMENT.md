@@ -55,18 +55,11 @@ Prisma's SQLite diff from the pre-change `Match` table builds a replacement tabl
 
 If the path preflight refuses, stop. The database was not opened for write. If a statement fails, the transaction rolls back and nothing is marked applied. Confirm the starting catalog and the private baseline, then leave both services stopped. Do not restore the backup automatically, do not drop a column, and do not rebuild `Match`. A partial or incompatible schema is refused and left as it was found.
 
-## Team spellings schema, NOT performed
+## Team spellings schema, already applied
 
-Do not run this against the live database until that step is approved. The parser change can be deployed only after this script, because the fixtures page reads `TeamName`. The script has not been run. No spelling was inserted. The live `6aJI6ec` nick was not added as a participant alias.
+The additive script was applied once when `785b9c3` was deployed. `TeamName` and `TeamNameAlias` exist. Do not run `scripts/apply-team-alias-schema.ts` again. A second run prints `already applied` only when the catalog already matches. It does not read `DATABASE_URL` or `.env`, does not rebuild `Match`, and does not write a Prisma migration row. No spelling was inserted by that deploy. The live `6aJI6ec` nick was not added as a participant alias.
 
-`scripts/apply-team-alias-schema.ts` creates empty `TeamName` and `TeamNameAlias` tables and their indexes. It does not read `DATABASE_URL` or `.env`. It takes `--database` as an absolute filesystem path, refuses any other catalog, and commits one transaction. A second run prints `already applied` only when the full target catalog matches. It does not rebuild `Match`, write a Prisma migration row, or update existing rows.
-
-1. Stop only when a deployment is approved. Until then leave the web agent and the prediction worker running.
-2. Take a new `sqlite3 "file:/absolute/live.db?mode=ro" ".backup …"` snapshot. Do not open the live file for writing. Prove the script on a copy of that snapshot first: original-column hashes unchanged, `PRAGMA integrity_check`, `PRAGMA foreign_key_check`, and an empty `prisma migrate diff` from the copy to `prisma/schema.prisma`.
-3. Fast-forward the serving checkout to the reviewed commit. Do not seed and do not `db push` the live file.
-4. Apply `npx tsx scripts/apply-team-alias-schema.ts --database /absolute/path/prisma/dev.db`.
-5. Build with a disposable `DATABASE_URL`. Restart through the existing supervisors. Leave `WORKER_RESULTS_ENABLED` unset, the 60-minute prediction interval, and the shared lock directory as they are.
-6. Do not start production on round 16 and do not reparse it as part of this schema step. Spellings affect only a later parse.
+Spellings are edited at `/admin/teams` after a later deploy of that page. Saving does not parse comments. Parse predictions on the affected round is a separate operator action. Do not start production on round 16 as part of saving spellings.
 
 The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
 

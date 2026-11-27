@@ -403,15 +403,15 @@ Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. T
 
 Parser review counters are same-page `metric` links. Next.js scrolls to the top of the page when that page's top is above the viewport, which is the default `Link` scroll. Those six counters and the consistency link on the review page set `scroll={false}`. Other `KpiGrid` links, including the overview counters that open the review page, keep the normal page scroll. Query parameters, Back, and Forward are unchanged. There is no browser test runner in this repository; the scroll check is a manual isolated review.
 
-## Round 16 parser, not deployed
+## Round 16 spellings and Teams
 
-A decorated `6aJI6ec` line was left with the comment author because NFKC turns the trademark sign into the letters TM and glues them to the nickname. `matchTokens` strips symbols before that fold. The nickname and `мну` still apply only inside a neofit comment. A registry alias matches when a header line is exactly that alias. Two different people flag the slip.
+The parser from pull request #35 is on `main` at `785b9c305db74d0471292ad5999a7b1ee4ed42e3` and was deployed as build `VfdMcxVdPdxuasX46-Ai8`. `TeamName` and `TeamNameAlias` are already on the live database. Do not run `scripts/apply-team-alias-schema.ts` again. A read-only snapshot on 2026-11-27 found both tables empty. Round 16 was still unstarted. Do not start it from this note.
 
-Teams remain strings on `Match`. `TeamName` holds three spellings and is not in the live database. The fixtures page saves spellings without reparsing. An exact spelling scores above the older similarity fallback. A longer spelling is not read as Dynamo Moscow. A short `Динамо` is resolved by the opponent when both Dynamo clubs are in the round, and a contradictory pair stays unmatched. Bare `МТ` / `MT` are decoration and do not change the stored Match of the Round.
+`matchTokens` strips symbols before NFKC, so a trademark sign is not glued onto `6aJI6ec`. That nickname and `мну` apply only inside a neofit comment. Do not insert a `6aJI6ec` participant alias.
 
-The automatic worker does not parse round 16 while `productionStartedAt` is null. An unchanged stored comment is not rewritten by the next cycle unless that round is due and the stored rows are not equivalent to a new parse. Applying this change needs an explicit reparse after approval. The production alias list has no `6aJI6ec` row. Do not insert it from this note.
+The stored away team on the Lokomotiv fixture is `Динамо Мx` with a Latin `x` (`U+0078`). Its key is `динамо мx`, which is not the key of `Динамо Мх` or `Динамо Махачкала`. With no saved spelling, `Локомотив — Махачкала` does not match that fixture. Saving `Махачкала` on that stored name, then Parse predictions, is what attaches the line. The worker still skips the round while `productionStartedAt` is null.
 
-A read-only parse of stored comments for rounds 14–16, on a disposable snapshot copy, changed one comment: 6083's first slip moves from neofit to БалБес. Its scores stay the same, and `Локомотив — Махачкала` stays unmatched until a spelling is saved. No other comment in those rounds changed owner, score, or warning. The checks in the worktree were `npm test` (414 passed, 2 skipped), lint, `tsc --noEmit`, and `npm run build` with `DATABASE_URL` pointed at a disposable file. The live database and the serving build were not modified.
+Spellings are edited at `/admin/teams`, linked from Contest admin and from the fixtures page. The fixtures page no longer contains the form. Saving writes only `TeamName` and `TeamNameAlias` and tells the operator to parse the affected round. Dynamo Moscow's `Динамо` stays protected. A Latin letter inside a Cyrillic fixture name, a shared key, and the several stored Makhachkala strings are warnings on that page.
 
 ## Open
 
@@ -426,7 +426,7 @@ A read-only parse of stored comments for rounds 14–16, on a disposable snapsho
 ## Do not do next
 
 - Do not repeat the additive migration, redeploy this documentation change, run `prisma db push` against the live database, or apply the `new_Match` rebuild. A second script run should only report `already applied`.
-- Do not start, close, reparse, or recalculate round 16. Do not run `scripts/apply-team-alias-schema.ts` on the live database until that step is approved. Do not insert a `6aJI6ec` alias. Do not set `WORKER_RESULTS_ENABLED=1`.
+- Do not start, close, reparse, or recalculate round 16 from an agent session. Do not run `scripts/apply-team-alias-schema.ts` again. Do not insert a `6aJI6ec` alias. Do not set `WORKER_RESULTS_ENABLED=1`. Spellings are an operator save on Teams, followed by Parse predictions on that round.
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.
