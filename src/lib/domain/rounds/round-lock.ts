@@ -20,11 +20,16 @@ export class RoundClosedError extends Error {
 
 export const PREPARING_LABEL = "Preparing / Not started";
 
-export type ClosureAction = "closed" | "reopened" | "started";
+export type ClosureAction = "closed" | "reopened" | "started" | "results-processing";
+
+export const LOCAL_OPERATOR = "local-admin";
 
 export interface ClosureEvent {
   action: ClosureAction;
   at: string;
+  actor?: string;
+  from?: boolean;
+  to?: boolean;
 }
 
 export function isRoundClosed(closedAt: Date | null | undefined): boolean {
@@ -60,6 +65,12 @@ export function parseClosureLog(value: string): ClosureEvent[] {
       }
       const action = "action" in entry ? entry.action : null;
       const at = "at" in entry ? entry.at : null;
+      if (action === "results-processing" && typeof at === "string") {
+        const actor = "actor" in entry && typeof entry.actor === "string" ? entry.actor : LOCAL_OPERATOR;
+        const from = "from" in entry && entry.from === true;
+        const to = "to" in entry && entry.to === true;
+        return [{ action, at, actor, from, to }];
+      }
       if ((action === "closed" || action === "reopened" || action === "started") && typeof at === "string") {
         return [{ action, at }];
       }
@@ -70,8 +81,23 @@ export function parseClosureLog(value: string): ClosureEvent[] {
   }
 }
 
-export function appendClosureLog(value: string, action: ClosureAction, at: Date): string {
-  return JSON.stringify([...parseClosureLog(value), { action, at: at.toISOString() }]);
+export function appendClosureLog(
+  value: string,
+  action: ClosureAction,
+  at: Date,
+  details?: { actor?: string; from?: boolean; to?: boolean },
+): string {
+  const event: ClosureEvent = { action, at: at.toISOString() };
+  if (details?.actor) {
+    event.actor = details.actor;
+  }
+  if (details && "from" in details) {
+    event.from = details.from;
+  }
+  if (details && "to" in details) {
+    event.to = details.to;
+  }
+  return JSON.stringify([...parseClosureLog(value), event]);
 }
 
 export interface ClosureState {
@@ -116,6 +142,8 @@ export interface StartUpdate {
   changed: boolean;
   productionStartedAt: Date;
   closureLog: string;
+  /** True only when this call is the start. An already-started round keeps the stored switch. */
+  resultsProcessing?: boolean;
 }
 
 /**
@@ -141,10 +169,16 @@ export function planStart(state: StartState, at: Date): StartUpdate {
   if (state.matchOfTheRoundCount > 1) {
     throw new Error("Only one Match of the Round can be marked before starting production.");
   }
+  const started = appendClosureLog(state.closureLog, "started", at);
   return {
     changed: true,
     productionStartedAt: at,
-    closureLog: appendClosureLog(state.closureLog, "started", at),
+    resultsProcessing: true,
+    closureLog: appendClosureLog(started, "results-processing", at, {
+      actor: LOCAL_OPERATOR,
+      from: false,
+      to: true,
+    }),
   };
 }
 

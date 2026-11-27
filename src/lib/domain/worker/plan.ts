@@ -13,6 +13,8 @@ export interface WorkerRound {
   nextPredictionFetchAt: Date | null;
   closedAt: Date | null;
   productionStartedAt: Date | null;
+  /** Per-round result switch. The env flag remains the boot-time kill switch. */
+  resultsProcessing: boolean;
   matches: readonly PollFixture[];
 }
 
@@ -87,6 +89,9 @@ function resultLine(round: WorkerRound, now: Date, intervals: PollIntervals, res
   if (due) {
     if (!resultsEnabled) {
       return line(round, "result-check", true, "skip", "results-disabled", plan.nextPollAt);
+    }
+    if (!round.resultsProcessing) {
+      return line(round, "result-check", true, "skip", "round-switch-off", plan.nextPollAt);
     }
     if (!resultVerificationApplies(round)) {
       return line(round, "result-check", false, "skip", "outside-result-scope", plan.nextPollAt);

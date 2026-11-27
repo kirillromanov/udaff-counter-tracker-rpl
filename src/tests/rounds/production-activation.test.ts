@@ -7,7 +7,8 @@ import { PrismaClient } from "@prisma/client";
 import { ensureRoundFixtures } from "@/lib/domain/import/ensure-fixtures";
 import { selectDuePredictionRoundIds } from "@/lib/domain/import/incremental";
 import { selectDueRoundIds } from "@/lib/domain/results/poll";
-import { closeProductionRound, reopenProductionRound, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
+import { RoundClosedError } from "@/lib/domain/rounds/round-lock";
+import { closeProductionRound, reopenProductionRound, setRoundResultsProcessing, startProductionRound } from "@/lib/domain/rounds/round-lock-db";
 import type { ForumPost } from "@/lib/domain/forum/types";
 
 const opening = ["Абразцы на шестнадцатый", "Пояснение перед списком.", "20.11.2026 19:30 Ростов — Крылья Советов"].join("\n");
@@ -95,7 +96,11 @@ describe("production activation on an isolated database", () => {
     expect(active.productionStartedAt?.toISOString()).toBe("2026-11-19T18:00:00.000Z");
     expect(active.matches).toHaveLength(1);
     expect(active.roundScores).toHaveLength(0);
-    expect(JSON.parse(active.closureLog)).toEqual([{ action: "started", at: "2026-11-19T18:00:00.000Z" }]);
+    expect(active.resultsProcessing).toBe(true);
+    expect(JSON.parse(active.closureLog)).toEqual([
+      { action: "started", at: "2026-11-19T18:00:00.000Z" },
+      { action: "results-processing", at: "2026-11-19T18:00:00.000Z", actor: "local-admin", from: false, to: true },
+    ]);
     expect(selectDueRoundIds([{ ...dueInput, productionStartedAt: active.productionStartedAt }], now, { regularMinutes: 60, liveMinutes: 15 })).toEqual([
       round.id,
     ]);
@@ -121,6 +126,37 @@ describe("production activation on an isolated database", () => {
       regularMinutes: 60,
       liveMinutes: 15,
     })).toEqual([round.id]);
+    expect(JSON.parse(restored.closureLog).some((event: { action: string }) => event.action === "results-processing")).toBe(true);
+  });
+
+  it("records a result-processing toggle and rejects a closed round", async () => {
+    const season = await db.season.create({ data: { name: "Switch season", slug: `switch-${Date.now()}` } });
+    const round = await db.round.create({
+      data: {
+        seasonId: season.id,
+        number: 20,
+        name: "Switch",
+        status: "open",
+        standingRole: "operational",
+        forumUrl: "https://example.test/20",
+        productionStartedAt: new Date("2026-11-01T00:00:00.000Z"),
+        matches: { create: { homeTeam: "Ростов", awayTeam: "Крылья Советов", sortOrder: 1 } },
+      },
+    });
+    const at = new Date("2026-11-27T10:00:00.000Z");
+    const on = await setRoundResultsProcessing(round.id, true, at, db);
+    expect(on).toEqual({ changed: true, enabled: true });
+    const saved = await db.round.findUniqueOrThrow({ where: { id: round.id } });
+    expect(saved.resultsProcessing).toBe(true);
+    expect(JSON.parse(saved.closureLog)).toEqual([
+      { action: "results-processing", at: at.toISOString(), actor: "local-admin", from: false, to: true },
+    ]);
+    const off = await setRoundResultsProcessing(round.id, false, new Date("2026-11-27T11:00:00.000Z"), db);
+    expect(off.enabled).toBe(false);
+    await closeProductionRound(round.id, new Date("2026-11-27T12:00:00.000Z"), db);
+    await expect(setRoundResultsProcessing(round.id, true, new Date("2026-11-27T13:00:00.000Z"), db)).rejects.toBeInstanceOf(RoundClosedError);
+    const closed = await db.round.findUniqueOrThrow({ where: { id: round.id } });
+    expect(closed.resultsProcessing).toBe(false);
   });
 
   it("keeps an already activated round active and does not fetch during start", async () => {
@@ -140,6 +176,7 @@ describe("production activation on an isolated database", () => {
     expect(result.changed).toBe(false);
     const saved = await db.round.findUniqueOrThrow({ where: { id: existing.id }, include: { matches: true } });
     expect(saved.productionStartedAt?.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    expect(saved.resultsProcessing).toBe(false);
     expect(saved.closureLog).toBe("[]");
     expect(saved.matches).toHaveLength(1);
     const starter = readFileSync("src/lib/domain/rounds/round-lock-db.ts", "utf8");

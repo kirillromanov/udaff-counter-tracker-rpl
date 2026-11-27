@@ -1,6 +1,6 @@
 # Testing
 
-`npm test` runs Vitest. The suite does not need the live database. `src/tests/rounds/production-activation.test.ts` creates a temporary database with `prisma db push --skip-generate` and never uses `prisma/dev.db`. `src/tests/import/refresh-idempotency-snapshot.test.ts` stays skipped unless `PREDICTION_IDEMPOTENCY_SNAPSHOT` names a private database copy. That test copies the file again and does not open the live database. `src/tests/db/result-verification-migration.test.ts` always refuses a relative, missing, empty, or unexpected database. Its copy of a private backup runs only when `RESULT_SCHEMA_BACKUP` is an absolute path; the test copies that file and does not open the live database.
+`npm test` runs Vitest. The suite does not need the live database. `src/tests/rounds/production-activation.test.ts` creates a temporary database with `prisma db push --skip-generate` and never uses `prisma/dev.db`. `src/tests/import/refresh-idempotency-snapshot.test.ts` stays skipped unless `PREDICTION_IDEMPOTENCY_SNAPSHOT` names a private database copy. That test copies the file again and does not open the live database. `src/tests/db/result-verification-migration.test.ts` always refuses a relative, missing, empty, or unexpected database. Its copy of a private backup runs only when `RESULT_SCHEMA_BACKUP` is an absolute path; the test copies that file and does not open the live database. `src/tests/db/results-processing-migration.test.ts` refuses the same kinds of path. The apply rehearsal uses a private snapshot copy and is not part of `npm test`.
 
 `npm run lint` is ESLint. `npx tsc --noEmit` is the typecheck; `package.json` has no `typecheck` script.
 
@@ -27,5 +27,9 @@ Parser review counter clicks are same-page links. Their scroll behavior is check
 | Additive result schema, absolute path, and no Match rebuild | `src/tests/db/result-verification-migration.test.ts` |
 | Team spellings, the Latin `x` club, and the Teams table | `src/tests/parser/header-and-team-aliases.test.ts`, `src/tests/teams/club-catalog.test.tsx` |
 | Spelling fields reset when the club key changes, and a save writes only that club | `src/tests/teams/spellings-form-client.test.tsx`, `src/tests/teams/spellings-save-action.test.ts` |
+| Result switch, worker skip reasons, and the start-production audit | `src/tests/worker/worker.test.ts`, `src/tests/rounds/production-activation.test.ts` |
+| Team-key and saved-spelling result matching, with no guessed ambiguity | `src/tests/results/name-match.test.ts` |
+| Observe-only result command writes nothing | `src/tests/results/observe-round.test.ts` |
+| Additive result-processing column, absolute path, default false | `src/tests/db/results-processing-migration.test.ts` |
 
 A passing test run does not prove the live SQLite file is unchanged. Compare a read-only `PRAGMA integrity_check` and row counts before and after any command that might write, and do not run import, poll, refresh, seed, or recalculate scripts as part of a documentation or test pass.

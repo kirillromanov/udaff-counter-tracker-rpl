@@ -5,12 +5,15 @@ import { formatMoscow } from "@/lib/domain/time/moscow";
 import { Badge, Notice } from "../../ui";
 import { RoundLockControls } from "./round-lock-controls";
 
-function eventLabel(action: string | undefined): string {
+function eventLabel(action: string | undefined, event?: { from?: boolean; to?: boolean }): string {
   if (action === "reopened") {
     return "Reopened";
   }
   if (action === "started") {
     return "Started";
+  }
+  if (action === "results-processing") {
+    return `Result processing ${event?.to ? "on" : "off"}`;
   }
   return "Closed";
 }
@@ -40,10 +43,10 @@ export function RoundLockBanner({
   const warning = closureWarning({ unverifiedFixtures, unresolvedReviews });
   let latest = "";
   try {
-    const events = JSON.parse(closureLog) as { action?: string; at?: string }[];
+    const events = JSON.parse(closureLog) as { action?: string; at?: string; from?: boolean; to?: boolean }[];
     const last = Array.isArray(events) ? events.at(-1) : null;
     if (last?.at) {
-      latest = `${eventLabel(last.action)} ${formatMoscow(new Date(last.at))}.`;
+      latest = `${eventLabel(last.action, last)} ${formatMoscow(new Date(last.at))}.`;
     }
   } catch {
     latest = "";

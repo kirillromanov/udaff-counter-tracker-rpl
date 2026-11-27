@@ -61,6 +61,19 @@ The additive script was applied once when `785b9c3` was deployed. `TeamName` and
 
 Spellings are edited at `/admin/teams` after a later deploy of that page. Saving does not parse comments. Parse predictions on the affected round is a separate operator action. Do not start production on round 16 as part of saving spellings.
 
+## Per-round result switch — not performed
+
+These steps are the proposed sequence for before 16:00 Moscow time on 2026-11-28. They have not been run. Do not run them until the operator approves the pull request. Do not set `WORKER_RESULTS_ENABLED` while preparing the pull request, and do not change round 16 from this document.
+
+1. Deploy the reviewed commit to the serving checkout. Build with a disposable `DATABASE_URL`. Do not run `prisma db push` on the live file.
+2. Quiesce the web and worker the same way as the earlier additive schema. Take a fresh backup of the absolute live file. Rehearse `npx tsx scripts/apply-results-processing-schema.ts --database /absolute/copy.db` on a copy. The script adds `resultsProcessing BOOLEAN NOT NULL DEFAULT false` in one transaction. It refuses any other catalog. A second run prints `already applied` only when the full target catalog matches. It does not rebuild a table and does not backfill.
+3. Apply that script to the live file by its absolute path. Confirm integrity, foreign keys, original-column hashes, every existing round still false, and an empty Prisma diff. Start the web. Leave the worker stopped.
+4. Run `npm run worker:plan`. Arm the worker with `WORKER_RESULTS_ENABLED=1` in one restart only when that plan shows the prediction line is not due. The flag is read at process start. `results-disabled` means the flag is off. `round-switch-off` means the flag is on and the round column is false. Closed, archived, preparation, and rounds before 16 stay skipped for their existing reasons.
+5. On the round 16 page, turn result processing on. The page shows on or off after the click and writes a closure-log line with actor `local-admin`, the time, and from/to. No restart is required for that click. Rounds started after the deploy set the column true in the same transaction as Start production. A round that is already started keeps the stored value until the page is used.
+6. `npm run results:observe -- --database /absolute/copy.db --round 15` is the read-only rehearsal. It is not a button. It writes nothing.
+
+Rollback: turn the round switch off on the page. That needs no restart. To stop every result line, remove `WORKER_RESULTS_ENABLED` and restart the worker once. Do not restore the database automatically. A score written by a later live check would remain until an operator corrects it. This sequence has not written one.
+
 The admin process listens on `127.0.0.1:3000`. `scripts/dev-up.sh` passes `--hostname 127.0.0.1` because Next's default is `0.0.0.0`. The manual score actions are server actions on that same process, so they are not a second listener. A listener check on this machine showed `node` bound to `127.0.0.1:3000` only.
 
 An isolated review instance uses another port and a new database file. Do not run it in the serving checkout, and do not point it at `prisma/dev.db`, the live `.env`, or the live worker lock directory. From a separate worktree:

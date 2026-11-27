@@ -65,6 +65,10 @@ model Round {
   /// Set when an operator starts production. Existing operational rounds are backfilled to createdAt.
   /// Reopening does not clear this, and there is no return-to-preparation action.
   productionStartedAt DateTime?
+  /// Automatic result checks for this round. False on every existing row.
+  /// Start production sets it true for a round that is started after this column exists.
+  /// The worker still requires WORKER_RESULTS_ENABLED=1. Turning this off does not need a restart.
+  resultsProcessing Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
