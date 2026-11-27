@@ -7,8 +7,10 @@ alwaysApply: true
 
 Before editing, read `AGENTS.md`, `docs/handoff/CURRENT.md`, and `docs/KNOWN-ISSUES.md`. Inspect git status and the live database; do not trust an old chat for either.
 
-Do not seed, force-reset, or accept data loss on the live SQLite file. Do not recalculate, re-import, replace fixtures, or transition a real round unless that write was requested. Do not upgrade dependencies unless requested.
+Do not touch the live database or the LaunchAgents unless that exact operation was requested. Read-only snapshots only. Do not roll the database back automatically. Do not seed, force-reset, or accept data loss. Do not recalculate, re-import, replace fixtures, or transition a real round unless that write was requested. Do not upgrade dependencies unless requested.
 
-Closed rounds reject writes before parsing. Preparation rounds (`productionStartedAt` null) are excluded from due jobs and official totals. Missing saved predictions are not unsaved edits.
+A live schema change uses the existing additive script, rehearsed on a copy. Do not `db push` the live file. Closed rounds reject writes before parsing. Preparation rounds (`productionStartedAt` null) are excluded from due jobs and official totals. Missing saved predictions are not unsaved edits.
 
-Commit only reviewed source. Never commit `.env`, `prisma/dev.db`, backups, or `.next/`. Do not force-push. After a behavior change, update `docs/` and `docs/handoff/CURRENT.md`.
+Leave pull requests unmerged until the operator approves. A docs merge does not deploy. Quiesce with the worker stop script, then bootout the web job, and only when a deploy was approved. Do not print secrets or `.env` values.
+
+Commit only reviewed source. Never commit `.env`, `prisma/dev.db`, backups, or `.next/`. Do not force-push. Keep `WORKER_RESULTS_ENABLED` and each round's result switch as `docs/handoff/CURRENT.md` describes them. After a behavior change, update `docs/` and `docs/handoff/CURRENT.md`.

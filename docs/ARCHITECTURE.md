@@ -15,7 +15,7 @@ Verified from `package-lock.json` at the documentation checkpoint:
 | Vitest | 5.0.5 |
 | TypeScript | 5.9.3 |
 
-The database provider is SQLite, set in `prisma/schema.prisma`. There is no `prisma/migrations` directory. Schema changes are applied with `npm run db:push`.
+The database provider is SQLite, set in `prisma/schema.prisma`. There is no `prisma/migrations` directory. A new empty database still uses `npm run db:push`. The live file uses the additive script for that change. `prisma db push` on the live file has proposed a table rebuild and is not the live path.
 
 Next.js 16 in this repo is not the older App Router shape from training data. `AGENTS.md` points at `node_modules/next/dist/docs/`. Pages that read the database set `instant = false` and `await connection()` so they do not prerender live data.
 
@@ -52,7 +52,19 @@ Scoring functions do not import Prisma. Loaders and actions do.
 
 There is no timer, cron, or `setInterval` in the Next.js process. `pollDueRounds` and `refreshDuePredictions` run when an admin action or `scripts/poll-results.ts` / `scripts/refresh-predictions.ts` calls them.
 
-`scripts/worker.ts` is a separate process. It is disabled unless `WORKER_ENABLED=1`. Prediction timing is `nextPredictionFetchAt`. Result timing stays on the fixture clock and runs only when `WORKER_RESULTS_ENABLED=1` as well. The web LaunchAgent does not start it. See [OPERATIONS.md](OPERATIONS.md) and [decisions/007-background-worker.md](decisions/007-background-worker.md).
+`scripts/worker.ts` is a separate process. It loads `.env` once at process start. It is disabled unless `WORKER_ENABLED=1`. One supervised process plans a prediction line and then a result line for each round. Prediction timing is `nextPredictionFetchAt`. The result line also needs `WORKER_RESULTS_ENABLED=1` at that start and `Round.resultsProcessing` true on that round. The web LaunchAgent does not start the worker. See [OPERATIONS.md](OPERATIONS.md), [RUNBOOK.md](RUNBOOK.md), and [decisions/007-background-worker.md](decisions/007-background-worker.md).
+
+## Result path
+
+`RESULT_ADAPTERS` in `src/lib/domain/results/sources.ts` lists seven sources. Sport.ru is primary. Championat, Sportbox, football-data, and Premier Liga are fallbacks. Understat and Footbolno are verification. `decideFixture` calls a score provisional from one finished source id and verified when two different ids report the same full-time score.
+
+`attachResults` matches a source name by `teamKey` against the fixture name or a saved `TeamNameAlias`. Similarity runs only after no exact hit. An ambiguous pair is not guessed. `recalculateRound` runs when a result write changes goals. Season snapshots rebuild only when the round is complete. `ResultAudit` is written by operator Fix or rollback, not by the automatic check.
+
+The first automatic check is `FIRST_CHECK_MINUTES` (120) after kickoff. A retry waits `AUTO_RETRY_MINUTES` (5), up to `MAX_AUTO_ATTEMPTS` (10). Those constants are in `src/lib/domain/results/poll.ts`.
+
+## Attribution
+
+`matchTokens` in `src/lib/domain/parser/normalize.ts` removes punctuation and symbols before NFKC, so a trademark sign is not glued onto the previous word. Latin letters stay Latin. `isBalbesMarker` and the `мну` marker in `src/lib/domain/parser/attribute-blocks.ts` apply only inside a comment by neofit. Two different people in one header are a review flag, not a guess. The prediction deadline is the comment's publication or edit time, not the parse time. See [GLOSSARY.md](GLOSSARY.md).
 
 Running the npm scripts by hand while the server is up is another writer. The worker's claim file stops a second worker. An admin request shares that claim only when the server process has the same `WORKER_LOCK_DIR`. Avoid two servers on port 3000; `scripts/dev-up.sh --service` leaves an already healthy server in place.
 

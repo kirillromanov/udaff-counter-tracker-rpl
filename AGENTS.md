@@ -22,6 +22,11 @@ Inspect the checkout, branch, and database before acting. Do not treat an earlie
 - The Match of the Round multiplier is applied once to the whole fixture score.
 - Do not commit `.env`, `prisma/dev.db`, backups, logs, or `.next/`.
 - Do not force-push, rewrite history, or switch branches unless the operator asked.
+- Do not touch the live database or the LaunchAgents unless the operator authorized that exact operation. A read-only snapshot is the default. Do not roll the database back automatically.
+- Schema changes on the live file go through the existing additive script for that change, rehearsed on a copy. Do not `db push` the live file.
+- Leave a pull request unmerged until the operator approves it. A documentation merge does not deploy.
+- Do not print secrets, tokens, or `.env` values. Do not commit them.
+- Leave `WORKER_RESULTS_ENABLED` and each round's `resultsProcessing` as [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md) describe them, unless the operator asked for that change.
 
 When behavior changes, update the relevant `docs/` page and [docs/handoff/CURRENT.md](docs/handoff/CURRENT.md) in the same change.
 
