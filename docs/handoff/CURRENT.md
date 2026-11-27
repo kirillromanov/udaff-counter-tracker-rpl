@@ -413,6 +413,8 @@ The stored away team on the Lokomotiv fixture is `Динамо Мx` with a Latin
 
 Spellings are edited at `/admin/teams`, linked from Contest admin and from the fixtures page. The fixtures page no longer contains the form. Saving writes only `TeamName` and `TeamNameAlias` and tells the operator to parse the affected round. Dynamo Moscow's `Динамо` stays protected. A Latin letter inside a Cyrillic fixture name, a shared key, and the several stored Makhachkala strings are warnings on that page.
 
+The spelling form for every club is the same `/admin/teams/spellings` page, chosen by the `key` query. `ClubSpellingsForm` is keyed by that club key. The three fields use `defaultValue`, which React keeps when the same inputs stay mounted, so a later club would otherwise show the previous club's text and a save would store it under the new name. The server read is `teamName.findUnique` on that same key. The participant name and alias forms are keyed by participant id, and the round forum URL forms are keyed by round id, for the same reason.
+
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).

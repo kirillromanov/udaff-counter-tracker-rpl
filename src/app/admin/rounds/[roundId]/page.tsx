@@ -204,7 +204,7 @@ export default async function RoundPage({
           title="Import and parser review"
         >
           <MutationRegion closed={closed}>
-          <form action={saveForumUrlAction} className="flex flex-wrap items-end gap-2">
+          <form action={saveForumUrlAction} className="flex flex-wrap items-end gap-2" key={round.id}>
             <input name="roundId" type="hidden" value={round.id} />
             <label className="min-w-72 flex-1 text-xs font-medium text-zinc-500">
               Forum URL

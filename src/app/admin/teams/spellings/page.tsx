@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { buildClubCatalog } from "@/lib/domain/teams/club-catalog";
-import { SubmitButton } from "../../submit-button";
-import { CrumbLink, Notice, PageBody, PageHeader, Section, fieldClass } from "../../ui";
+import { CrumbLink, Notice, PageBody, PageHeader, Section } from "../../ui";
 import { saveClubSpellingsAction } from "../actions";
+import { ClubSpellingsForm } from "../spellings-form";
 
 export const instant = false;
 
@@ -76,22 +76,13 @@ export default async function TeamSpellingsPage({
             Key <span className="font-mono text-xs">{key}</span>
             {clubs.length > 1 ? `. Fixture names: ${clubs.map((club) => club.name).join(", ")}` : null}
           </p>
-          <form action={saveClubSpellingsAction} className="flex flex-wrap items-end gap-2">
-            <input name="name" type="hidden" value={canonical} />
-            {[1, 2, 3].map((slot) => (
-              <label className="text-xs font-medium text-zinc-500" key={slot}>
-                Spelling {slot}
-                <input
-                  className={`${fieldClass} mt-1 w-full max-w-xs sm:w-44`}
-                  defaultValue={aliases[slot - 1] ?? ""}
-                  name={`alias_${slot}`}
-                />
-              </label>
-            ))}
-            <SubmitButton pendingLabel="Saving…" variant="primary">
-              Save spellings
-            </SubmitButton>
-          </form>
+          <ClubSpellingsForm
+            action={saveClubSpellingsAction}
+            aliases={aliases}
+            canonical={canonical}
+            clubKey={key}
+            key={key}
+          />
         </Section>
       </PageBody>
     </>
