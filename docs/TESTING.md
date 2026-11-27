@@ -25,5 +25,6 @@ Parser review counter clicks are same-page links. Their scroll behavior is check
 | Disabled worker, 60-second recheck, one overdue fetch, claims, logs, LaunchAgent, and no automatic scoring | `src/tests/worker/worker.test.ts` |
 | Repeated prediction refresh keeps equivalent prediction ids | `src/tests/import/refresh-idempotency.test.ts` |
 | Additive result schema, absolute path, and no Match rebuild | `src/tests/db/result-verification-migration.test.ts` |
+| Team spellings, the Latin `x` club, and the Teams table | `src/tests/parser/header-and-team-aliases.test.ts`, `src/tests/teams/club-catalog.test.tsx` |
 
 A passing test run does not prove the live SQLite file is unchanged. Compare a read-only `PRAGMA integrity_check` and row counts before and after any command that might write, and do not run import, poll, refresh, seed, or recalculate scripts as part of a documentation or test pass.

@@ -10,8 +10,6 @@ import { planRoundPoll, pollIntervals } from "@/lib/domain/results/poll";
 import { ingestAndTrack, pollDueRounds, refreshRoundResults } from "@/lib/domain/results/poll-run";
 import { assertResultVerificationRound } from "@/lib/domain/results/scope";
 import { recalculateRound } from "@/lib/domain/standings/recalculate-round";
-import { saveTeamAliases } from "@/lib/domain/teams/save-aliases";
-
 function hubPath(roundId: string): string {
   return `/admin/rounds/${roundId}`;
 }
@@ -325,29 +323,6 @@ export async function startProductionAction(formData: FormData): Promise<void> {
     redirect(`${hubPath(roundId)}?started=1`);
   } catch (error) {
     fail(hubPath(roundId), error);
-  }
-}
-
-export async function saveTeamAliasesAction(formData: FormData): Promise<void> {
-  const roundId = String(formData.get("roundId") ?? "");
-  try {
-    const count = Number(formData.get("teamCount") ?? 0);
-    const drafts: { name: string; aliases: string[] }[] = [];
-    for (let index = 0; index < count; index += 1) {
-      const name = String(formData.get(`team_${index}`) ?? "").trim();
-      if (!name) {
-        continue;
-      }
-      drafts.push({
-        name,
-        aliases: [1, 2, 3].map((slot) => String(formData.get(`alias_${index}_${slot}`) ?? "")),
-      });
-    }
-    await saveTeamAliases(drafts);
-    revalidatePath(fixturesPath(roundId));
-    redirect(`${fixturesPath(roundId)}?aliases=1`);
-  } catch (error) {
-    fail(fixturesPath(roundId), error);
   }
 }
 

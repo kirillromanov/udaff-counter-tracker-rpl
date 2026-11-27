@@ -134,6 +134,16 @@ describe("header keywords", () => {
 });
 
 describe("team spellings", () => {
+  it("does not match Махачкала to the stored Latin-x club until that spelling is saved", () => {
+    const stored = "Динамо Мx";
+    expect(stored.codePointAt(stored.length - 1)).toBe(0x78);
+    expect(teamKey(stored)).toBe("динамо мx");
+    expect(teamKey(stored).codePointAt(teamKey(stored).length - 1)).toBe(0x78);
+    const bare = fixtures.map((fixture) => (fixture.id === "loko" ? { ...fixture, awayAliases: [] } : fixture));
+    expect(matchFixture("Локомотив", "Махачкала", bare)).toBeNull();
+    expect(matchFixture("Локомотив", "Махачкала", fixtures)?.fixtureId).toBe("loko");
+  });
+
   it("prefers the longest spelling and keeps plain Динамо as Dynamo Moscow", () => {
     expect(matchFixture("Локомотив", "Махачкала", fixtures)?.fixtureId).toBe("loko");
     expect(matchFixture("Локомотив", "Динамо Мх", fixtures)?.fixtureId).toBe("loko");
