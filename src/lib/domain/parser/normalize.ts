@@ -27,3 +27,28 @@ export function normalizeTeamName(value: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/**
+ * Tokens used to compare a header keyword or a team spelling.
+ *
+ * Punctuation and symbols are removed before NFKC. The trademark sign
+ * otherwise decomposes into the letters "TM" and sticks to the previous
+ * word. Styled letters and digits are letters and numbers, so they survive
+ * that removal and then fold to plain characters. Case and ё/е are folded.
+ * Letters stay in their own script: a Latin lookalike is not rewritten as
+ * Cyrillic. The result is a list of whole words, never a fuzzy fragment.
+ */
+export function matchTokens(value: string): string[] {
+  const withoutDecoration = value.normalize("NFC").replace(/[\p{P}\p{S}\p{C}]+/gu, " ");
+  const folded = withoutDecoration.normalize("NFKC").toLocaleLowerCase("ru").replace(/ё/g, "е");
+  return folded.split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 0);
+}
+
+/** Stable key for a team name or an alias. Empty when nothing letter-like remains. */
+export function teamKey(value: string): string {
+  return matchTokens(value).join(" ");
+}
+
+export function sameTokens(left: readonly string[], right: readonly string[]): boolean {
+  return left.length > 0 && left.length === right.length && left.every((token, index) => token === right[index]);
+}

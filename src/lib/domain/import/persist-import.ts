@@ -2,9 +2,11 @@ import { prisma } from "@/lib/db/prisma";
 import { assertRoundMutable, assertRoundsMutable } from "@/lib/domain/rounds/round-lock-db";
 import { commentEditEvidence } from "@/lib/domain/forum/comment-edit";
 import type { ForumPost } from "@/lib/domain/forum/types";
-import { attributeComment } from "@/lib/domain/parser/attribute-blocks";
+import { attributeComment, headerAliasesFromCatalog } from "@/lib/domain/parser/attribute-blocks";
 import { parseComment, rowsForStorage } from "@/lib/domain/parser/parse-comment";
+import { teamKey } from "@/lib/domain/parser/normalize";
 import type { FixtureRef } from "@/lib/domain/parser/types";
+import { teamAliasesByKey } from "@/lib/domain/teams/save-aliases";
 import { participantKey } from "@/lib/domain/import/participant-key";
 import {
   createParticipant,
@@ -251,6 +253,8 @@ export async function parseStoredComments(
   await assertRoundMutable(roundId);
   await ensureKnownIdentities();
   const catalog = await loadIdentityCatalog();
+  const headerAliases = headerAliasesFromCatalog(catalog);
+  const spellings = await teamAliasesByKey();
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
     include: { matches: { orderBy: { sortOrder: "asc" } }, forumComments: true },
@@ -259,6 +263,8 @@ export async function parseStoredComments(
     id: match.id,
     homeTeam: match.homeTeam,
     awayTeam: match.awayTeam,
+    homeAliases: spellings.get(teamKey(match.homeTeam)) ?? [],
+    awayAliases: spellings.get(teamKey(match.awayTeam)) ?? [],
   }));
 
   let parsedCount = 0;
@@ -363,6 +369,7 @@ export async function parseStoredComments(
       raw: comment.rawText,
       authorName: resolution.canonicalName ?? comment.authorName,
       roundNumber: round.number,
+      headerAliases,
     });
     const keptIds = new Set<string>();
     for (const block of blocks) {

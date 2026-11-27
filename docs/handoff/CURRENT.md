@@ -403,6 +403,16 @@ Run on 2026-11-24 in a worktree of `6a9bc483a4cfd738f8648d9067e8f4d769f96351`. T
 
 Parser review counters are same-page `metric` links. Next.js scrolls to the top of the page when that page's top is above the viewport, which is the default `Link` scroll. Those six counters and the consistency link on the review page set `scroll={false}`. Other `KpiGrid` links, including the overview counters that open the review page, keep the normal page scroll. Query parameters, Back, and Forward are unchanged. There is no browser test runner in this repository; the scroll check is a manual isolated review.
 
+## Round 16 parser, not deployed
+
+A decorated `6aJI6ec` line was left with the comment author because NFKC turns the trademark sign into the letters TM and glues them to the nickname. `matchTokens` strips symbols before that fold. The nickname and `мну` still apply only inside a neofit comment. A registry alias matches when a header line is exactly that alias. Two different people flag the slip.
+
+Teams remain strings on `Match`. `TeamName` holds three spellings and is not in the live database. The fixtures page saves spellings without reparsing. An exact spelling scores above the older similarity fallback. A longer spelling is not read as Dynamo Moscow. A short `Динамо` is resolved by the opponent when both Dynamo clubs are in the round, and a contradictory pair stays unmatched. Bare `МТ` / `MT` are decoration and do not change the stored Match of the Round.
+
+The automatic worker does not parse round 16 while `productionStartedAt` is null. An unchanged stored comment is not rewritten by the next cycle unless that round is due and the stored rows are not equivalent to a new parse. Applying this change needs an explicit reparse after approval. The production alias list has no `6aJI6ec` row. Do not insert it from this note.
+
+A read-only parse of stored comments for rounds 14–16, on a disposable snapshot copy, changed one comment: 6083's first slip moves from neofit to БалБес. Its scores stay the same, and `Локомотив — Махачкала` stays unmatched until a spelling is saved. No other comment in those rounds changed owner, score, or warning. The checks in the worktree were `npm test` (414 passed, 2 skipped), lint, `tsc --noEmit`, and `npm run build` with `DATABASE_URL` pointed at a disposable file. The live database and the serving build were not modified.
+
 ## Open
 
 - Two audit groups remain after Next.js 16.4.5. They were not upgraded with the worker. See [../SECURITY.md](../SECURITY.md).
@@ -416,7 +426,7 @@ Parser review counters are same-page `metric` links. Next.js scrolls to the top 
 ## Do not do next
 
 - Do not repeat the additive migration, redeploy this documentation change, run `prisma db push` against the live database, or apply the `new_Match` rebuild. A second script run should only report `already applied`.
-- Do not create round 16 or set `WORKER_RESULTS_ENABLED=1` to exercise the new result workflow.
+- Do not start, close, reparse, or recalculate round 16. Do not run `scripts/apply-team-alias-schema.ts` on the live database until that step is approved. Do not insert a `6aJI6ec` alias. Do not set `WORKER_RESULTS_ENABLED=1`.
 - Do not seed, re-import, poll, refresh, or recalculate the live season to "confirm" these docs.
 - Do not close, reopen, or start a real round.
 - Do not upgrade Next.js or Prisma unless that upgrade was requested.

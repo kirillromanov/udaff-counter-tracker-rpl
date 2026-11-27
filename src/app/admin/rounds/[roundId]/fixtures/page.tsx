@@ -16,6 +16,8 @@ import { resultVerificationApplies } from "@/lib/domain/results/eligibility";
 import { MatchResultsRefresh } from "../match-results-refresh";
 import { acknowledgeConflictAction, addFixtureAction, deleteFixtureAction, fetchResultsAction, pollDueAction, pollRoundAction, saveFixturesAction } from "../workflow-actions";
 import { formatMoscow } from "@/lib/domain/time/moscow";
+import { teamKey } from "@/lib/domain/parser/normalize";
+import { saveTeamAliasesAction } from "../workflow-actions";
 
 export const instant = false;
 
@@ -59,12 +61,52 @@ function standingTone(standing: CandidateStanding): "success" | "warning" | "dan
   return "neutral";
 }
 
+async function TeamSpellings({ roundId, names }: { roundId: string; names: string[] }) {
+  const stored = await prisma.teamName.findMany({ include: { aliases: { orderBy: { slot: "asc" } } } });
+  const byKey = new Map(stored.map((team) => [team.normalizedName, team.aliases.map((alias) => alias.alias)]));
+  return (
+    <Section
+      description="Three extra spellings per club. They are used the next time a comment is parsed. Saving does not reparse, and it does not change stored comments or predictions."
+      id="team-spellings"
+      title="Team spellings"
+    >
+      {names.length === 0 ? (
+        <EmptyState title="No fixtures" detail="Add fixtures before saving spellings." />
+      ) : (
+        <form action={saveTeamAliasesAction} className="space-y-2">
+          <input name="roundId" type="hidden" value={roundId} />
+          <input name="teamCount" type="hidden" value={names.length} />
+          {names.map((name, index) => {
+            const aliases = byKey.get(teamKey(name)) ?? [];
+            return (
+              <div className="flex flex-wrap items-center gap-2" key={name}>
+                <input name={`team_${index}`} type="hidden" value={name} />
+                <span className="w-44 text-sm text-zinc-700">{name}</span>
+                {[1, 2, 3].map((slot) => (
+                  <input
+                    className={`${fieldClass} w-36`}
+                    defaultValue={aliases[slot - 1] ?? ""}
+                    key={slot}
+                    name={`alias_${index}_${slot}`}
+                    placeholder={`Spelling ${slot}`}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          <SubmitButton pendingLabel="Saving…">Save spellings</SubmitButton>
+        </form>
+      )}
+    </Section>
+  );
+}
+
 export default async function FixturesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ roundId: string }>;
-  searchParams: Promise<{ error?: string; saved?: string; fetched?: string; polled?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string; refreshed?: string; busy?: string; updated?: string; sourceOk?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; aliases?: string; fetched?: string; polled?: string; confirmed?: string; verified?: string; conflicts?: string; insufficient?: string; failed?: string; refreshed?: string; busy?: string; updated?: string; sourceOk?: string }>;
 }) {
   await connection();
   const { roundId } = await params;
@@ -159,6 +201,7 @@ export default async function FixturesPage({
         ) : null}
         {query.error ? <Notice tone="error">{query.error}</Notice> : null}
         {query.saved ? <Notice tone="success">Fixtures saved.</Notice> : null}
+        {query.aliases ? <Notice tone="success">Team spellings saved. Stored comments were not parsed again.</Notice> : null}
         {query.polled === "waiting" ? (
           <Notice tone="info">No round is due yet. This round stays active until the next check time.</Notice>
         ) : null}
@@ -470,6 +513,8 @@ export default async function FixturesPage({
           </form>
         </Section>
         </MutationRegion>
+
+        <TeamSpellings roundId={round.id} names={[...new Set(round.matches.flatMap((match) => [match.homeTeam, match.awayTeam]))]} />
       </PageBody>
     </>
   );

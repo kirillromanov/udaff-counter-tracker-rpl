@@ -2,6 +2,9 @@ export interface FixtureRef {
   id: string;
   homeTeam: string;
   awayTeam: string;
+  /** Extra spellings for this fixture only. They do not change the stored team strings. */
+  homeAliases?: readonly string[];
+  awayAliases?: readonly string[];
 }
 
 export interface ParsedPredictionLine {

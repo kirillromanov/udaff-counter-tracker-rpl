@@ -12,7 +12,12 @@ export interface RawPredictionLine {
 
 const DATETIME_PREFIX =
   /^\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?(?:\s+(?:at|в))?(?:\s+\d{1,2}:\d{2})?\s*/i;
-const MT_MARKER = /\(\s*(?:мт|mt)\s*\)|\*\s*2(?!\d)|матч\s+тура/i;
+/**
+ * Decoration after a team, not a team-name character.
+ * Parentheses, a bare MT/МТ token, *2 (including *² after NFKC), and the words
+ * "матч тура". A letter sequence such as the start of a longer word is left alone.
+ */
+const MT_MARKER = /(?:\(\s*(?:мт|mt)\s*\)|(?<![\p{L}\p{N}])(?:мт|mt)(?![\p{L}\p{N}])|\*\s*2(?!\d)|матч\s+тура)/iu;
 const SCORE = /(?<!\d)(\d{1,2})(?!\d)\s*([-:])\s*(?<!\d)(\d{1,2})(?!\d)(?![.,]\d)/g;
 const UNRECOGNIZED_SCORE = /^(.*?)\s+-\d+\s*\*+\s*$/;
 const MAX_GOALS = 12;
@@ -126,9 +131,10 @@ export function parsePredictionLine(rawLine: string): RawPredictionLine | null {
 
   let line = normalizeCommentText(original);
   const markedAsMt = MT_MARKER.test(line);
+  const everyMarker = new RegExp(MT_MARKER.source, "giu");
   // "1. 31.07.2026 20:00 Родина-Ростов 2-1" and "6 28.08.2026 18:00 Акрон - ЦСКА 1-2".
   line = line.replace(/^\d{1,2}[.)]?\s+(?=\d{1,2}[./]\d{1,2})/u, "");
-  line = line.replace(MT_MARKER, " ").replace(DATETIME_PREFIX, "").replace(/\s+/g, " ").trim();
+  line = line.replace(everyMarker, " ").replace(DATETIME_PREFIX, "").replace(/\s+/g, " ").trim();
   if (!line) {
     return null;
   }

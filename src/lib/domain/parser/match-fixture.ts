@@ -1,5 +1,5 @@
 import type { FixtureRef } from "./types";
-import { normalizeTeamName } from "./normalize";
+import { matchTokens, normalizeTeamName, sameTokens } from "./normalize";
 
 /**
  * Forum nicknames that should compare equal to the full club token.
@@ -81,8 +81,62 @@ export function teamSimilarity(left: string, right: string): number {
   return 1 - distance / Math.max(a.length, b.length);
 }
 
-function pairScore(home: string, away: string, fixtureHome: string, fixtureAway: string): number {
-  return (teamSimilarity(home, fixtureHome) + teamSimilarity(away, fixtureAway)) / 2;
+function labelsOf(fixture: FixtureRef, side: "home" | "away"): string[] {
+  const canonical = side === "home" ? fixture.homeTeam : fixture.awayTeam;
+  const extra = side === "home" ? fixture.homeAliases : fixture.awayAliases;
+  return [canonical, ...(extra ?? [])];
+}
+
+function exactLabel(slip: string, label: string): boolean {
+  return sameTokens(matchTokens(slip), matchTokens(label));
+}
+
+function aliasTokenList(value: string): string[] {
+  const folded = aliasTokens(value);
+  return folded ? folded.split(" ") : [];
+}
+
+function dynamoFamily(tokens: readonly string[]): boolean {
+  return tokens.includes("динамо") || tokens.includes("махачкала");
+}
+
+/**
+ * A longer Dynamo spelling must not inherit the short name's score.
+ * "Динамо Махачкала" and "Динамо Москва" are not evidence for bare
+ * "Динамо", and "Динамо Москва" is not evidence for Makhachkala.
+ * The short slip "Динамо" still fits the longer label, so the opponent
+ * can choose the fixture.
+ */
+function crossDynamoRejected(slip: string, label: string): boolean {
+  const slipTokens = aliasTokenList(slip);
+  const labelTokens = aliasTokenList(label);
+  if (!dynamoFamily(slipTokens) || !dynamoFamily(labelTokens) || slipTokens.join(" ") === labelTokens.join(" ")) {
+    return false;
+  }
+  return slipTokens.some((token) => !labelTokens.some((labelToken) => (
+    token === labelToken || tokenPairScore(token, labelToken) > 0
+  )));
+}
+
+/**
+ * An exact spelling scores 1. A longer Dynamo spelling does not score
+ * against the other Dynamo. A short "Динамо" still matches the longer
+ * name, and the opponent selects the fixture. A line that names one
+ * Dynamo beside the other Dynamo's opponent stays unmatched.
+ */
+function scoreSide(slip: string, labels: readonly string[]): number {
+  if (labels.some((label) => exactLabel(slip, label))) {
+    return 1;
+  }
+  const usable = labels.filter((label) => !crossDynamoRejected(slip, label));
+  if (usable.length === 0) {
+    return 0;
+  }
+  return Math.max(...usable.map((label) => teamSimilarity(slip, label)));
+}
+
+function pairScore(home: string, away: string, fixture: FixtureRef): number {
+  return (scoreSide(home, labelsOf(fixture, "home")) + scoreSide(away, labelsOf(fixture, "away"))) / 2;
 }
 
 export function matchFixture(
@@ -96,8 +150,8 @@ export function matchFixture(
 
   const ranked = fixtures
     .map((fixture) => {
-      const direct = pairScore(homeName, awayName, fixture.homeTeam, fixture.awayTeam);
-      const swapped = pairScore(homeName, awayName, fixture.awayTeam, fixture.homeTeam);
+      const direct = pairScore(homeName, awayName, fixture);
+      const swapped = pairScore(awayName, homeName, fixture);
       const useSwap = swapped > direct;
       return {
         fixtureId: fixture.id,
